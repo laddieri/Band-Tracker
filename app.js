@@ -1,0 +1,866 @@
+// =============================================================================
+// BAND TRACKER
+// =============================================================================
+
+const INSTRUMENTS = [
+  'Piccolo','Flute','Clarinet','Bass Clarinet',
+  'Alto Saxophone','Tenor Saxophone','Baritone Saxophone',
+  'Trumpet','Mellophone','French Horn',
+  'Trombone','Bass Trombone','Baritone/Euphonium','Tuba',
+  'Snare Drum','Tenor Drums','Bass Drum','Cymbals',
+  'Marimba','Xylophone','Vibraphone',
+  'Color Guard','Drum Major','Other'
+];
+
+const SECTIONS = ['Woodwinds','Brass','Percussion','Front Ensemble','Color Guard','Leadership'];
+
+// ── Data Layer ───────────────────────────────────────────────────────────────
+
+const DB = {
+  _get(key, def) {
+    try { return JSON.parse(localStorage.getItem(key)) ?? def; } catch { return def; }
+  },
+  _set(key, val) {
+    try { localStorage.setItem(key, JSON.stringify(val)); }
+    catch(e) { showToast('Storage full — data may not save'); }
+  },
+
+  getStudents()        { return this._get('bt_students', {}); },
+  saveStudents(v)      { this._set('bt_students', v); },
+  getRehearsals()      { return this._get('bt_rehearsals', []); },
+  saveRehearsals(v)    { this._set('bt_rehearsals', v); },
+  getEntries()         { return this._get('bt_entries', {}); },
+  saveEntries(v)       { this._set('bt_entries', v); },
+
+  getRehearsalEntries(rid) {
+    return this.getEntries()[rid] || {};
+  },
+
+  upsertEntry(rid, num, patch) {
+    const all = this.getEntries();
+    if (!all[rid]) all[rid] = {};
+    const cur = all[rid][num] || { mistakes: 0, positives: 0, notes: '' };
+    all[rid][num] = { ...cur, ...patch };
+    this.saveEntries(all);
+  },
+
+  getStudentHistory(num) {
+    const entries = this.getEntries();
+    return this.getRehearsals()
+      .filter(r => entries[r.id]?.[num])
+      .map(r => ({ rehearsal: r, entry: entries[r.id][num] }))
+      .sort((a, b) => b.rehearsal.date.localeCompare(a.rehearsal.date));
+  },
+
+  deleteRehearsal(rid) {
+    this.saveRehearsals(this.getRehearsals().filter(r => r.id !== rid));
+    const e = this.getEntries();
+    delete e[rid];
+    this.saveEntries(e);
+  },
+
+  deleteStudent(num) {
+    const s = this.getStudents();
+    delete s[num];
+    this.saveStudents(s);
+    const e = this.getEntries();
+    for (const rid in e) delete e[rid][num];
+    this.saveEntries(e);
+  }
+};
+
+// ── Router ───────────────────────────────────────────────────────────────────
+
+let _view = 'home';
+let _params = {};
+
+function navigate(view, params = {}) {
+  // Reset rehearsal state when leaving rehearsal
+  if (_view === 'rehearsal' && view !== 'rehearsal') {
+    _activeNum = null;
+    _numSearch = '';
+  }
+  _view = view;
+  _params = params;
+  render();
+  document.getElementById('main-content').scrollTop = 0;
+}
+
+// ── Rehearsal state ──────────────────────────────────────────────────────────
+
+let _activeNum = null;   // currently selected student number in rehearsal
+let _numSearch = '';     // value of the student # input
+let _rosterSearch = '';
+
+// ── Utilities ────────────────────────────────────────────────────────────────
+
+function genId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+function today() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function fmtDate(d) {
+  if (!d) return '';
+  const [y, m, day] = d.split('-').map(Number);
+  const months = ['January','February','March','April','May','June',
+                  'July','August','September','October','November','December'];
+  return `${months[m-1]} ${day}, ${y}`;
+}
+
+function fmtShort(d) {
+  if (!d) return '';
+  const [, m, day] = d.split('-').map(Number);
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${months[m-1]} ${day}`;
+}
+
+function esc(str) {
+  return String(str ?? '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function showToast(msg) {
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 2700);
+}
+
+function handleModalClick(e) {
+  if (e.target === document.getElementById('modal-overlay')) closeModal();
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.add('hidden');
+}
+
+function openModal(html) {
+  document.getElementById('modal-body').innerHTML = `<div class="modal-handle"></div>${html}`;
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+
+// ── Render engine ────────────────────────────────────────────────────────────
+
+function render() {
+  const backBtn = document.getElementById('back-btn');
+  const title   = document.getElementById('page-title');
+  const actions = document.getElementById('header-actions');
+  const main    = document.getElementById('main-content');
+  const tabs    = document.querySelectorAll('.nav-tab');
+
+  // Back button — only show on sub-views
+  const isTop = ['home','roster','rehearsals'].includes(_view);
+  backBtn.classList.toggle('hidden', isTop);
+  backBtn.onclick = () => {
+    if (_view === 'student')   navigate('roster');
+    else if (_view === 'rehearsal') navigate('rehearsals');
+    else navigate('home');
+  };
+
+  // Active tab highlight
+  tabs.forEach(t => {
+    const match = t.dataset.view;
+    t.classList.toggle('active',
+      match === _view ||
+      (_view === 'student'   && match === 'roster') ||
+      (_view === 'rehearsal' && match === 'rehearsals')
+    );
+  });
+
+  actions.innerHTML = '';
+
+  switch (_view) {
+    case 'home':
+      title.textContent = 'Band Tracker';
+      main.innerHTML = viewHome();
+      break;
+
+    case 'roster':
+      title.textContent = 'Student Roster';
+      actions.innerHTML = addBtn('showAddStudentModal()');
+      main.innerHTML = viewRoster();
+      break;
+
+    case 'student': {
+      const s = DB.getStudents()[_params.num];
+      title.textContent = s ? `Student #${esc(s.number)}` : 'Student';
+      actions.innerHTML = editBtn(`showEditStudentModal('${esc(_params.num)}')`);
+      main.innerHTML = viewStudent(_params.num);
+      break;
+    }
+
+    case 'rehearsals':
+      title.textContent = 'Rehearsals';
+      actions.innerHTML = addBtn('showNewRehearsalModal()');
+      main.innerHTML = viewRehearsals();
+      break;
+
+    case 'rehearsal': {
+      const r = DB.getRehearsals().find(r => r.id === _params.rid);
+      title.textContent = r ? fmtShort(r.date) + (r.label ? ` — ${r.label}` : '') : 'Rehearsal';
+      actions.innerHTML = optBtn(`showRehearsalOptions('${esc(_params.rid)}')`);
+      main.innerHTML = viewRehearsal(_params.rid);
+      break;
+    }
+  }
+}
+
+function addBtn(fn) {
+  return `<button class="icon-btn" onclick="${fn}" title="Add">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    </svg></button>`;
+}
+
+function editBtn(fn) {
+  return `<button class="icon-btn" onclick="${fn}" title="Edit">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+      <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+    </svg></button>`;
+}
+
+function optBtn(fn) {
+  return `<button class="icon-btn" onclick="${fn}" title="Options">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <circle cx="12" cy="5" r="1.2" fill="currentColor"/>
+      <circle cx="12" cy="12" r="1.2" fill="currentColor"/>
+      <circle cx="12" cy="19" r="1.2" fill="currentColor"/>
+    </svg></button>`;
+}
+
+// ── View: Home ────────────────────────────────────────────────────────────────
+
+function viewHome() {
+  const students  = DB.getStudents();
+  const rehearsals = DB.getRehearsals();
+  const todayStr  = today();
+  const todayR    = rehearsals.find(r => r.date === todayStr);
+  const sc        = Object.keys(students).length;
+  const recent    = [...rehearsals].sort((a,b) => b.date.localeCompare(a.date)).slice(0,5);
+
+  return `
+    <div class="hero">
+      <div class="hero-date">${fmtDate(todayStr)}</div>
+      <div class="hero-title">🎺 Band Tracker</div>
+      <div class="hero-sub">${sc} student${sc!==1?'s':''} · ${rehearsals.length} rehearsal${rehearsals.length!==1?'s':''}</div>
+      ${todayR
+        ? `<button class="btn btn-full btn-lg" style="background:white;color:var(--primary);margin-bottom:10px"
+             onclick="navigate('rehearsal',{rid:'${esc(todayR.id)}'})">
+             Continue Today's Rehearsal →
+           </button>`
+        : `<button class="btn btn-full btn-lg" style="background:white;color:var(--primary);margin-bottom:10px"
+             onclick="startToday()">
+             Start Today's Rehearsal
+           </button>`
+      }
+      <button class="btn btn-full btn-lg"
+        style="background:rgba(255,255,255,.15);color:white;border:2px solid rgba(255,255,255,.4);"
+        onclick="showNewRehearsalModal()">
+        New Rehearsal for Another Date
+      </button>
+    </div>
+
+    ${recent.length ? `
+      <div class="section-title">Recent Rehearsals</div>
+      ${recent.map(r => {
+        const ents = DB.getRehearsalEntries(r.id);
+        const cnt  = Object.keys(ents).length;
+        const errs = Object.values(ents).reduce((s,e)=>s+(e.mistakes||0),0);
+        const pos  = Object.values(ents).reduce((s,e)=>s+(e.positives||0),0);
+        return `
+          <div class="card clickable" onclick="navigate('rehearsal',{rid:'${esc(r.id)}'})">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="font-bold">${fmtDate(r.date)}</div>
+                ${r.label ? `<div class="text-muted text-sm mt-4">${esc(r.label)}</div>` : ''}
+              </div>
+              <div class="text-right">
+                <div class="text-sm text-muted">${cnt} tracked</div>
+                <div class="flex gap-6 mt-4" style="justify-content:flex-end">
+                  ${errs>0 ? `<span class="badge badge-danger">${errs}✗</span>` : ''}
+                  ${pos>0  ? `<span class="badge badge-success">${pos}✓</span>` : ''}
+                </div>
+              </div>
+            </div>
+          </div>`;
+      }).join('')}
+    ` : `
+      <div class="empty-state">
+        <div class="empty-icon">🎺</div>
+        <p>No rehearsals yet.</p>
+        <p>Tap <strong>Start Today's Rehearsal</strong> to begin!</p>
+      </div>
+    `}
+  `;
+}
+
+function startToday() {
+  const id = genId();
+  const rehearsals = DB.getRehearsals();
+  rehearsals.push({ id, date: today(), label: '' });
+  DB.saveRehearsals(rehearsals);
+  navigate('rehearsal', { rid: id });
+}
+
+// ── View: Roster ──────────────────────────────────────────────────────────────
+
+function viewRoster() {
+  const students = DB.getStudents();
+  const list = Object.values(students)
+    .sort((a,b) => String(a.number).localeCompare(String(b.number), undefined, {numeric:true}));
+
+  return `
+    <div class="search-wrap">
+      <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input class="search-input" type="search" id="roster-search"
+             placeholder="Search number, instrument, section…"
+             value="${esc(_rosterSearch)}"
+             oninput="filterRoster(this.value)" autocomplete="off">
+    </div>
+    <div id="roster-list">${rosterRows(list, _rosterSearch)}</div>
+    ${list.length === 0 ? `
+      <div class="empty-state">
+        <div class="empty-icon">👥</div>
+        <p>No students yet.</p>
+        <p>Tap <strong>+</strong> above to add your first student.</p>
+      </div>` : ''}
+  `;
+}
+
+function rosterRows(list, search) {
+  const q = search.toLowerCase().trim();
+  const filtered = q
+    ? list.filter(s =>
+        String(s.number).includes(q) ||
+        (s.instrument||'').toLowerCase().includes(q) ||
+        (s.section||'').toLowerCase().includes(q) ||
+        (s.name||'').toLowerCase().includes(q))
+    : list;
+
+  if (!filtered.length && q) {
+    return `<div class="empty-state" style="padding:24px"><p>No students match "${esc(q)}"</p></div>`;
+  }
+
+  return filtered.map(s => {
+    const hist = DB.getStudentHistory(s.number);
+    const errs = hist.reduce((sum,e)=>sum+(e.entry.mistakes||0),0);
+    const pos  = hist.reduce((sum,e)=>sum+(e.entry.positives||0),0);
+    const avg  = hist.length ? (errs/hist.length).toFixed(1) : null;
+    return `
+      <div class="roster-row" onclick="navigate('student',{num:'${esc(s.number)}'})">
+        <div class="student-num">#${esc(s.number)}</div>
+        <div class="student-info">
+          ${s.name ? `<div class="student-name">${esc(s.name)}</div>` : ''}
+          <div class="student-detail">${esc([s.instrument,s.section].filter(Boolean).join(' · ')) || '<em style="color:var(--text-muted)">No instrument set</em>'}</div>
+        </div>
+        <div class="student-badges">
+          ${avg !== null ? `<span class="badge badge-danger">${avg}✗</span>` : ''}
+          ${pos > 0      ? `<span class="badge badge-success">${pos}✓</span>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function filterRoster(val) {
+  _rosterSearch = val;
+  const list = Object.values(DB.getStudents())
+    .sort((a,b) => String(a.number).localeCompare(String(b.number), undefined, {numeric:true}));
+  document.getElementById('roster-list').innerHTML = rosterRows(list, val);
+}
+
+// ── View: Student Detail ──────────────────────────────────────────────────────
+
+function viewStudent(num) {
+  const s = DB.getStudents()[num];
+  if (!s) return `<div class="empty-state"><p>Student not found.</p></div>`;
+
+  const hist  = DB.getStudentHistory(num);
+  const errs  = hist.reduce((sum,e)=>sum+(e.entry.mistakes||0),0);
+  const pos   = hist.reduce((sum,e)=>sum+(e.entry.positives||0),0);
+  const avgE  = hist.length ? (errs/hist.length).toFixed(1) : '—';
+  const avgP  = hist.length ? (pos/hist.length).toFixed(1) : '—';
+
+  return `
+    <div class="card mb-12" style="text-align:center">
+      <div style="font-size:2.6rem;font-weight:800;color:var(--primary);line-height:1;margin-bottom:6px">#${esc(s.number)}</div>
+      ${s.name ? `<div style="font-size:1.1rem;font-weight:600;margin-bottom:8px">${esc(s.name)}</div>` : ''}
+      <div class="flex gap-6" style="justify-content:center;flex-wrap:wrap">
+        ${s.instrument ? `<span class="badge badge-primary">${esc(s.instrument)}</span>` : ''}
+        ${s.section    ? `<span class="badge badge-neutral">${esc(s.section)}</span>` : ''}
+      </div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-block">
+        <div class="stat-value">${hist.length}</div>
+        <div class="stat-label">Rehearsals</div>
+      </div>
+      <div class="stat-block">
+        <div class="stat-value" style="color:var(--danger)">${avgE}</div>
+        <div class="stat-label">Avg Mistakes</div>
+      </div>
+      <div class="stat-block">
+        <div class="stat-value" style="color:var(--success)">${avgP}</div>
+        <div class="stat-label">Avg Positives</div>
+      </div>
+    </div>
+
+    ${s.notes ? `
+      <div class="card mb-12">
+        <div class="section-title" style="margin-top:0">Director Notes</div>
+        <div style="font-size:0.9rem;white-space:pre-wrap;color:var(--text-muted)">${esc(s.notes)}</div>
+      </div>` : ''}
+
+    ${hist.length ? `
+      <div class="section-title">Rehearsal History</div>
+      ${hist.map(({rehearsal:r, entry:e}) => `
+        <div class="history-row ${e.mistakes>0?'had-mistakes':''} ${e.positives>0&&!e.mistakes?'had-positives':''}"
+             onclick="navigate('rehearsal',{rid:'${esc(r.id)}'})">
+          <div class="history-info">
+            <div class="history-date">${fmtDate(r.date)}</div>
+            ${r.label ? `<div class="history-label">${esc(r.label)}</div>` : ''}
+            ${e.notes  ? `<div class="history-note">${esc(e.notes)}</div>` : ''}
+          </div>
+          <div class="flex gap-6">
+            ${e.mistakes  > 0 ? `<span class="badge badge-danger">${e.mistakes}✗</span>`  : '<span class="badge badge-neutral">0✗</span>'}
+            ${e.positives > 0 ? `<span class="badge badge-success">${e.positives}✓</span>` : '<span class="badge badge-neutral">0✓</span>'}
+          </div>
+        </div>`).join('')}
+    ` : `
+      <div class="empty-state" style="padding:24px">
+        <p>No rehearsal data recorded yet.</p>
+      </div>`}
+  `;
+}
+
+// ── View: Rehearsals List ─────────────────────────────────────────────────────
+
+function viewRehearsals() {
+  const rehearsals = [...DB.getRehearsals()].sort((a,b)=>b.date.localeCompare(a.date));
+  if (!rehearsals.length) {
+    return `
+      <div class="empty-state">
+        <div class="empty-icon">📋</div>
+        <p>No rehearsals yet.</p>
+        <p>Tap <strong>+</strong> above or use the Home tab.</p>
+      </div>`;
+  }
+
+  const grouped = {};
+  for (const r of rehearsals) {
+    const key = r.date.slice(0,7);
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(r);
+  }
+
+  const MONTHS = ['January','February','March','April','May','June',
+                  'July','August','September','October','November','December'];
+
+  return Object.entries(grouped).map(([key, group]) => {
+    const [y, m] = key.split('-').map(Number);
+    return `
+      <div class="section-title">${MONTHS[m-1]} ${y}</div>
+      ${group.map(r => {
+        const ents = DB.getRehearsalEntries(r.id);
+        const cnt  = Object.keys(ents).length;
+        const errs = Object.values(ents).reduce((s,e)=>s+(e.mistakes||0),0);
+        const pos  = Object.values(ents).reduce((s,e)=>s+(e.positives||0),0);
+        return `
+          <div class="card clickable" onclick="navigate('rehearsal',{rid:'${esc(r.id)}'})">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="font-bold">${fmtDate(r.date)}</div>
+                ${r.label ? `<div class="text-muted text-sm mt-4">${esc(r.label)}</div>` : ''}
+              </div>
+              <div class="flex gap-6 items-center">
+                <span class="badge badge-neutral">${cnt} tracked</span>
+                ${errs>0 ? `<span class="badge badge-danger">${errs}✗</span>` : ''}
+                ${pos>0  ? `<span class="badge badge-success">${pos}✓</span>` : ''}
+              </div>
+            </div>
+          </div>`;
+      }).join('')}`;
+  }).join('');
+}
+
+// ── View: Rehearsal Detail ────────────────────────────────────────────────────
+
+function viewRehearsal(rid) {
+  const r = DB.getRehearsals().find(r => r.id === rid);
+  if (!r) return `<div class="empty-state"><p>Rehearsal not found.</p></div>`;
+
+  const entries  = DB.getRehearsalEntries(rid);
+  const students = DB.getStudents();
+  const activeEntry = _activeNum
+    ? (entries[_activeNum] || { mistakes:0, positives:0, notes:'' })
+    : null;
+  const activeStu = _activeNum ? students[_activeNum] : null;
+
+  const entryList = Object.entries(entries)
+    .sort(([a],[b]) => String(a).localeCompare(String(b), undefined, {numeric:true}));
+
+  return `
+    <!-- Tracker input -->
+    <div class="tracker-card">
+      <div class="tracker-label">Track a Student</div>
+      <input class="num-input" type="text" inputmode="numeric" pattern="[0-9]*"
+             id="num-input" placeholder="Student #"
+             value="${esc(_numSearch)}"
+             autocomplete="off" autocorrect="off" autocapitalize="off"
+             oninput="onNumInput(this.value,'${esc(rid)}')"
+             onkeydown="onNumKey(event,'${esc(rid)}')">
+
+      ${_activeNum ? `
+        <div class="active-card">
+          <div class="active-card-name">
+            #${esc(_activeNum)}
+            ${activeStu
+              ? `<span class="sub">${esc([activeStu.instrument, activeStu.name].filter(Boolean).join(' · '))}</span>`
+              : '<span class="sub" style="color:var(--warning)"> Not in roster</span>'}
+          </div>
+
+          <div class="active-counters">
+            <div class="counter-col">
+              <div class="counter-col-label mistakes">Mistakes</div>
+              <div class="counter-value mistakes" id="val-mistakes">${activeEntry.mistakes}</div>
+              <button class="count-btn add-mistake"
+                onclick="adjustCount('${esc(rid)}','${esc(_activeNum)}','mistakes',1)">
+                +1 Mistake
+              </button>
+              ${activeEntry.mistakes > 0 ? `
+                <button class="count-btn undo"
+                  onclick="adjustCount('${esc(rid)}','${esc(_activeNum)}','mistakes',-1)">
+                  Undo −1
+                </button>` : ''}
+            </div>
+
+            <div class="counter-col">
+              <div class="counter-col-label positives">Positives</div>
+              <div class="counter-value positives" id="val-positives">${activeEntry.positives}</div>
+              <button class="count-btn add-positive"
+                onclick="adjustCount('${esc(rid)}','${esc(_activeNum)}','positives',1)">
+                +1 Positive
+              </button>
+              ${activeEntry.positives > 0 ? `
+                <button class="count-btn undo"
+                  onclick="adjustCount('${esc(rid)}','${esc(_activeNum)}','positives',-1)">
+                  Undo −1
+                </button>` : ''}
+            </div>
+          </div>
+
+          <textarea class="active-notes" placeholder="Notes for this student this rehearsal…"
+            oninput="saveNote('${esc(rid)}','${esc(_activeNum)}',this.value)">${esc(activeEntry.notes)}</textarea>
+
+          ${!activeStu ? `
+            <button class="btn btn-secondary btn-sm btn-full mt-8"
+              onclick="showAddStudentModal('${esc(_activeNum)}')">
+              + Add #${esc(_activeNum)} to Roster
+            </button>` : ''}
+
+          <button class="next-btn" onclick="clearActive()">Next Student →</button>
+        </div>
+      ` : ''}
+    </div>
+
+    <!-- Tracked list -->
+    ${entryList.length ? `
+      <div class="section-title">Tracked This Rehearsal (${entryList.length})</div>
+      ${entryList.map(([num, entry]) => {
+        const stu = students[num];
+        return `
+          <div class="entry-row ${_activeNum===num?'is-active':''}"
+               onclick="pickStudent('${esc(num)}','${esc(rid)}')">
+            <div class="entry-header">
+              <div class="entry-student">
+                #${esc(num)}
+                ${stu ? `<span class="sub">${esc([stu.instrument,stu.name].filter(Boolean).join(' · '))}</span>` : '<span class="sub" style="color:var(--warning)">Not in roster</span>'}
+              </div>
+              <div class="entry-badges">
+                <span class="badge ${entry.mistakes>0?'badge-danger':'badge-neutral'}">${entry.mistakes}✗</span>
+                <span class="badge ${entry.positives>0?'badge-success':'badge-neutral'}">${entry.positives}✓</span>
+              </div>
+            </div>
+            ${entry.notes ? `<div class="entry-notes">${esc(entry.notes)}</div>` : ''}
+          </div>`;
+      }).join('')}
+    ` : `
+      <div class="empty-state" style="padding:24px">
+        <p>No students tracked yet.</p>
+        <p>Enter a student number above to begin.</p>
+      </div>`}
+  `;
+}
+
+function onNumInput(val, rid) {
+  _numSearch = val;
+  _activeNum = val.trim() || null;
+  reRender(rid);
+}
+
+function onNumKey(e, rid) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const num = _numSearch.trim();
+    if (num) {
+      _activeNum = num;
+      // Ensure entry record exists
+      DB.upsertEntry(rid, num, {});
+      reRender(rid);
+    }
+  }
+}
+
+function pickStudent(num, rid) {
+  _activeNum = num;
+  _numSearch = num;
+  document.getElementById('main-content').scrollTop = 0;
+  reRender(rid);
+}
+
+function clearActive() {
+  _activeNum = null;
+  _numSearch = '';
+  const inp = document.getElementById('num-input');
+  if (inp) { inp.value = ''; inp.focus(); }
+  reRender(_params.rid);
+}
+
+function adjustCount(rid, num, field, delta) {
+  const ents = DB.getRehearsalEntries(rid);
+  const cur  = ents[num] || { mistakes:0, positives:0, notes:'' };
+  DB.upsertEntry(rid, num, { [field]: Math.max(0, (cur[field]||0) + delta) });
+  reRender(rid);
+}
+
+function saveNote(rid, num, notes) {
+  DB.upsertEntry(rid, num, { notes });
+}
+
+function reRender(rid) {
+  const mc = document.getElementById('main-content');
+  const st = mc.scrollTop;
+  mc.innerHTML = viewRehearsal(rid);
+  mc.scrollTop = st;
+}
+
+// ── Modals ────────────────────────────────────────────────────────────────────
+
+function showAddStudentModal(prefill = '') {
+  openModal(`
+    <div class="modal-title">Add Student</div>
+    <div class="form-group">
+      <label class="form-label">Student Number *</label>
+      <input class="form-input" id="m-num" type="text" value="${esc(prefill)}"
+             placeholder="e.g. 042" autocomplete="off" inputmode="numeric">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Name (optional)</label>
+      <input class="form-input" id="m-name" type="text" placeholder="First Last" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Instrument</label>
+      <select class="form-select" id="m-instrument">
+        <option value="">— Select instrument —</option>
+        ${INSTRUMENTS.map(i=>`<option value="${esc(i)}">${esc(i)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Section</label>
+      <select class="form-select" id="m-section">
+        <option value="">— Select section —</option>
+        ${SECTIONS.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Director Notes (optional)</label>
+      <textarea class="form-textarea" id="m-notes" placeholder="Any notes about this student…"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveNewStudent()">Add Student</button>
+    </div>
+  `);
+  if (!prefill) document.getElementById('m-num').focus();
+}
+
+function saveNewStudent() {
+  const num = document.getElementById('m-num').value.trim();
+  if (!num) { showToast('Student number is required'); return; }
+  const students = DB.getStudents();
+  if (students[num]) { showToast(`Student #${num} already exists`); return; }
+
+  students[num] = {
+    number: num,
+    name: document.getElementById('m-name').value.trim(),
+    instrument: document.getElementById('m-instrument').value,
+    section: document.getElementById('m-section').value,
+    notes: document.getElementById('m-notes').value.trim(),
+    songs: []
+  };
+  DB.saveStudents(students);
+  closeModal();
+  showToast(`Student #${num} added`);
+  if (_view === 'roster' || _view === 'student') render();
+  else navigate('roster');
+}
+
+function showEditStudentModal(num) {
+  const s = DB.getStudents()[num];
+  if (!s) return;
+  openModal(`
+    <div class="modal-title">Edit Student #${esc(s.number)}</div>
+    <div class="form-group">
+      <label class="form-label">Name (optional)</label>
+      <input class="form-input" id="m-name" type="text" value="${esc(s.name||'')}" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Instrument</label>
+      <select class="form-select" id="m-instrument">
+        <option value="">— Select instrument —</option>
+        ${INSTRUMENTS.map(i=>`<option value="${esc(i)}" ${s.instrument===i?'selected':''}>${esc(i)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Section</label>
+      <select class="form-select" id="m-section">
+        <option value="">— Select section —</option>
+        ${SECTIONS.map(sec=>`<option value="${esc(sec)}" ${s.section===sec?'selected':''}>${esc(sec)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Director Notes</label>
+      <textarea class="form-textarea" id="m-notes">${esc(s.notes||'')}</textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEditStudent('${esc(num)}')">Save Changes</button>
+    </div>
+    <div class="danger-zone">
+      <div class="danger-zone-title">Danger Zone</div>
+      <button class="btn btn-danger btn-full" onclick="confirmDeleteStudent('${esc(num)}')">
+        Delete Student #${esc(num)}
+      </button>
+    </div>
+  `);
+}
+
+function saveEditStudent(num) {
+  const students = DB.getStudents();
+  if (!students[num]) return;
+  students[num] = {
+    ...students[num],
+    name: document.getElementById('m-name').value.trim(),
+    instrument: document.getElementById('m-instrument').value,
+    section: document.getElementById('m-section').value,
+    notes: document.getElementById('m-notes').value.trim(),
+  };
+  DB.saveStudents(students);
+  closeModal();
+  showToast('Student updated');
+  render();
+}
+
+function confirmDeleteStudent(num) {
+  if (!confirm(`Delete student #${num} and all their rehearsal data?\n\nThis cannot be undone.`)) return;
+  DB.deleteStudent(num);
+  closeModal();
+  showToast(`Student #${num} deleted`);
+  navigate('roster');
+}
+
+function showNewRehearsalModal() {
+  openModal(`
+    <div class="modal-title">New Rehearsal</div>
+    <div class="form-group">
+      <label class="form-label">Date *</label>
+      <input class="form-input" id="m-date" type="date" value="${today()}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Label (optional)</label>
+      <input class="form-input" id="m-label" type="text"
+             placeholder="e.g. Evening, Full Band, Sectional…" autocomplete="off">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveNewRehearsal()">Create</button>
+    </div>
+  `);
+}
+
+function saveNewRehearsal() {
+  const date = document.getElementById('m-date').value;
+  if (!date) { showToast('Date is required'); return; }
+  const id = genId();
+  const rehearsals = DB.getRehearsals();
+  rehearsals.push({ id, date, label: document.getElementById('m-label').value.trim() });
+  DB.saveRehearsals(rehearsals);
+  closeModal();
+  _activeNum = null;
+  _numSearch = '';
+  navigate('rehearsal', { rid: id });
+}
+
+function showRehearsalOptions(rid) {
+  const r = DB.getRehearsals().find(r => r.id === rid);
+  if (!r) return;
+  openModal(`
+    <div class="modal-title">Rehearsal Options</div>
+    <div class="form-group">
+      <label class="form-label">Date</label>
+      <input class="form-input" id="m-date" type="date" value="${esc(r.date)}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Label (optional)</label>
+      <input class="form-input" id="m-label" type="text" value="${esc(r.label||'')}"
+             placeholder="e.g. Evening, Full Band…" autocomplete="off">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRehearsalEdit('${esc(rid)}')">Save</button>
+    </div>
+    <div class="danger-zone">
+      <div class="danger-zone-title">Danger Zone</div>
+      <button class="btn btn-danger btn-full" onclick="confirmDeleteRehearsal('${esc(rid)}')">
+        Delete This Rehearsal
+      </button>
+    </div>
+  `);
+}
+
+function saveRehearsalEdit(rid) {
+  const rehearsals = DB.getRehearsals();
+  const idx = rehearsals.findIndex(r => r.id === rid);
+  if (idx === -1) return;
+  rehearsals[idx] = {
+    ...rehearsals[idx],
+    date:  document.getElementById('m-date').value,
+    label: document.getElementById('m-label').value.trim()
+  };
+  DB.saveRehearsals(rehearsals);
+  closeModal();
+  showToast('Rehearsal updated');
+  render();
+}
+
+function confirmDeleteRehearsal(rid) {
+  if (!confirm('Delete this rehearsal and all its data?\n\nThis cannot be undone.')) return;
+  DB.deleteRehearsal(rid);
+  closeModal();
+  showToast('Rehearsal deleted');
+  navigate('rehearsals');
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+
+render();
