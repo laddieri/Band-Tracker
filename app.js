@@ -1004,6 +1004,9 @@ function _applySongStatus(sid, num, song, status) {
     const students = Object.values(DB.getStudents())
       .sort((a, b) => String(a.number).localeCompare(String(b.number), undefined, {numeric:true}));
     listEl.innerHTML = songStudentRows(sid, students, song.statuses || {});
+  } else if (_view === 'student') {
+    const mc = document.getElementById('main-content');
+    if (mc) { const st = mc.scrollTop; mc.innerHTML = viewStudent(_params.num); mc.scrollTop = st; }
   }
 }
 
@@ -1253,6 +1256,36 @@ function viewStudent(num) {
         <div style="font-size:0.9rem;white-space:pre-wrap;color:var(--text-muted)">${esc(s.notes)}</div>
       </div>` : ''}
 
+    ${STATE.songs.length ? `
+      <div class="section-title">Songs to Memorize</div>
+      <div class="card mb-12" style="padding:8px 12px">
+        ${STATE.songs.map(song => {
+          const st = song.statuses?.[String(num)]?.status || 'not_attempted';
+          const meta = song.statuses?.[String(num)]?.updatedBy
+            ? `${st === 'passed' ? 'Passed' : 'Failed'} by ${dirLabel(song.statuses[String(num)].updatedBy)}`
+            : '';
+          const overdue = song.dueDate && song.dueDate < today() && st !== 'passed';
+          return `
+          <div class="stu-song-row">
+            <div class="song-stu-info">
+              <span class="song-stu-name">${esc(song.title)}</span>
+              ${song.dueDate ? `<span class="song-row-due ${overdue ? 'song-overdue' : ''}" style="font-size:.72rem">${overdue ? '⚠ ' : ''}Due ${fmtDate(song.dueDate)}</span>` : ''}
+              <span class="song-stu-status ${st === 'passed' ? 'sss-pass' : st === 'failed' ? 'sss-fail' : 'sss-na'}">
+                ${st === 'passed' ? '✓ Passed' : st === 'failed' ? '✗ Failed' : '— Not Attempted'}
+              </span>
+              ${meta ? `<span class="song-stu-meta">${esc(meta)}</span>` : ''}
+            </div>
+            <div class="song-stu-btns">
+              <button class="ssb ${st === 'passed' ? 'ssb-on-pass' : 'ssb-pass'}"
+                      onclick="setSongStatus('${esc(song.id)}','${esc(String(num))}','passed')">✓</button>
+              <button class="ssb ${st === 'failed' ? 'ssb-on-fail' : 'ssb-fail'}"
+                      onclick="setSongStatus('${esc(song.id)}','${esc(String(num))}','failed')">✗</button>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    ` : ''}
+
     ${hist.length ? `
       <div class="section-title">Rehearsal History</div>
       ${hist.map(({rehearsal:r, entry:e}) => {
@@ -1260,18 +1293,25 @@ function viewStudent(num) {
         const mn = evts.filter(ev=>ev.type==='mistake' &&ev.note.trim()).map(ev=>(ev.sectionMark?`<span class="section-mark-badge">§ ${esc(ev.section||'Section')}</span> `:'')+(ev.segment?`<span class="event-seg">${esc(ev.segment)}</span> `:'') +esc(ev.note)+(ev.by&&ev.by!=='system'?` <em style="opacity:.6">(${esc(dirLabel(ev.by))})</em>`:''));
         const pn = evts.filter(ev=>ev.type==='positive'&&ev.note.trim()).map(ev=>(ev.sectionMark?`<span class="section-mark-badge">§ ${esc(ev.section||'Section')}</span> `:'')+(ev.segment?`<span class="event-seg">${esc(ev.segment)}</span> `:'') +esc(ev.note)+(ev.by&&ev.by!=='system'?` <em style="opacity:.6">(${esc(dirLabel(ev.by))})</em>`:''));
         return `
-        <div class="history-row ${e.mistakes>0?'had-mistakes':''} ${e.positives>0&&!e.mistakes?'had-positives':''}"
-             onclick="navigate('rehearsal',{rid:'${esc(r.id)}'})">
-          <div class="history-info">
+        <div class="history-row ${e.mistakes>0?'had-mistakes':''} ${e.positives>0&&!e.mistakes?'had-positives':''}">
+          <div class="history-info" onclick="navigate('rehearsal',{rid:'${esc(r.id)}'})">
             <div class="history-date">${fmtDate(r.date)}</div>
             ${r.label ? `<div class="history-label">${esc(r.label)}</div>` : ''}
             ${e.notes  ? `<div class="history-note">${esc(e.notes)}</div>` : ''}
             ${mn.length ? `<div class="history-note" style="color:var(--danger)">✗ ${mn.join(' &middot; ')}</div>` : ''}
             ${pn.length ? `<div class="history-note" style="color:var(--success)">✓ ${pn.join(' &middot; ')}</div>` : ''}
           </div>
-          <div class="flex gap-6">
-            ${e.mistakes  > 0 ? `<span class="badge badge-danger">${e.mistakes}✗</span>`  : '<span class="badge badge-neutral">0✗</span>'}
-            ${e.positives > 0 ? `<span class="badge badge-success">${e.positives}✓</span>` : '<span class="badge badge-neutral">0✓</span>'}
+          <div class="flex gap-6" style="flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">
+            <div class="flex gap-6">
+              ${e.mistakes  > 0 ? `<span class="badge badge-danger">${e.mistakes}✗</span>`  : '<span class="badge badge-neutral">0✗</span>'}
+              ${e.positives > 0 ? `<span class="badge badge-success">${e.positives}✓</span>` : '<span class="badge badge-neutral">0✓</span>'}
+            </div>
+            <div class="flex gap-6">
+              <button class="ssb ssb-fail" style="width:28px;height:28px;font-size:.85rem"
+                      onclick="showMarkModal('${esc(r.id)}','${esc(num)}','mistake')">✗</button>
+              <button class="ssb ssb-pass" style="width:28px;height:28px;font-size:.85rem"
+                      onclick="showMarkModal('${esc(r.id)}','${esc(num)}','positive')">✓</button>
+            </div>
           </div>
         </div>`;
       }).join('')}
@@ -1945,9 +1985,13 @@ function renderBlockNav(rid) {
 function reRender(rid) {
   const mc = document.getElementById('main-content');
   const st = mc.scrollTop;
-  mc.innerHTML = viewRehearsal(rid);
+  if (_view === 'student') {
+    mc.innerHTML = viewStudent(_params.num);
+  } else {
+    mc.innerHTML = viewRehearsal(rid);
+    if (_blockMode && !_activeNum) initBlockPinch(rid);
+  }
   mc.scrollTop = st;
-  if (_blockMode && !_activeNum) initBlockPinch(rid);
 }
 
 // ── Modals: Students ──────────────────────────────────────────────────────────

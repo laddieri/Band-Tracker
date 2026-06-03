@@ -557,14 +557,14 @@ html, body {
   border-radius: var(--r-sm);
   margin-bottom: 8px;
   box-shadow: var(--shadow);
-  cursor: pointer;
   transition: box-shadow .1s;
   border-left: 3px solid var(--border);
 }
-.history-row:hover { box-shadow: var(--shadow-md); }
+.history-row:has(.history-info:hover) { box-shadow: var(--shadow-md); }
 .history-row.had-mistakes { border-left-color: var(--danger); }
 .history-row.had-positives { border-left-color: var(--success); }
-.history-info { flex: 1; }
+.history-info { flex: 1; cursor: pointer; }
+.history-info:hover .history-date { color: var(--primary); }
 .history-date { font-weight: 600; font-size: 0.88rem; }
 .history-label { font-size: 0.78rem; color: var(--text-muted); margin-top: 1px; }
 .history-note { font-size: 0.78rem; color: var(--text-muted); font-style: italic; margin-top: 3px; }
@@ -1538,6 +1538,17 @@ html, body {
 .ssb-fail     { background: var(--danger-bg);  color: var(--danger);  border-color: #fca5a5; }
 .ssb-on-pass  { background: var(--success); color: white; border-color: var(--success); }
 .ssb-on-fail  { background: var(--danger);  color: white; border-color: var(--danger); }
+
+/* ── Student roster page song rows ──────────────────────────────────────────── */
+
+.stu-song-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.stu-song-row:last-child { border-bottom: none; }
 
 /* ── Student portal songs ────────────────────────────────────────────────────── */
 
