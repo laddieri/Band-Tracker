@@ -34,6 +34,7 @@ const STATE = {
   authChecking: true,
   loading:      true,
   isAdmin:      false,
+  studentNum:   null, // student number linked to logged-in user's email
   students:     {},
   rehearsals:   [],
   entries:      {},
@@ -85,18 +86,63 @@ function startListeners() {
     }
   }
 
-  STATE._unsubs = [
-    db.collection('admins').doc(STATE.user.email).onSnapshot(doc => {
-      const prev = STATE.isAdmin;
-      STATE.isAdmin = doc.exists;
-      if (prev !== STATE.isAdmin && !STATE.loading) render();
-    }),
+  const listeners = [];
 
+  // Admin listener — not applicable to anonymous student sessions
+  if (!STATE.user.isAnonymous && STATE.user.email) {
+    listeners.push(
+      db.collection('admins').doc(STATE.user.email).onSnapshot(doc => {
+        const prev = STATE.isAdmin;
+        STATE.isAdmin = doc.exists;
+        if (prev !== STATE.isAdmin && !STATE.loading) render();
+      })
+    );
+  }
+
+  listeners.push(
     db.collection('students').onSnapshot(snap => {
       snap.docChanges().forEach(ch => {
         if (ch.type === 'removed') delete STATE.students[ch.doc.id];
         else STATE.students[ch.doc.id] = { ...ch.doc.data(), _id: ch.doc.id };
       });
+
+      if (STATE.user?.isAnonymous) {
+        // Keep previously-resolved student num, or look up by stored num
+        const storedNum = localStorage.getItem('bandStudentNum');
+        if (storedNum && STATE.students[storedNum]) {
+          STATE.studentNum = storedNum;
+        } else if (_pendingStudentCode) {
+          STATE.studentNum = null;
+          for (const [num, s] of Object.entries(STATE.students)) {
+            if (s.studentCode && s.studentCode.toUpperCase() === _pendingStudentCode.toUpperCase()) {
+              STATE.studentNum = num;
+              localStorage.setItem('bandStudentNum', num);
+              _pendingStudentCode = '';
+              break;
+            }
+          }
+          if (!STATE.studentNum && loaded.size >= 3) {
+            localStorage.removeItem('bandStudentCode');
+            localStorage.removeItem('bandStudentNum');
+            showToast('Code not found. Please check and try again.');
+            auth.signOut();
+            return;
+          }
+        }
+      } else {
+        // Regular (email) users: look up by studentEmail field
+        STATE.studentNum = null;
+        const email = STATE.user?.email?.toLowerCase();
+        if (email) {
+          for (const [num, s] of Object.entries(STATE.students)) {
+            if (s.studentEmail && s.studentEmail.toLowerCase() === email) {
+              STATE.studentNum = num;
+              break;
+            }
+          }
+        }
+      }
+
       tick('students');
     }),
 
@@ -120,7 +166,9 @@ function startListeners() {
       });
       tick('entries');
     })
-  ];
+  );
+
+  STATE._unsubs = listeners;
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -129,12 +177,25 @@ auth.onAuthStateChanged(user => {
   STATE.user = user;
   STATE.authChecking = false;
   if (user) {
+    if (user.isAnonymous) {
+      // Restore anonymous student session from localStorage
+      const storedCode = localStorage.getItem('bandStudentCode');
+      const storedNum  = localStorage.getItem('bandStudentNum');
+      if (!storedCode && !storedNum) {
+        // Anonymous session with no stored code — sign out immediately
+        auth.signOut();
+        return;
+      }
+      _pendingStudentCode = storedCode || '';
+      if (storedNum) STATE.studentNum = storedNum; // optimistically restore
+    }
     startListeners();
   } else {
     STATE._unsubs.forEach(u => u());
     STATE._unsubs = [];
     STATE.loading    = false;
     STATE.isAdmin    = false;
+    STATE.studentNum = null;
     STATE.students   = {};
     STATE.rehearsals = [];
     STATE.entries    = {};
@@ -153,6 +214,7 @@ function navigate(view, params = {}) {
     _numSearch  = '';
     _blockMode  = false;
     _blockPath  = [];
+    _trackerInstrumentFilter = '';
   }
   _view   = view;
   _params = params;
@@ -165,9 +227,12 @@ function navigate(view, params = {}) {
 let _activeNum  = null;
 let _numSearch  = '';
 let _rosterSearch = '';
+let _rosterInstrumentFilter  = '';
+let _trackerInstrumentFilter = '';
 let _blockMode  = false;
 let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
-let _pendingSegment = ''; // currently selected rehearsal segment in mark modal
+let _pendingSegment    = ''; // currently selected rehearsal segment in mark modal
+let _pendingStudentCode = ''; // code being verified for anonymous student login
 
 // ── Debounce store for note fields ────────────────────────────────────────────
 
@@ -217,6 +282,11 @@ function esc(str) {
   return String(str ?? '')
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function genStudentCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous I/O/0/1
+  return Array.from({length: 6}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }
 
 function showToast(msg) {
@@ -276,6 +346,16 @@ function render() {
     title.textContent = 'Band Tracker';
     actions.innerHTML = userBtn();
     main.innerHTML = `<div class="loading-view"><div class="spinner"></div><span>Loading data…</span></div>`;
+    return;
+  }
+
+  // Student portal — non-admin user with a linked student account
+  if (STATE.studentNum && !STATE.isAdmin) {
+    backBtn.classList.add('hidden');
+    title.textContent = 'My Band Profile';
+    actions.innerHTML = userBtn();
+    nav.style.display = 'none';
+    main.innerHTML = viewStudentPortal();
     return;
   }
 
@@ -372,10 +452,21 @@ function viewLogin() {
     <div class="login-view">
       <div class="login-logo">🎺</div>
       <div class="login-title">Band Tracker</div>
-      <div class="login-sub">Director login required</div>
+
+      <div class="login-section-label">Students</div>
+      <div id="student-code-error"></div>
+      <div class="form-group">
+        <input class="form-input" id="student-code" type="text"
+               placeholder="Enter your student code"
+               autocomplete="off" autocapitalize="characters" spellcheck="false"
+               style="text-transform:uppercase;letter-spacing:.1em;font-size:1.1rem;text-align:center"
+               onkeydown="if(event.key==='Enter')loginWithStudentCode()">
+      </div>
+      <button class="btn btn-primary btn-full btn-lg" onclick="loginWithStudentCode()">View My Page</button>
+
+      <div class="login-divider"><span>Directors</span></div>
 
       <div id="auth-error"></div>
-
       <div class="form-group">
         <label class="form-label">Email</label>
         <input class="form-input" id="auth-email" type="email"
@@ -388,10 +479,29 @@ function viewLogin() {
                placeholder="••••••••" autocomplete="current-password"
                onkeydown="if(event.key==='Enter')doLogin()">
       </div>
-
-      <button class="btn btn-primary btn-full btn-lg" onclick="doLogin()">Sign In</button>
+      <button class="btn btn-secondary btn-full" onclick="doLogin()">Director Sign In</button>
     </div>
   `;
+}
+
+async function loginWithStudentCode() {
+  const raw  = document.getElementById('student-code')?.value.trim();
+  const code = raw?.toUpperCase();
+  if (!code) { showStudentCodeError('Please enter your student code.'); return; }
+  try {
+    _pendingStudentCode = code;
+    localStorage.setItem('bandStudentCode', code);
+    await auth.signInAnonymously();
+  } catch(e) {
+    _pendingStudentCode = '';
+    localStorage.removeItem('bandStudentCode');
+    showStudentCodeError('Unable to connect. Please try again.');
+  }
+}
+
+function showStudentCodeError(msg) {
+  const el = document.getElementById('student-code-error');
+  if (el) el.innerHTML = `<div class="auth-error">${esc(msg)}</div>`;
 }
 
 function showAuthError(msg) {
@@ -436,10 +546,26 @@ async function doSignup() {
 
 async function doLogout() {
   closeModal();
+  localStorage.removeItem('bandStudentCode');
+  localStorage.removeItem('bandStudentNum');
   await auth.signOut();
 }
 
 function showUserMenu() {
+  if (STATE.user?.isAnonymous) {
+    const s = STATE.students[STATE.studentNum];
+    openModal(`
+      <div class="modal-title">Student View</div>
+      <div style="font-size:0.9rem;color:var(--text-muted);margin-bottom:20px">
+        Viewing as<br><strong style="color:var(--text)">${esc(s?.name || 'Student #' + STATE.studentNum)}</strong>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary btn-full" onclick="closeModal()">Close</button>
+        <button class="btn btn-danger btn-full" onclick="doLogout()">Exit Student View</button>
+      </div>
+    `);
+    return;
+  }
   openModal(`
     <div class="modal-title">Account</div>
     <div style="font-size:0.9rem;color:var(--text-muted);margin-bottom:20px">
@@ -529,18 +655,54 @@ function startToday() {
 
 // ── View: Roster ──────────────────────────────────────────────────────────────
 
+function instrumentsInRoster() {
+  const seen = new Set();
+  Object.values(DB.getStudents()).forEach(s => { if (s.instrument) seen.add(s.instrument); });
+  return [...seen].sort();
+}
+
+function instrumentFilterChips(activeFilter, fnName, fnFirstArg) {
+  const instruments = instrumentsInRoster();
+  if (!instruments.length) return '';
+  const call = (inst) => fnFirstArg !== undefined
+    ? `${fnName}('${esc(fnFirstArg)}','${inst}')`
+    : `${fnName}('${inst}')`;
+  return `
+    <div class="inst-filter-row">
+      <button class="inst-chip ${!activeFilter ? 'inst-active' : ''}"
+              onclick="${call('')}">All</button>
+      ${instruments.map(inst => `
+        <button class="inst-chip ${activeFilter === inst ? 'inst-active' : ''}"
+                onclick="${call(esc(inst))}">${esc(inst)}</button>
+      `).join('')}
+    </div>`;
+}
+
+function studentSuggestions(query, instrumentFilter) {
+  const q = query.toLowerCase().trim();
+  if (!q) return [];
+  return Object.values(DB.getStudents()).filter(s => {
+    if (instrumentFilter && s.instrument !== instrumentFilter) return false;
+    return (s.name||'').toLowerCase().includes(q) ||
+           String(s.number).includes(q) ||
+           (s.section||'').toLowerCase().includes(q);
+  }).sort((a,b) => String(a.number).localeCompare(String(b.number),undefined,{numeric:true}))
+    .slice(0, 10);
+}
+
 function viewRoster() {
   const students = DB.getStudents();
   const list = Object.values(students)
     .sort((a,b) => String(a.number).localeCompare(String(b.number), undefined, {numeric:true}));
 
   return `
+    ${instrumentFilterChips(_rosterInstrumentFilter, 'filterRosterInstrument')}
     <div class="search-wrap">
       <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
       </svg>
       <input class="search-input" type="search" id="roster-search"
-             placeholder="Search number, instrument, section…"
+             placeholder="Search by name, number, section…"
              value="${esc(_rosterSearch)}"
              oninput="filterRoster(this.value)" autocomplete="off">
     </div>
@@ -551,7 +713,7 @@ function viewRoster() {
         ↑ Import from CSV
       </button>
     </div>` : ''}
-    <div id="roster-list">${rosterRows(list, _rosterSearch)}</div>
+    <div id="roster-list">${rosterRows(list, _rosterSearch, _rosterInstrumentFilter)}</div>
     ${list.length === 0 ? `
       <div class="empty-state">
         <div class="empty-icon">👥</div>
@@ -561,15 +723,16 @@ function viewRoster() {
   `;
 }
 
-function rosterRows(list, search) {
+function rosterRows(list, search, instrumentFilter) {
   const q = search.toLowerCase().trim();
-  const filtered = q
-    ? list.filter(s =>
-        String(s.number).includes(q) ||
-        (s.instrument||'').toLowerCase().includes(q) ||
-        (s.section||'').toLowerCase().includes(q) ||
-        (s.name||'').toLowerCase().includes(q))
-    : list;
+  const filtered = list.filter(s => {
+    if (instrumentFilter && s.instrument !== instrumentFilter) return false;
+    if (!q) return true;
+    return String(s.number).includes(q) ||
+           (s.instrument||'').toLowerCase().includes(q) ||
+           (s.section||'').toLowerCase().includes(q) ||
+           (s.name||'').toLowerCase().includes(q);
+  });
 
   if (!filtered.length && q) {
     return `<div class="empty-state" style="padding:24px"><p>No students match "${esc(q)}"</p></div>`;
@@ -599,10 +762,71 @@ function filterRoster(val) {
   _rosterSearch = val;
   const list = Object.values(DB.getStudents())
     .sort((a,b) => String(a.number).localeCompare(String(b.number), undefined, {numeric:true}));
-  document.getElementById('roster-list').innerHTML = rosterRows(list, val);
+  document.getElementById('roster-list').innerHTML = rosterRows(list, val, _rosterInstrumentFilter);
+}
+
+function filterRosterInstrument(inst) {
+  _rosterInstrumentFilter = inst;
+  const main = document.getElementById('main-content');
+  if (main) main.innerHTML = viewRoster();
+}
+
+function filterTrackerInstrument(rid, inst) {
+  _trackerInstrumentFilter = inst;
+  _activeNum = null;
+  _numSearch = '';
+  reRender(rid);
 }
 
 // ── View: Student Detail ──────────────────────────────────────────────────────
+
+function viewStudentPortal() {
+  const num = STATE.studentNum;
+  const s   = STATE.students[num];
+  const hist = DB.getStudentHistory(num);
+
+  const pos     = fmtPos(s?.column, s?.row);
+  const metaParts = [s?.instrument, s?.section, pos ? `Position ${pos}` : ''].filter(Boolean);
+
+  return `
+    <div class="portal-view">
+      <div class="portal-student-card">
+        <div class="portal-avatar">${(s?.name || '#' + num).charAt(0).toUpperCase()}</div>
+        <div>
+          <div class="portal-name">${esc(s?.name || 'Student #' + num)}</div>
+          ${metaParts.length ? `<div class="portal-meta">${metaParts.map(esc).join(' &middot; ')}</div>` : ''}
+        </div>
+      </div>
+
+      ${hist.length === 0 ? `<p class="empty-state">No rehearsal history yet.</p>` : `
+        <div class="section-title">Rehearsal History</div>
+        ${hist.map(({rehearsal: r, entry: e}) => {
+          const evts = e.events || [];
+          const noteEvts = evts.filter(ev => ev.note?.trim());
+          return `
+          <div class="portal-rehearsal-card">
+            <div class="portal-rehear-hdr">
+              <div>
+                <div class="portal-rehear-date">${fmtDate(r.date)}</div>
+                ${r.label ? `<div class="portal-rehear-label">${esc(r.label)}</div>` : ''}
+              </div>
+              <div class="portal-badges">
+                ${(e.mistakes  || 0) > 0 ? `<span class="portal-badge portal-badge-mistake">✗ ${e.mistakes}</span>`  : ''}
+                ${(e.positives || 0) > 0 ? `<span class="portal-badge portal-badge-positive">✓ ${e.positives}</span>` : ''}
+              </div>
+            </div>
+            ${e.notes ? `<div class="portal-entry-note">${esc(e.notes)}</div>` : ''}
+            ${noteEvts.map(ev => `
+              <div class="portal-event-row">
+                <span class="event-note-type ${ev.type === 'mistake' ? 'is-mistake' : 'is-positive'}">${ev.type === 'mistake' ? '✗' : '✓'}</span>
+                ${ev.segment ? `<span class="event-seg">${esc(ev.segment)}</span>` : ''}
+                <span class="portal-event-text">${esc(ev.note)}</span>
+              </div>`).join('')}
+          </div>`;
+        }).join('')}
+      `}
+    </div>`;
+}
 
 function viewStudent(num) {
   const s = DB.getStudents()[num];
@@ -824,15 +1048,44 @@ function viewRehearsal(rid) {
         ${activeCard}
       </div>`;
   } else {
+    const isNameSearch = _numSearch.trim() && !/^\d+$/.test(_numSearch.trim());
+    const suggestions  = isNameSearch ? studentSuggestions(_numSearch, _trackerInstrumentFilter) : [];
+    // When instrument filter is active with no text typed, list that section's students
+    const showAllForFilter = _trackerInstrumentFilter && !_numSearch.trim();
+    const allFiltered = showAllForFilter
+      ? Object.values(students)
+          .filter(s => s.instrument === _trackerInstrumentFilter)
+          .sort((a,b) => String(a.number).localeCompare(String(b.number),undefined,{numeric:true}))
+      : [];
+
     trackerSection = `
       <div class="tracker-card">
         <div class="tracker-label">Track a Student</div>
-        <input class="num-input" type="text" inputmode="numeric" pattern="[0-9]*"
-               id="num-input" placeholder="Student #"
+        ${instrumentFilterChips(_trackerInstrumentFilter, 'filterTrackerInstrument', rid)}
+        <input class="num-input" type="text" inputmode="text"
+               id="num-input" placeholder="Student # or name…"
                value="${esc(_numSearch)}"
                autocomplete="off" autocorrect="off" autocapitalize="off"
                oninput="onNumInput(this.value,'${esc(rid)}')"
                onkeydown="onNumKey(event,'${esc(rid)}')">
+        ${isNameSearch && suggestions.length > 0 ? `
+          <div class="student-suggestions">
+            ${suggestions.map(s => `
+              <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
+                <span class="suggestion-num">#${esc(s.number)}</span>
+                <span class="suggestion-name">${esc(s.name || '—')}</span>
+                <span class="suggestion-detail">${esc([fmtPos(s.column,s.row),s.instrument].filter(Boolean).join(' · '))}</span>
+              </div>`).join('')}
+          </div>` : ''}
+        ${showAllForFilter && !_activeNum ? `
+          <div class="student-suggestions">
+            ${allFiltered.map(s => `
+              <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
+                <span class="suggestion-num">#${esc(s.number)}</span>
+                <span class="suggestion-name">${esc(s.name || '—')}</span>
+                <span class="suggestion-detail">${esc(fmtPos(s.column,s.row))}</span>
+              </div>`).join('')}
+          </div>` : ''}
         ${activeCard}
         ${!_activeNum ? `
           <button class="block-toggle-btn" onclick="toggleBlockMode('${esc(rid)}')">
@@ -878,7 +1131,16 @@ function viewRehearsal(rid) {
 
 function onNumInput(val, rid) {
   _numSearch = val;
-  _activeNum = val.trim() || null;
+  const trimmed = val.trim();
+  if (!trimmed) {
+    _activeNum = null;
+  } else if (/^\d+$/.test(trimmed)) {
+    // Pure number: direct select (existing behaviour)
+    _activeNum = trimmed;
+  } else {
+    // Name/text search: only select when user taps a suggestion
+    _activeNum = null;
+  }
   reRender(rid);
 }
 
@@ -1295,6 +1557,25 @@ function showEditStudentModal(num) {
       <label class="form-label">Director Notes</label>
       <textarea class="form-textarea" id="m-notes">${esc(s.notes||'')}</textarea>
     </div>
+    <div class="form-group">
+      <label class="form-label">Student Code</label>
+      <div style="display:flex;gap:8px">
+        <input class="form-input" id="m-student-code" type="text"
+               value="${esc(s.studentCode||'')}"
+               placeholder="e.g. BLUE42"
+               autocomplete="off" autocapitalize="characters" spellcheck="false"
+               style="text-transform:uppercase;letter-spacing:.08em;flex:1">
+        <button class="btn btn-secondary" type="button"
+                onclick="document.getElementById('m-student-code').value=genStudentCode()"
+                style="flex-shrink:0">Generate</button>
+      </div>
+      <div class="form-hint">Share this code with the student so they can view their own page.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Student Login Email <span style="font-weight:400;opacity:.6">(optional — for email/password login instead)</span></label>
+      <input class="form-input" id="m-student-email" type="email" value="${esc(s.studentEmail||'')}"
+             placeholder="student@example.com" autocomplete="off">
+    </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveEditStudent('${esc(num)}')">Save Changes</button>
@@ -1311,12 +1592,14 @@ function showEditStudentModal(num) {
 function saveEditStudent(num) {
   if (!STATE.students[num]) return;
   const patch = {
-    name:       document.getElementById('m-name').value.trim(),
-    column:     document.getElementById('m-column').value,
-    row:        document.getElementById('m-row').value,
-    instrument: document.getElementById('m-instrument').value,
-    section:    document.getElementById('m-section').value,
-    notes:      document.getElementById('m-notes').value.trim(),
+    name:         document.getElementById('m-name').value.trim(),
+    column:       document.getElementById('m-column').value,
+    row:          document.getElementById('m-row').value,
+    instrument:   document.getElementById('m-instrument').value,
+    section:      document.getElementById('m-section').value,
+    notes:        document.getElementById('m-notes').value.trim(),
+    studentCode:  document.getElementById('m-student-code').value.trim().toUpperCase(),
+    studentEmail: document.getElementById('m-student-email').value.trim().toLowerCase(),
   };
   STATE.students[num] = { ...STATE.students[num], ...patch };
   db.collection('students').doc(num).set(patch, { merge: true });
