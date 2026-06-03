@@ -262,6 +262,15 @@ function fmtDate(d) {
   return `${months[m-1]} ${day}, ${y}`;
 }
 
+function fmtTime(ts) {
+  if (!ts) return '';
+  const d    = new Date(ts);
+  const h    = d.getHours();
+  const m    = d.getMinutes().toString().padStart(2, '0');
+  const ampm = h >= 12 ? 'pm' : 'am';
+  return `${h % 12 || 12}:${m}${ampm}`;
+}
+
 function fmtShort(d) {
   if (!d) return '';
   const [, m, day] = d.split('-').map(Number);
@@ -781,12 +790,14 @@ function filterTrackerInstrument(rid, inst) {
 // ── View: Student Detail ──────────────────────────────────────────────────────
 
 function viewStudentPortal() {
-  const num = STATE.studentNum;
-  const s   = STATE.students[num];
+  const num  = STATE.studentNum;
+  const s    = STATE.students[num];
   const hist = DB.getStudentHistory(num);
 
-  const pos     = fmtPos(s?.column, s?.row);
-  const metaParts = [s?.instrument, s?.section, pos ? `Position ${pos}` : ''].filter(Boolean);
+  const pos        = fmtPos(s?.column, s?.row);
+  const metaParts  = [s?.instrument, s?.section, pos ? `Position ${pos}` : ''].filter(Boolean);
+  const totalErr   = hist.reduce((sum, {entry: e}) => sum + (e.mistakes  || 0), 0);
+  const totalPos   = hist.reduce((sum, {entry: e}) => sum + (e.positives || 0), 0);
 
   return `
     <div class="portal-view">
@@ -798,15 +809,31 @@ function viewStudentPortal() {
         </div>
       </div>
 
-      ${hist.length === 0 ? `<p class="empty-state">No rehearsal history yet.</p>` : `
+      ${hist.length > 0 ? `
+        <div class="portal-stats">
+          <div class="portal-stat">
+            <div class="portal-stat-value">${hist.length}</div>
+            <div class="portal-stat-label">Rehearsals</div>
+          </div>
+          <div class="portal-stat">
+            <div class="portal-stat-value portal-stat-mistake">${totalErr}</div>
+            <div class="portal-stat-label">Total Marks</div>
+          </div>
+          <div class="portal-stat">
+            <div class="portal-stat-value portal-stat-positive">${totalPos}</div>
+            <div class="portal-stat-label">Positives</div>
+          </div>
+        </div>
+
         <div class="section-title">Rehearsal History</div>
         ${hist.map(({rehearsal: r, entry: e}) => {
-          const evts = e.events || [];
+          const evts     = e.events || [];
           const noteEvts = evts.filter(ev => ev.note?.trim());
+          const hasDetail = e.notes || noteEvts.length > 0;
           return `
-          <div class="portal-rehearsal-card">
-            <div class="portal-rehear-hdr">
-              <div>
+          <div class="portal-rehearsal-card" id="prc-${esc(r.id)}">
+            <div class="portal-rehear-hdr" onclick="togglePortalRehearsal('${esc(r.id)}')">
+              <div class="portal-rehear-info">
                 <div class="portal-rehear-date">${fmtDate(r.date)}</div>
                 ${r.label ? `<div class="portal-rehear-label">${esc(r.label)}</div>` : ''}
               </div>
@@ -814,18 +841,33 @@ function viewStudentPortal() {
                 ${(e.mistakes  || 0) > 0 ? `<span class="portal-badge portal-badge-mistake">✗ ${e.mistakes}</span>`  : ''}
                 ${(e.positives || 0) > 0 ? `<span class="portal-badge portal-badge-positive">✓ ${e.positives}</span>` : ''}
               </div>
+              ${hasDetail ? `<span class="portal-chevron">▸</span>` : '<span class="portal-chevron" style="opacity:0">▸</span>'}
             </div>
-            ${e.notes ? `<div class="portal-entry-note">${esc(e.notes)}</div>` : ''}
-            ${noteEvts.map(ev => `
-              <div class="portal-event-row">
-                <span class="event-note-type ${ev.type === 'mistake' ? 'is-mistake' : 'is-positive'}">${ev.type === 'mistake' ? '✗' : '✓'}</span>
-                ${ev.segment ? `<span class="event-seg">${esc(ev.segment)}</span>` : ''}
-                <span class="portal-event-text">${esc(ev.note)}</span>
-              </div>`).join('')}
+            <div class="portal-rehearsal-detail">
+              ${e.notes ? `<div class="portal-entry-note">${esc(e.notes)}</div>` : ''}
+              ${noteEvts.map(ev => `
+                <div class="portal-event-row">
+                  <span class="event-note-type ${ev.type === 'mistake' ? 'is-mistake' : 'is-positive'}">${ev.type === 'mistake' ? '✗' : '✓'}</span>
+                  ${ev.segment ? `<span class="event-seg">${esc(ev.segment)}</span>` : ''}
+                  <span class="portal-event-text">${esc(ev.note)}</span>
+                  ${ev.ts ? `<span class="event-note-time">${fmtTime(ev.ts)}</span>` : ''}
+                </div>`).join('')}
+            </div>
           </div>`;
         }).join('')}
-      `}
+      ` : `<p class="empty-state">No rehearsal history yet.</p>`}
     </div>`;
+}
+
+function togglePortalRehearsal(rid) {
+  const card = document.getElementById('prc-' + rid);
+  if (!card) return;
+  const detail  = card.querySelector('.portal-rehearsal-detail');
+  const chevron = card.querySelector('.portal-chevron');
+  const opening = !card.classList.contains('prc-open');
+  card.classList.toggle('prc-open', opening);
+  if (detail)  detail.style.maxHeight = opening ? detail.scrollHeight + 'px' : '0';
+  if (chevron) chevron.style.transform = opening ? 'rotate(90deg)' : '';
 }
 
 function viewStudent(num) {
@@ -1018,6 +1060,7 @@ function viewRehearsal(rid) {
                      placeholder="what happened…"
                      value="${esc(e.note)}"
                      oninput="saveEventNote('${esc(rid)}','${esc(_activeNum)}',${i},this.value)">
+              ${e.ts ? `<span class="event-note-time">${fmtTime(e.ts)}</span>` : ''}
               ${e.by ? `<span class="event-note-by">${esc(dirLabel(e.by))}</span>` : ''}
               ${canDelete ? `<button class="event-note-del" onclick="deleteEvent('${esc(rid)}','${esc(_activeNum)}',${i})" aria-label="Delete mark">×</button>` : ''}
             </div>`;
