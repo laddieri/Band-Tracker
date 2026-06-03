@@ -86,28 +86,63 @@ function startListeners() {
     }
   }
 
-  STATE._unsubs = [
-    db.collection('admins').doc(STATE.user.email).onSnapshot(doc => {
-      const prev = STATE.isAdmin;
-      STATE.isAdmin = doc.exists;
-      if (prev !== STATE.isAdmin && !STATE.loading) render();
-    }),
+  const listeners = [];
 
+  // Admin listener — not applicable to anonymous student sessions
+  if (!STATE.user.isAnonymous && STATE.user.email) {
+    listeners.push(
+      db.collection('admins').doc(STATE.user.email).onSnapshot(doc => {
+        const prev = STATE.isAdmin;
+        STATE.isAdmin = doc.exists;
+        if (prev !== STATE.isAdmin && !STATE.loading) render();
+      })
+    );
+  }
+
+  listeners.push(
     db.collection('students').onSnapshot(snap => {
       snap.docChanges().forEach(ch => {
         if (ch.type === 'removed') delete STATE.students[ch.doc.id];
         else STATE.students[ch.doc.id] = { ...ch.doc.data(), _id: ch.doc.id };
       });
-      STATE.studentNum = null;
-      const email = STATE.user?.email?.toLowerCase();
-      if (email) {
-        for (const [num, s] of Object.entries(STATE.students)) {
-          if (s.studentEmail && s.studentEmail.toLowerCase() === email) {
-            STATE.studentNum = num;
-            break;
+
+      if (STATE.user?.isAnonymous) {
+        // Keep previously-resolved student num, or look up by stored num
+        const storedNum = localStorage.getItem('bandStudentNum');
+        if (storedNum && STATE.students[storedNum]) {
+          STATE.studentNum = storedNum;
+        } else if (_pendingStudentCode) {
+          STATE.studentNum = null;
+          for (const [num, s] of Object.entries(STATE.students)) {
+            if (s.studentCode && s.studentCode.toUpperCase() === _pendingStudentCode.toUpperCase()) {
+              STATE.studentNum = num;
+              localStorage.setItem('bandStudentNum', num);
+              _pendingStudentCode = '';
+              break;
+            }
+          }
+          if (!STATE.studentNum && loaded.size >= 3) {
+            localStorage.removeItem('bandStudentCode');
+            localStorage.removeItem('bandStudentNum');
+            showToast('Code not found. Please check and try again.');
+            auth.signOut();
+            return;
+          }
+        }
+      } else {
+        // Regular (email) users: look up by studentEmail field
+        STATE.studentNum = null;
+        const email = STATE.user?.email?.toLowerCase();
+        if (email) {
+          for (const [num, s] of Object.entries(STATE.students)) {
+            if (s.studentEmail && s.studentEmail.toLowerCase() === email) {
+              STATE.studentNum = num;
+              break;
+            }
           }
         }
       }
+
       tick('students');
     }),
 
@@ -131,7 +166,9 @@ function startListeners() {
       });
       tick('entries');
     })
-  ];
+  );
+
+  STATE._unsubs = listeners;
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -140,12 +177,25 @@ auth.onAuthStateChanged(user => {
   STATE.user = user;
   STATE.authChecking = false;
   if (user) {
+    if (user.isAnonymous) {
+      // Restore anonymous student session from localStorage
+      const storedCode = localStorage.getItem('bandStudentCode');
+      const storedNum  = localStorage.getItem('bandStudentNum');
+      if (!storedCode && !storedNum) {
+        // Anonymous session with no stored code — sign out immediately
+        auth.signOut();
+        return;
+      }
+      _pendingStudentCode = storedCode || '';
+      if (storedNum) STATE.studentNum = storedNum; // optimistically restore
+    }
     startListeners();
   } else {
     STATE._unsubs.forEach(u => u());
     STATE._unsubs = [];
     STATE.loading    = false;
     STATE.isAdmin    = false;
+    STATE.studentNum = null;
     STATE.students   = {};
     STATE.rehearsals = [];
     STATE.entries    = {};
@@ -178,7 +228,8 @@ let _numSearch  = '';
 let _rosterSearch = '';
 let _blockMode  = false;
 let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
-let _pendingSegment = ''; // currently selected rehearsal segment in mark modal
+let _pendingSegment    = ''; // currently selected rehearsal segment in mark modal
+let _pendingStudentCode = ''; // code being verified for anonymous student login
 
 // ── Debounce store for note fields ────────────────────────────────────────────
 
@@ -228,6 +279,11 @@ function esc(str) {
   return String(str ?? '')
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function genStudentCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous I/O/0/1
+  return Array.from({length: 6}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }
 
 function showToast(msg) {
@@ -393,10 +449,21 @@ function viewLogin() {
     <div class="login-view">
       <div class="login-logo">🎺</div>
       <div class="login-title">Band Tracker</div>
-      <div class="login-sub">Director login required</div>
+
+      <div class="login-section-label">Students</div>
+      <div id="student-code-error"></div>
+      <div class="form-group">
+        <input class="form-input" id="student-code" type="text"
+               placeholder="Enter your student code"
+               autocomplete="off" autocapitalize="characters" spellcheck="false"
+               style="text-transform:uppercase;letter-spacing:.1em;font-size:1.1rem;text-align:center"
+               onkeydown="if(event.key==='Enter')loginWithStudentCode()">
+      </div>
+      <button class="btn btn-primary btn-full btn-lg" onclick="loginWithStudentCode()">View My Page</button>
+
+      <div class="login-divider"><span>Directors</span></div>
 
       <div id="auth-error"></div>
-
       <div class="form-group">
         <label class="form-label">Email</label>
         <input class="form-input" id="auth-email" type="email"
@@ -409,10 +476,29 @@ function viewLogin() {
                placeholder="••••••••" autocomplete="current-password"
                onkeydown="if(event.key==='Enter')doLogin()">
       </div>
-
-      <button class="btn btn-primary btn-full btn-lg" onclick="doLogin()">Sign In</button>
+      <button class="btn btn-secondary btn-full" onclick="doLogin()">Director Sign In</button>
     </div>
   `;
+}
+
+async function loginWithStudentCode() {
+  const raw  = document.getElementById('student-code')?.value.trim();
+  const code = raw?.toUpperCase();
+  if (!code) { showStudentCodeError('Please enter your student code.'); return; }
+  try {
+    _pendingStudentCode = code;
+    localStorage.setItem('bandStudentCode', code);
+    await auth.signInAnonymously();
+  } catch(e) {
+    _pendingStudentCode = '';
+    localStorage.removeItem('bandStudentCode');
+    showStudentCodeError('Unable to connect. Please try again.');
+  }
+}
+
+function showStudentCodeError(msg) {
+  const el = document.getElementById('student-code-error');
+  if (el) el.innerHTML = `<div class="auth-error">${esc(msg)}</div>`;
 }
 
 function showAuthError(msg) {
@@ -457,10 +543,26 @@ async function doSignup() {
 
 async function doLogout() {
   closeModal();
+  localStorage.removeItem('bandStudentCode');
+  localStorage.removeItem('bandStudentNum');
   await auth.signOut();
 }
 
 function showUserMenu() {
+  if (STATE.user?.isAnonymous) {
+    const s = STATE.students[STATE.studentNum];
+    openModal(`
+      <div class="modal-title">Student View</div>
+      <div style="font-size:0.9rem;color:var(--text-muted);margin-bottom:20px">
+        Viewing as<br><strong style="color:var(--text)">${esc(s?.name || 'Student #' + STATE.studentNum)}</strong>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary btn-full" onclick="closeModal()">Close</button>
+        <button class="btn btn-danger btn-full" onclick="doLogout()">Exit Student View</button>
+      </div>
+    `);
+    return;
+  }
   openModal(`
     <div class="modal-title">Account</div>
     <div style="font-size:0.9rem;color:var(--text-muted);margin-bottom:20px">
@@ -1365,10 +1467,23 @@ function showEditStudentModal(num) {
       <textarea class="form-textarea" id="m-notes">${esc(s.notes||'')}</textarea>
     </div>
     <div class="form-group">
-      <label class="form-label">Student Login Email</label>
+      <label class="form-label">Student Code</label>
+      <div style="display:flex;gap:8px">
+        <input class="form-input" id="m-student-code" type="text"
+               value="${esc(s.studentCode||'')}"
+               placeholder="e.g. BLUE42"
+               autocomplete="off" autocapitalize="characters" spellcheck="false"
+               style="text-transform:uppercase;letter-spacing:.08em;flex:1">
+        <button class="btn btn-secondary" type="button"
+                onclick="document.getElementById('m-student-code').value=genStudentCode()"
+                style="flex-shrink:0">Generate</button>
+      </div>
+      <div class="form-hint">Share this code with the student so they can view their own page.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Student Login Email <span style="font-weight:400;opacity:.6">(optional — for email/password login instead)</span></label>
       <input class="form-input" id="m-student-email" type="email" value="${esc(s.studentEmail||'')}"
              placeholder="student@example.com" autocomplete="off">
-      <div class="form-hint">Set this so the student can log in and view only their own page.</div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
@@ -1392,6 +1507,7 @@ function saveEditStudent(num) {
     instrument:   document.getElementById('m-instrument').value,
     section:      document.getElementById('m-section').value,
     notes:        document.getElementById('m-notes').value.trim(),
+    studentCode:  document.getElementById('m-student-code').value.trim().toUpperCase(),
     studentEmail: document.getElementById('m-student-email').value.trim().toLowerCase(),
   };
   STATE.students[num] = { ...STATE.students[num], ...patch };

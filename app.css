@@ -912,8 +912,18 @@ html, body {
   margin: 0 auto;
 }
 .login-logo { font-size: 3.5rem; margin-bottom: 12px; line-height: 1; }
-.login-title { font-size: 1.8rem; font-weight: 800; margin-bottom: 4px; }
+.login-title { font-size: 1.8rem; font-weight: 800; margin-bottom: 20px; }
 .login-sub { color: var(--text-muted); margin-bottom: 36px; font-size: 0.95rem; }
+.login-section-label {
+  width: 100%;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+  text-align: left;
+}
 .login-view .form-group { text-align: left; width: 100%; }
 .auth-error {
   background: var(--danger-bg);
