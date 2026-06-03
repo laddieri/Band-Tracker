@@ -361,8 +361,6 @@ function viewLogin() {
       </div>
 
       <button class="btn btn-primary btn-full btn-lg" onclick="doLogin()">Sign In</button>
-      <div class="login-divider">or</div>
-      <button class="btn btn-secondary btn-full" onclick="doSignup()">Create Account</button>
     </div>
   `;
 }
