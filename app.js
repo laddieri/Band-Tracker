@@ -175,6 +175,9 @@ function startListeners() {
         .map(d => ({ ...d.data(), id: d.id }))
         .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
       tick('songs');
+    }, err => {
+      console.error('songs listener error:', err);
+      tick('songs'); // don't hang the app — songs will be empty
     })
   );
 
@@ -248,6 +251,7 @@ let _blockMode  = false;
 let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
 let _pendingSegment    = ''; // currently selected rehearsal segment in mark modal
 let _pendingStudentCode = ''; // code being verified for anonymous student login
+let _pendingConfirm    = null; // callback for generic confirmation modal
 
 // ── Debounce store for note fields ────────────────────────────────────────────
 
@@ -967,12 +971,27 @@ function setSongStatus(sid, num, newStatus) {
   // Tapping the active button resets to not_attempted
   const status = curStatus === newStatus ? 'not_attempted' : newStatus;
 
+  // Require confirmation before removing a passing mark
+  if (curStatus === 'passed' && status === 'not_attempted') {
+    const s = STATE.students[String(num)];
+    const name = s?.name ? `${s.name} (#${num})` : `#${num}`;
+    showConfirmModal(
+      `Remove passing mark for ${name}?`,
+      `This will unmark "${esc(song.title)}" as passed and reset it to Not Attempted.`,
+      () => _applySongStatus(sid, num, song, status)
+    );
+    return;
+  }
+
+  _applySongStatus(sid, num, song, status);
+}
+
+function _applySongStatus(sid, num, song, status) {
   if (status === 'not_attempted') {
     delete song.statuses[String(num)];
     db.collection('songs').doc(sid).update({
       [`statuses.${num}`]: firebase.firestore.FieldValue.delete()
     }).catch(() => {
-      // Document may not exist yet — use set+merge instead
       db.collection('songs').doc(sid).set({ statuses: song.statuses }, { merge: false });
     });
   } else {
@@ -980,13 +999,32 @@ function setSongStatus(sid, num, newStatus) {
     db.collection('songs').doc(sid).set({ statuses: { [String(num)]: song.statuses[String(num)] } }, { merge: true });
   }
 
-  // Targeted update — don't destroy the list
   const listEl = document.getElementById('song-student-list');
   if (listEl) {
     const students = Object.values(DB.getStudents())
       .sort((a, b) => String(a.number).localeCompare(String(b.number), undefined, {numeric:true}));
     listEl.innerHTML = songStudentRows(sid, students, song.statuses || {});
   }
+}
+
+function showConfirmModal(title, body, onConfirm) {
+  _pendingConfirm = onConfirm;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">${title}</div>
+    ${body ? `<p style="font-size:.9rem;color:var(--text-muted);margin-bottom:8px;line-height:1.5">${body}</p>` : ''}
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" onclick="runPendingConfirm()">Remove</button>
+    </div>
+  `);
+}
+
+function runPendingConfirm() {
+  const fn = _pendingConfirm;
+  _pendingConfirm = null;
+  closeModal();
+  if (fn) fn();
 }
 
 function showAddSongModal() {
