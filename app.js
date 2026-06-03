@@ -1478,7 +1478,7 @@ function renderImportPreview() {
   const newCount  = rows.filter(r => !existing[r[colMap.number]?.trim()]).length;
   const dupCount  = rows.length - newCount;
   const preview   = rows.slice(0, 8);
-  const LABELS    = { number:'Number', name:'Name', instrument:'Instrument', section:'Section', notes:'Notes' };
+  const LABELS    = { number:'Number', name:'Name', column:'Column', row:'Row', instrument:'Instrument', section:'Section', notes:'Notes' };
   const fields    = Object.keys(colMap);
 
   document.getElementById('import-preview').innerHTML = `
@@ -1547,17 +1547,17 @@ async function executeImport() {
 
   const batch = db.batch();
 
-  for (const row of rows) {
-    const num = row[colMap.number]?.trim();
+  for (const csvRow of rows) {
+    const num = csvRow[colMap.number]?.trim();
     if (!num) continue;
     const incoming = {
       number:     num,
-      name:       (colMap.name       !== undefined ? row[colMap.name]       : '').trim(),
-      column:     (colMap.column     !== undefined ? row[colMap.column]     : '').trim().toUpperCase(),
-      row:        (colMap.row        !== undefined ? row[colMap.row]        : '').trim(),
-      instrument: (colMap.instrument !== undefined ? row[colMap.instrument] : '').trim(),
-      section:    (colMap.section    !== undefined ? row[colMap.section]    : '').trim(),
-      notes:      (colMap.notes      !== undefined ? row[colMap.notes]      : '').trim(),
+      name:       (colMap.name       !== undefined ? csvRow[colMap.name]       : '').trim(),
+      column:     (colMap.column     !== undefined ? csvRow[colMap.column]     : '').trim().toUpperCase(),
+      row:        (colMap.row        !== undefined ? csvRow[colMap.row]        : '').trim(),
+      instrument: (colMap.instrument !== undefined ? csvRow[colMap.instrument] : '').trim(),
+      section:    (colMap.section    !== undefined ? csvRow[colMap.section]    : '').trim(),
+      notes:      (colMap.notes      !== undefined ? csvRow[colMap.notes]      : '').trim(),
       songs:      []
     };
     if (existing[num]) {
@@ -1575,7 +1575,13 @@ async function executeImport() {
     }
   }
 
-  await batch.commit();
+  try {
+    await batch.commit();
+  } catch(e) {
+    showToast('Import failed — ' + (e.message || 'check console'));
+    return;
+  }
+
   _csvData = null;
   closeModal();
 
