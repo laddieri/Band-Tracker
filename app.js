@@ -79,6 +79,14 @@ function startListeners() {
   function tick(key) {
     loaded.add(key);
     if (loaded.size >= 3 && STATE.loading) {
+      // All collections loaded — reject anonymous sessions with no valid student code
+      if (STATE.user?.isAnonymous && !STATE.studentNum) {
+        localStorage.removeItem('bandStudentCode');
+        localStorage.removeItem('bandStudentNum');
+        showToast('Code not found. Please check and try again.');
+        auth.signOut(); // onAuthStateChanged will clear state and call render()
+        return;
+      }
       STATE.loading = false;
       render();
     } else if (!STATE.loading) {
@@ -121,13 +129,7 @@ function startListeners() {
               break;
             }
           }
-          if (!STATE.studentNum && loaded.size >= 3) {
-            localStorage.removeItem('bandStudentCode');
-            localStorage.removeItem('bandStudentNum');
-            showToast('Code not found. Please check and try again.');
-            auth.signOut();
-            return;
-          }
+          // Invalid code — tick() will detect this once all collections load
         }
       } else {
         // Regular (email) users: look up by studentEmail field
@@ -355,6 +357,20 @@ function render() {
     title.textContent = 'Band Tracker';
     actions.innerHTML = userBtn();
     main.innerHTML = `<div class="loading-view"><div class="spinner"></div><span>Loading data…</span></div>`;
+    return;
+  }
+
+  // Anonymous user with no valid student code — should never reach here normally,
+  // but guard in case tick() check was bypassed
+  if (STATE.user?.isAnonymous && !STATE.studentNum) {
+    backBtn.classList.add('hidden');
+    title.textContent = 'Band Tracker';
+    actions.innerHTML = '';
+    nav.style.display = 'none';
+    main.innerHTML = viewLogin();
+    localStorage.removeItem('bandStudentCode');
+    localStorage.removeItem('bandStudentNum');
+    auth.signOut();
     return;
   }
 
