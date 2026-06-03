@@ -1009,7 +1009,7 @@ function blockMiniGrid(rid, c0, c1, r0, r1) {
   const cols = c1 - c0 + 1;
   let dots = '';
   for (let r = r1; r >= r0; r--) {
-    for (let c = c0; c <= c1; c++) {
+    for (let c = c1; c >= c0; c--) {
       const num   = findStudentAtPos(COLUMNS[c], String(r), students);
       const entry = num ? entries[num] : null;
       const cls   = !num ? 'bd-empty'
@@ -1037,10 +1037,10 @@ function renderBlockNav(rid) {
     const midC = c0 + Math.floor(colCount / 2) - 1;
     const midR = r0 + Math.floor(rowCount / 2) - 1;
     const regions = [
-      [c0,    midC, midR+1, r1  ],
       [midC+1, c1,  midR+1, r1  ],
-      [c0,    midC, r0,     midR],
+      [c0,    midC, midR+1, r1  ],
       [midC+1, c1,  r0,     midR],
+      [c0,    midC, r0,     midR],
     ];
     gridHtml = regions.map(([rc0,rc1,rr0,rr1]) => `
       <div class="block-region" onclick="blockDrillIn('${esc(rid)}',${rc0},${rc1},${rr0},${rr1})">
@@ -1052,7 +1052,7 @@ function renderBlockNav(rid) {
     const students = DB.getStudents();
     gridCols = colCount;
     for (let r = r1; r >= r0; r--) {
-      for (let c = c0; c <= c1; c++) {
+      for (let c = c1; c >= c0; c--) {
         const col  = COLUMNS[c];
         const pos  = `${col}${r}`;
         const num  = findStudentAtPos(col, String(r), students);
@@ -1090,9 +1090,9 @@ function renderBlockNav(rid) {
         ${gridHtml}
       </div>
       <div class="block-footer">
-        <span>Col A</span>
-        <span>↑ Back &nbsp;·&nbsp; Front ↓</span>
         <span>Col ${COLUMNS[c1 > 11 ? 11 : c1]}</span>
+        <span>↑ Back &nbsp;·&nbsp; Front ↓</span>
+        <span>Col ${COLUMNS[c0]}</span>
       </div>
     </div>`;
 }
