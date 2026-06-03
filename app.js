@@ -80,7 +80,7 @@ function startListeners() {
   }
 
   STATE._unsubs = [
-    db.collection('admins').doc(STATE.user.uid).onSnapshot(doc => {
+    db.collection('admins').doc(STATE.user.email).onSnapshot(doc => {
       const prev = STATE.isAdmin;
       STATE.isAdmin = doc.exists;
       if (prev !== STATE.isAdmin && !STATE.loading) render();
