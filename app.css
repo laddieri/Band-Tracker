@@ -863,15 +863,20 @@ html, body {
   background: var(--card-bg);
   border: 1.5px solid var(--border);
   border-radius: var(--r);
-  padding: 14px 16px;
   margin-bottom: 10px;
+  overflow: hidden;
 }
 .portal-rehear-hdr {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-bottom: 8px;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
+.portal-rehear-hdr:hover { background: #f8fafc; }
+.portal-rehear-info { flex: 1; min-width: 0; }
 .portal-rehear-date {
   font-size: 0.88rem;
   font-weight: 600;
@@ -881,6 +886,12 @@ html, body {
   font-size: 0.78rem;
   color: var(--text-muted);
   margin-top: 2px;
+}
+.portal-chevron {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: transform .2s;
 }
 .portal-badges {
   display: flex;
@@ -895,11 +906,22 @@ html, body {
 }
 .portal-badge-mistake  { background: var(--danger-bg);  color: var(--danger); }
 .portal-badge-positive { background: var(--success-bg); color: var(--success); }
+.portal-rehearsal-detail {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height .25s ease;
+  padding: 0 16px;
+}
+.prc-open .portal-rehearsal-detail {
+  /* max-height set by JS to scrollHeight */
+  padding-bottom: 12px;
+}
 .portal-entry-note {
   font-size: 0.85rem;
   color: var(--text-muted);
   margin-bottom: 6px;
   font-style: italic;
+  padding-top: 4px;
 }
 .portal-event-row {
   display: flex;
@@ -912,6 +934,34 @@ html, body {
   font-size: 0.88rem;
   color: var(--text);
   flex: 1;
+}
+.portal-stats {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.portal-stat {
+  flex: 1;
+  background: var(--card-bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r);
+  padding: 14px 10px;
+  text-align: center;
+}
+.portal-stat-value {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1;
+}
+.portal-stat-mistake  { color: var(--danger); }
+.portal-stat-positive { color: var(--success); }
+.portal-stat-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
 }
 
 /* ── CSV Import ─────────────────────────────────────────────────────────────── */
