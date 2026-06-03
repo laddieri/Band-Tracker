@@ -175,6 +175,9 @@ function startListeners() {
         .map(d => ({ ...d.data(), id: d.id }))
         .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
       tick('songs');
+    }, err => {
+      console.error('songs listener error:', err);
+      tick('songs'); // don't hang the app — songs will be empty
     })
   );
 
