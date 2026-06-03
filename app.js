@@ -34,6 +34,7 @@ const STATE = {
   authChecking: true,
   loading:      true,
   isAdmin:      false,
+  studentNum:   null, // student number linked to logged-in user's email
   students:     {},
   rehearsals:   [],
   entries:      {},
@@ -97,6 +98,16 @@ function startListeners() {
         if (ch.type === 'removed') delete STATE.students[ch.doc.id];
         else STATE.students[ch.doc.id] = { ...ch.doc.data(), _id: ch.doc.id };
       });
+      STATE.studentNum = null;
+      const email = STATE.user?.email?.toLowerCase();
+      if (email) {
+        for (const [num, s] of Object.entries(STATE.students)) {
+          if (s.studentEmail && s.studentEmail.toLowerCase() === email) {
+            STATE.studentNum = num;
+            break;
+          }
+        }
+      }
       tick('students');
     }),
 
@@ -276,6 +287,16 @@ function render() {
     title.textContent = 'Band Tracker';
     actions.innerHTML = userBtn();
     main.innerHTML = `<div class="loading-view"><div class="spinner"></div><span>Loading data…</span></div>`;
+    return;
+  }
+
+  // Student portal — non-admin user with a linked student account
+  if (STATE.studentNum && !STATE.isAdmin) {
+    backBtn.classList.add('hidden');
+    title.textContent = 'My Band Profile';
+    actions.innerHTML = userBtn();
+    nav.style.display = 'none';
+    main.innerHTML = viewStudentPortal();
     return;
   }
 
@@ -603,6 +624,54 @@ function filterRoster(val) {
 }
 
 // ── View: Student Detail ──────────────────────────────────────────────────────
+
+function viewStudentPortal() {
+  const num = STATE.studentNum;
+  const s   = STATE.students[num];
+  const hist = DB.getStudentHistory(num);
+
+  const pos     = fmtPos(s?.column, s?.row);
+  const metaParts = [s?.instrument, s?.section, pos ? `Position ${pos}` : ''].filter(Boolean);
+
+  return `
+    <div class="portal-view">
+      <div class="portal-student-card">
+        <div class="portal-avatar">${(s?.name || '#' + num).charAt(0).toUpperCase()}</div>
+        <div>
+          <div class="portal-name">${esc(s?.name || 'Student #' + num)}</div>
+          ${metaParts.length ? `<div class="portal-meta">${metaParts.map(esc).join(' &middot; ')}</div>` : ''}
+        </div>
+      </div>
+
+      ${hist.length === 0 ? `<p class="empty-state">No rehearsal history yet.</p>` : `
+        <div class="section-title">Rehearsal History</div>
+        ${hist.map(({rehearsal: r, entry: e}) => {
+          const evts = e.events || [];
+          const noteEvts = evts.filter(ev => ev.note?.trim());
+          return `
+          <div class="portal-rehearsal-card">
+            <div class="portal-rehear-hdr">
+              <div>
+                <div class="portal-rehear-date">${fmtDate(r.date)}</div>
+                ${r.label ? `<div class="portal-rehear-label">${esc(r.label)}</div>` : ''}
+              </div>
+              <div class="portal-badges">
+                ${(e.mistakes  || 0) > 0 ? `<span class="portal-badge portal-badge-mistake">✗ ${e.mistakes}</span>`  : ''}
+                ${(e.positives || 0) > 0 ? `<span class="portal-badge portal-badge-positive">✓ ${e.positives}</span>` : ''}
+              </div>
+            </div>
+            ${e.notes ? `<div class="portal-entry-note">${esc(e.notes)}</div>` : ''}
+            ${noteEvts.map(ev => `
+              <div class="portal-event-row">
+                <span class="event-note-type ${ev.type === 'mistake' ? 'is-mistake' : 'is-positive'}">${ev.type === 'mistake' ? '✗' : '✓'}</span>
+                ${ev.segment ? `<span class="event-seg">${esc(ev.segment)}</span>` : ''}
+                <span class="portal-event-text">${esc(ev.note)}</span>
+              </div>`).join('')}
+          </div>`;
+        }).join('')}
+      `}
+    </div>`;
+}
 
 function viewStudent(num) {
   const s = DB.getStudents()[num];
@@ -1295,6 +1364,12 @@ function showEditStudentModal(num) {
       <label class="form-label">Director Notes</label>
       <textarea class="form-textarea" id="m-notes">${esc(s.notes||'')}</textarea>
     </div>
+    <div class="form-group">
+      <label class="form-label">Student Login Email</label>
+      <input class="form-input" id="m-student-email" type="email" value="${esc(s.studentEmail||'')}"
+             placeholder="student@example.com" autocomplete="off">
+      <div class="form-hint">Set this so the student can log in and view only their own page.</div>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveEditStudent('${esc(num)}')">Save Changes</button>
@@ -1311,12 +1386,13 @@ function showEditStudentModal(num) {
 function saveEditStudent(num) {
   if (!STATE.students[num]) return;
   const patch = {
-    name:       document.getElementById('m-name').value.trim(),
-    column:     document.getElementById('m-column').value,
-    row:        document.getElementById('m-row').value,
-    instrument: document.getElementById('m-instrument').value,
-    section:    document.getElementById('m-section').value,
-    notes:      document.getElementById('m-notes').value.trim(),
+    name:         document.getElementById('m-name').value.trim(),
+    column:       document.getElementById('m-column').value,
+    row:          document.getElementById('m-row').value,
+    instrument:   document.getElementById('m-instrument').value,
+    section:      document.getElementById('m-section').value,
+    notes:        document.getElementById('m-notes').value.trim(),
+    studentEmail: document.getElementById('m-student-email').value.trim().toLowerCase(),
   };
   STATE.students[num] = { ...STATE.students[num], ...patch };
   db.collection('students').doc(num).set(patch, { merge: true });

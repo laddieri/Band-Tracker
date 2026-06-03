@@ -199,6 +199,7 @@ html, body {
   border-color: var(--primary);
 }
 .form-textarea { resize: vertical; min-height: 80px; }
+.form-hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
 
 .search-wrap { position: relative; margin-bottom: 12px; }
 .search-wrap .search-icon {
@@ -722,6 +723,101 @@ html, body {
   font-weight: 500;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+/* ── Student Portal ─────────────────────────────────────────────────────────── */
+
+.portal-view {
+  padding: 16px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+.portal-student-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--card-bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r);
+  padding: 18px 20px;
+  margin-bottom: 20px;
+}
+.portal-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: 1.4rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.portal-name {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.portal-meta {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+.portal-rehearsal-card {
+  background: var(--card-bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r);
+  padding: 14px 16px;
+  margin-bottom: 10px;
+}
+.portal-rehear-hdr {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.portal-rehear-date {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.portal-rehear-label {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.portal-badges {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.portal-badge {
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.portal-badge-mistake  { background: var(--danger-bg);  color: var(--danger); }
+.portal-badge-positive { background: var(--success-bg); color: var(--success); }
+.portal-entry-note {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  font-style: italic;
+}
+.portal-event-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 0;
+  border-top: 1px solid var(--border);
+}
+.portal-event-text {
+  font-size: 0.88rem;
+  color: var(--text);
+  flex: 1;
 }
 
 /* ── CSV Import ─────────────────────────────────────────────────────────────── */
