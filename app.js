@@ -429,19 +429,26 @@ function viewStudent(num) {
 
     ${hist.length ? `
       <div class="section-title">Rehearsal History</div>
-      ${hist.map(({rehearsal:r, entry:e}) => `
+      ${hist.map(({rehearsal:r, entry:e}) => {
+        const evts = e.events || [];
+        const mn = evts.filter(ev=>ev.type==='mistake' &&ev.note.trim()).map(ev=>esc(ev.note));
+        const pn = evts.filter(ev=>ev.type==='positive'&&ev.note.trim()).map(ev=>esc(ev.note));
+        return `
         <div class="history-row ${e.mistakes>0?'had-mistakes':''} ${e.positives>0&&!e.mistakes?'had-positives':''}"
              onclick="navigate('rehearsal',{rid:'${esc(r.id)}'})">
           <div class="history-info">
             <div class="history-date">${fmtDate(r.date)}</div>
             ${r.label ? `<div class="history-label">${esc(r.label)}</div>` : ''}
             ${e.notes  ? `<div class="history-note">${esc(e.notes)}</div>` : ''}
+            ${mn.length ? `<div class="history-note" style="color:var(--danger)">✗ ${mn.join(' &middot; ')}</div>` : ''}
+            ${pn.length ? `<div class="history-note" style="color:var(--success)">✓ ${pn.join(' &middot; ')}</div>` : ''}
           </div>
           <div class="flex gap-6">
             ${e.mistakes  > 0 ? `<span class="badge badge-danger">${e.mistakes}✗</span>`  : '<span class="badge badge-neutral">0✗</span>'}
             ${e.positives > 0 ? `<span class="badge badge-success">${e.positives}✓</span>` : '<span class="badge badge-neutral">0✓</span>'}
           </div>
-        </div>`).join('')}
+        </div>`;
+      }).join('')}
     ` : `
       <div class="empty-state" style="padding:24px">
         <p>No rehearsal data recorded yet.</p>
@@ -508,8 +515,9 @@ function viewRehearsal(rid) {
   const entries  = DB.getRehearsalEntries(rid);
   const students = DB.getStudents();
   const activeEntry = _activeNum
-    ? (entries[_activeNum] || { mistakes:0, positives:0, notes:'' })
+    ? (entries[_activeNum] || { mistakes:0, positives:0, notes:'', events:[] })
     : null;
+  const allEvts   = activeEntry?.events || [];
   const activeStu = _activeNum ? students[_activeNum] : null;
 
   const entryList = Object.entries(entries)
@@ -538,7 +546,7 @@ function viewRehearsal(rid) {
           <div class="active-counters">
             <div class="counter-col">
               <div class="counter-col-label mistakes">Mistakes</div>
-              <div class="counter-value mistakes" id="val-mistakes">${activeEntry.mistakes}</div>
+              <div class="counter-value mistakes">${activeEntry.mistakes}</div>
               <button class="count-btn add-mistake"
                 onclick="adjustCount('${esc(rid)}','${esc(_activeNum)}','mistakes',1)">
                 +1 Mistake
@@ -552,7 +560,7 @@ function viewRehearsal(rid) {
 
             <div class="counter-col">
               <div class="counter-col-label positives">Positives</div>
-              <div class="counter-value positives" id="val-positives">${activeEntry.positives}</div>
+              <div class="counter-value positives">${activeEntry.positives}</div>
               <button class="count-btn add-positive"
                 onclick="adjustCount('${esc(rid)}','${esc(_activeNum)}','positives',1)">
                 +1 Positive
@@ -565,7 +573,20 @@ function viewRehearsal(rid) {
             </div>
           </div>
 
-          <textarea class="active-notes" placeholder="Notes for this student this rehearsal…"
+          ${allEvts.length > 0 ? `
+            <div class="event-notes-section">
+              <div class="event-notes-hdr">Notes per mark</div>
+              ${allEvts.map((e,i) => `
+                <div class="event-note-row">
+                  <span class="event-note-type ${e.type==='mistake'?'is-mistake':'is-positive'}">${e.type==='mistake'?'✗':'✓'}</span>
+                  <input type="text" class="event-note-inp"
+                         placeholder="what happened…"
+                         value="${esc(e.note)}"
+                         oninput="saveEventNote('${esc(rid)}','${esc(_activeNum)}',${i},this.value)">
+                </div>`).join('')}
+            </div>` : ''}
+
+          <textarea class="active-notes" placeholder="General note for today…"
             oninput="saveNote('${esc(rid)}','${esc(_activeNum)}',this.value)">${esc(activeEntry.notes)}</textarea>
 
           ${!activeStu ? `
@@ -643,14 +664,34 @@ function clearActive() {
 }
 
 function adjustCount(rid, num, field, delta) {
-  const ents = DB.getRehearsalEntries(rid);
-  const cur  = ents[num] || { mistakes:0, positives:0, notes:'' };
-  DB.upsertEntry(rid, num, { [field]: Math.max(0, (cur[field]||0) + delta) });
+  const ents    = DB.getRehearsalEntries(rid);
+  const cur     = ents[num] || { mistakes:0, positives:0, notes:'', events:[] };
+  const newVal  = Math.max(0, (cur[field]||0) + delta);
+  const events  = [...(cur.events || [])];
+  const evtType = field === 'mistakes' ? 'mistake' : 'positive';
+
+  if (delta > 0) {
+    events.push({ type: evtType, note: '', ts: Date.now() });
+  } else if (delta < 0 && newVal < (cur[field]||0)) {
+    for (let i = events.length - 1; i >= 0; i--) {
+      if (events[i].type === evtType) { events.splice(i, 1); break; }
+    }
+  }
+
+  DB.upsertEntry(rid, num, { [field]: newVal, events });
   reRender(rid);
 }
 
 function saveNote(rid, num, notes) {
   DB.upsertEntry(rid, num, { notes });
+}
+
+function saveEventNote(rid, num, idx, note) {
+  const cur = DB.getRehearsalEntries(rid)[num];
+  if (!cur) return;
+  const events = [...(cur.events || [])];
+  if (events[idx]) events[idx] = { ...events[idx], note };
+  DB.upsertEntry(rid, num, { events });
 }
 
 function reRender(rid) {
