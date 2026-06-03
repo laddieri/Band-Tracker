@@ -1590,4 +1590,99 @@ html, body {
 }
 .pss-pass { background: var(--success-bg); color: var(--success); }
 .pss-fail { background: var(--danger-bg);  color: var(--danger); }
+
+/* ── Attendance ──────────────────────────────────────────────────────────────── */
+
+.attendance-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.attendance-lbl {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.attendance-btns { display: flex; gap: 8px; }
+
+.att-btn {
+  padding: 7px 14px;
+  border-radius: var(--r-sm);
+  border: 2px solid transparent;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: filter .12s, transform .1s;
+}
+.att-btn:active { transform: scale(.94); }
+.att-late   { background: #fef9c3; color: #854d0e; border-color: #fde68a; }
+.att-absent { background: var(--danger-bg); color: var(--danger); border-color: #fca5a5; }
+.att-on-late   { background: #eab308; color: white; border-color: #eab308; }
+.att-on-absent { background: var(--danger); color: white; border-color: var(--danger); }
+
+.att-badge-absent {
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 0.72rem;
+  padding: 2px 7px;
+  border-radius: 20px;
+  font-weight: 700;
+}
+.att-badge-late {
+  background: #fef9c3;
+  color: #854d0e;
+  font-size: 0.72rem;
+  padding: 2px 7px;
+  border-radius: 20px;
+  font-weight: 700;
+}
+
+.att-absent-note { color: var(--danger) !important; font-style: normal !important; font-weight: 600; }
+.att-late-note   { color: #854d0e !important; font-style: normal !important; font-weight: 600; }
+
+.att-summary-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.att-summary-chip {
+  padding: 5px 14px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.att-chip-absent { background: var(--danger-bg); color: var(--danger); }
+.att-chip-late   { background: #fef9c3; color: #854d0e; }
+
+.att-date-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.att-date-list:last-child { margin-bottom: 0; }
+.att-date-heading {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  flex-shrink: 0;
+}
+.att-date-chip {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 20px;
+}
+
+.att-portal-badge-absent { background: var(--danger-bg); color: var(--danger); }
+.att-portal-badge-late   { background: #fef9c3; color: #854d0e; }
 .pss-na   { background: #f1f5f9; color: var(--text-muted); }

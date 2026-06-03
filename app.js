@@ -1145,13 +1145,35 @@ function viewStudentPortal() {
           </div>
           <div class="portal-stat">
             <div class="portal-stat-value portal-stat-mistake">${totalErr}</div>
-            <div class="portal-stat-label">Total Marks</div>
+            <div class="portal-stat-label">Mistake Marks</div>
           </div>
           <div class="portal-stat">
             <div class="portal-stat-value portal-stat-positive">${totalPos}</div>
             <div class="portal-stat-label">Positives</div>
           </div>
         </div>
+        ${(() => {
+          const absences = hist.filter(({entry:e}) => e.attendance === 'absent');
+          const lates    = hist.filter(({entry:e}) => e.attendance === 'late');
+          if (!absences.length && !lates.length) return '';
+          return `
+            <div class="card mb-12" style="padding:12px 16px">
+              <div class="att-summary-row">
+                <span class="att-summary-chip att-chip-absent">${absences.length} Absence${absences.length!==1?'s':''}</span>
+                <span class="att-summary-chip att-chip-late">${lates.length} Late${lates.length!==1?'s':''}</span>
+              </div>
+              ${absences.length ? `
+                <div class="att-date-list">
+                  <span class="att-date-heading">Absent:</span>
+                  ${absences.map(({rehearsal:r}) => `<span class="att-date-chip att-chip-absent">${fmtDate(r.date)}</span>`).join('')}
+                </div>` : ''}
+              ${lates.length ? `
+                <div class="att-date-list">
+                  <span class="att-date-heading">Late:</span>
+                  ${lates.map(({rehearsal:r}) => `<span class="att-date-chip att-chip-late">${fmtDate(r.date)}</span>`).join('')}
+                </div>` : ''}
+            </div>`;
+        })()}
       ` : ''}
 
       ${STATE.songs.length > 0 ? `
@@ -1188,6 +1210,8 @@ function viewStudentPortal() {
                 ${r.label ? `<div class="portal-rehear-label">${esc(r.label)}</div>` : ''}
               </div>
               <div class="portal-badges">
+                ${e.attendance==='absent' ? `<span class="portal-badge att-portal-badge-absent">Absent</span>` : ''}
+                ${e.attendance==='late'   ? `<span class="portal-badge att-portal-badge-late">Late</span>`   : ''}
                 ${(e.mistakes  || 0) > 0 ? `<span class="portal-badge portal-badge-mistake">✗ ${e.mistakes}</span>`  : ''}
                 ${(e.positives || 0) > 0 ? `<span class="portal-badge portal-badge-positive">✓ ${e.positives}</span>` : ''}
               </div>
@@ -1263,6 +1287,31 @@ function viewStudent(num) {
         <div style="font-size:0.9rem;white-space:pre-wrap;color:var(--text-muted)">${esc(s.notes)}</div>
       </div>` : ''}
 
+    ${(() => {
+      const absences = hist.filter(({entry:e}) => e.attendance === 'absent');
+      const lates    = hist.filter(({entry:e}) => e.attendance === 'late');
+      if (!absences.length && !lates.length) return '';
+      return `
+        <div class="section-title">Attendance</div>
+        <div class="card mb-12" style="padding:12px 16px">
+          <div class="att-summary-row">
+            <span class="att-summary-chip att-chip-absent">${absences.length} Absence${absences.length!==1?'s':''}</span>
+            <span class="att-summary-chip att-chip-late">${lates.length} Late${lates.length!==1?'s':''}</span>
+          </div>
+          ${absences.length ? `
+            <div class="att-date-list">
+              <span class="att-date-heading">Absent:</span>
+              ${absences.map(({rehearsal:r}) => `<span class="att-date-chip att-chip-absent">${fmtDate(r.date)}</span>`).join('')}
+            </div>` : ''}
+          ${lates.length ? `
+            <div class="att-date-list">
+              <span class="att-date-heading">Late:</span>
+              ${lates.map(({rehearsal:r}) => `<span class="att-date-chip att-chip-late">${fmtDate(r.date)}</span>`).join('')}
+            </div>` : ''}
+        </div>
+      `;
+    })()}
+
     ${STATE.songs.length ? `
       <div class="section-title">Songs to Memorize</div>
       <div class="card mb-12" style="padding:8px 12px">
@@ -1308,6 +1357,8 @@ function viewStudent(num) {
           <div class="history-info" onclick="navigate('rehearsal',{rid:'${esc(r.id)}'})">
             <div class="history-date">${fmtDate(r.date)}</div>
             ${r.label ? `<div class="history-label">${esc(r.label)}</div>` : ''}
+            ${e.attendance==='absent' ? `<div class="history-note att-absent-note">✗ Absent</div>` : ''}
+            ${e.attendance==='late'   ? `<div class="history-note att-late-note">◷ Late</div>`   : ''}
             ${e.notes  ? `<div class="history-note">${esc(e.notes)}</div>` : ''}
             ${mn.length ? `<div class="history-note" style="color:var(--danger)">✗ ${mn.join(' &middot; ')}</div>` : ''}
             ${pn.length ? `<div class="history-note" style="color:var(--success)">✓ ${pn.join(' &middot; ')}</div>` : ''}
@@ -1396,6 +1447,7 @@ function viewRehearsal(rid) {
     : null;
   const allEvts   = activeEntry?.events || [];
   const activeStu = _activeNum ? students[_activeNum] : null;
+  const activeAtt = activeEntry?.attendance || 'present';
 
   const entryList = Object.entries(entries)
     .sort(([a],[b]) => String(a).localeCompare(String(b), undefined, {numeric:true}));
@@ -1459,6 +1511,16 @@ function viewRehearsal(rid) {
             </div>`;
           }).join('')}
         </div>` : ''}
+
+      <div class="attendance-row">
+        <span class="attendance-lbl">Attendance</span>
+        <div class="attendance-btns">
+          <button class="att-btn att-late  ${activeAtt==='late'   ?'att-on-late':''}"
+                  onclick="setAttendance('${esc(rid)}','${esc(_activeNum)}','late')">◷ Late</button>
+          <button class="att-btn att-absent ${activeAtt==='absent' ?'att-on-absent':''}"
+                  onclick="setAttendance('${esc(rid)}','${esc(_activeNum)}','absent')">✗ Absent</button>
+        </div>
+      </div>
 
       <textarea class="active-notes" placeholder="General note for today…"
         oninput="saveNote('${esc(rid)}','${esc(_activeNum)}',this.value)">${esc(activeEntry.notes)}</textarea>
@@ -1565,6 +1627,8 @@ function viewRehearsal(rid) {
                 ${stu ? `<span class="sub">${esc([fmtPos(stu.column,stu.row),stu.instrument,stu.name].filter(Boolean).join(' · '))}</span>` : '<span class="sub" style="color:var(--warning)">Not in roster</span>'}
               </div>
               <div class="entry-badges">
+                ${entry.attendance==='absent' ? `<span class="badge att-badge-absent">Absent</span>` : ''}
+                ${entry.attendance==='late'   ? `<span class="badge att-badge-late">Late</span>`   : ''}
                 <span class="badge ${entry.mistakes>0?'badge-danger':'badge-neutral'}">${entry.mistakes}✗</span>
                 <span class="badge ${entry.positives>0?'badge-success':'badge-neutral'}">${entry.positives}✓</span>
               </div>
@@ -1724,6 +1788,30 @@ function confirmMark(rid, num, type, note) {
 function confirmMarkCustom(rid, num, type) {
   const note = document.getElementById('mark-note-input')?.value.trim() || '';
   confirmMark(rid, num, type, note);
+}
+
+function setAttendance(rid, num, status) {
+  const ents = DB.getRehearsalEntries(rid);
+  const cur  = ents[num] || { mistakes:0, positives:0, notes:'', events:[] };
+  const prev = cur.attendance || 'present';
+  const next = prev === status ? 'present' : status; // tap active = clear
+  if (!STATE.entries[rid]) STATE.entries[rid] = {};
+  STATE.entries[rid][num] = { ...cur, attendance: next };
+  const docId = `${rid}_${String(num)}`;
+  if (next === 'present') {
+    db.collection('entries').doc(docId).update({
+      attendance: firebase.firestore.FieldValue.delete()
+    }).catch(() => {});
+  } else {
+    fsUpsertEntry(rid, num, {
+      mistakes:  cur.mistakes  || 0,
+      positives: cur.positives || 0,
+      notes:     cur.notes     || '',
+      events:    cur.events    || [],
+      attendance: next
+    });
+  }
+  reRender(rid);
 }
 
 // ── Section Marks ──────────────────────────────────────────────────────────────
