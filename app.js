@@ -27,6 +27,7 @@ const STATE = {
   user:         null,
   authChecking: true,
   loading:      true,
+  isAdmin:      false,
   students:     {},
   rehearsals:   [],
   entries:      {},
@@ -79,6 +80,12 @@ function startListeners() {
   }
 
   STATE._unsubs = [
+    db.collection('admins').doc(STATE.user.uid).onSnapshot(doc => {
+      const prev = STATE.isAdmin;
+      STATE.isAdmin = doc.exists;
+      if (prev !== STATE.isAdmin && !STATE.loading) render();
+    }),
+
     db.collection('students').onSnapshot(snap => {
       snap.docChanges().forEach(ch => {
         if (ch.type === 'removed') delete STATE.students[ch.doc.id];
@@ -120,10 +127,11 @@ auth.onAuthStateChanged(user => {
   } else {
     STATE._unsubs.forEach(u => u());
     STATE._unsubs = [];
-    STATE.loading  = false;
-    STATE.students  = {};
+    STATE.loading    = false;
+    STATE.isAdmin    = false;
+    STATE.students   = {};
     STATE.rehearsals = [];
-    STATE.entries   = {};
+    STATE.entries    = {};
     render();
   }
 });
@@ -283,14 +291,14 @@ function render() {
 
     case 'roster':
       title.textContent = 'Student Roster';
-      actions.innerHTML = addBtn('showAddStudentModal()') + userBtn();
+      actions.innerHTML = (STATE.isAdmin ? addBtn('showAddStudentModal()') : '') + userBtn();
       main.innerHTML = viewRoster();
       break;
 
     case 'student': {
       const s = DB.getStudents()[_params.num];
       title.textContent = s ? `Student #${esc(s.number)}` : 'Student';
-      actions.innerHTML = editBtn(`showEditStudentModal('${esc(_params.num)}')`) + userBtn();
+      actions.innerHTML = (STATE.isAdmin ? editBtn(`showEditStudentModal('${esc(_params.num)}')`) : '') + userBtn();
       main.innerHTML = viewStudent(_params.num);
       break;
     }
@@ -418,7 +426,8 @@ function showUserMenu() {
   openModal(`
     <div class="modal-title">Account</div>
     <div style="font-size:0.9rem;color:var(--text-muted);margin-bottom:20px">
-      Signed in as<br><strong style="color:var(--text)">${esc(STATE.user?.email || '')}</strong>
+      Signed in as<br><strong style="color:var(--text)">${esc(STATE.user?.email || '')}</strong><br>
+      <span style="font-size:0.8rem">${STATE.isAdmin ? '⭐ Admin' : 'Director'}</span>
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary btn-full" onclick="closeModal()">Close</button>
@@ -518,12 +527,13 @@ function viewRoster() {
              value="${esc(_rosterSearch)}"
              oninput="filterRoster(this.value)" autocomplete="off">
     </div>
+    ${STATE.isAdmin ? `
     <div style="text-align:right;margin:-4px 0 12px">
       <button class="btn btn-ghost btn-sm" style="color:var(--primary);font-size:0.8rem;padding:4px 0"
               onclick="showImportModal()">
         ↑ Import from CSV
       </button>
-    </div>
+    </div>` : ''}
     <div id="roster-list">${rosterRows(list, _rosterSearch)}</div>
     ${list.length === 0 ? `
       <div class="empty-state">
@@ -780,7 +790,7 @@ function viewRehearsal(rid) {
           <textarea class="active-notes" placeholder="General note for today…"
             oninput="saveNote('${esc(rid)}','${esc(_activeNum)}',this.value)">${esc(activeEntry.notes)}</textarea>
 
-          ${!activeStu ? `
+          ${!activeStu && STATE.isAdmin ? `
             <button class="btn btn-secondary btn-sm btn-full mt-8"
               onclick="showAddStudentModal('${esc(_activeNum)}')">
               + Add #${esc(_activeNum)} to Roster
@@ -900,6 +910,7 @@ function reRender(rid) {
 // ── Modals: Students ──────────────────────────────────────────────────────────
 
 function showAddStudentModal(prefill = '') {
+  if (!STATE.isAdmin) return;
   openModal(`
     <div class="modal-title">Add Student</div>
     <div class="form-group">
@@ -960,6 +971,7 @@ function saveNewStudent() {
 }
 
 function showEditStudentModal(num) {
+  if (!STATE.isAdmin) return;
   const s = DB.getStudents()[num];
   if (!s) return;
   openModal(`
@@ -1125,6 +1137,7 @@ function confirmDeleteRehearsal(rid) {
 let _csvData = null;
 
 function showImportModal() {
+  if (!STATE.isAdmin) return;
   _csvData = null;
   openModal(`
     <div class="modal-title">Import Roster from CSV</div>
