@@ -1169,6 +1169,11 @@ function viewRehearsal(rid) {
         <p>No students tracked yet.</p>
         <p>Enter a student number above to begin.</p>
       </div>`}
+
+    ${r.ended ? `
+      <div class="ended-banner">
+        ✓ Rehearsal ended — automatic positive marks have been applied
+      </div>` : ''}
   `;
 }
 
@@ -1769,6 +1774,22 @@ function showRehearsalOptions(rid) {
         <button class="btn btn-primary btn-sm" style="flex-shrink:0" onclick="addSegment('${esc(rid)}')">+ Add</button>
       </div>` : ''}
 
+    ${STATE.isAdmin ? `
+    <div class="section-title" style="margin-top:24px">End Rehearsal</div>
+    ${r.ended ? `
+      <div class="ended-status-badge">✓ Rehearsal has been ended</div>
+      <p style="font-size:0.82rem;color:var(--text-muted);margin:8px 0 12px">
+        Automatic positive marks were applied to students with no mistakes.
+        You can still edit marks, or reopen the rehearsal to run the process again.
+      </p>
+      <button class="btn btn-secondary btn-full" onclick="reopenRehearsal('${esc(rid)}')">Reopen Rehearsal</button>
+    ` : `
+      <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 12px">
+        Students with zero mistakes will automatically receive a positive mark: "No noticeable mistakes."
+      </p>
+      <button class="btn btn-success btn-full" onclick="confirmEndRehearsal('${esc(rid)}')">End Rehearsal</button>
+    `}` : ''}
+
     <div class="danger-zone">
       <div class="danger-zone-title">Danger Zone</div>
       <button class="btn btn-danger btn-full" onclick="confirmDeleteRehearsal('${esc(rid)}')">
@@ -1818,6 +1839,82 @@ function saveRehearsalEdit(rid) {
   closeModal();
   showToast('Rehearsal updated');
   render();
+}
+
+function confirmEndRehearsal(rid) {
+  const r = DB.getRehearsals().find(r => r.id === rid);
+  if (!r) return;
+  const entries  = DB.getRehearsalEntries(rid);
+  const students = DB.getStudents();
+  const eligible = Object.keys(students).filter(num => !(entries[num]?.mistakes > 0));
+  openModal(`
+    <div class="modal-title">End Rehearsal?</div>
+    <p style="font-size:0.9rem;color:var(--text-muted);margin-bottom:16px">
+      <strong>${eligible.length} student${eligible.length !== 1 ? 's' : ''}</strong>
+      with no mistakes will receive an automatic positive mark:<br>
+      <em>"No noticeable mistakes"</em>
+    </p>
+    <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:20px">
+      Students who already have that mark from a previous end will not get a duplicate.
+    </p>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="showRehearsalOptions('${esc(rid)}')">Cancel</button>
+      <button class="btn btn-success" onclick="endRehearsal('${esc(rid)}')">End Rehearsal</button>
+    </div>
+  `);
+}
+
+async function endRehearsal(rid) {
+  closeModal();
+  const r = STATE.rehearsals.find(r => r.id === rid);
+  if (!r) return;
+  const entries  = STATE.entries[rid] || {};
+  const students = STATE.students;
+  const batch    = db.batch();
+  let count      = 0;
+
+  for (const [num] of Object.entries(students)) {
+    const entry     = entries[num] || { mistakes: 0, positives: 0, notes: '', events: [] };
+    if ((entry.mistakes || 0) > 0) continue; // has mistakes — skip
+
+    // Remove any previous auto-mark so re-ending doesn't duplicate
+    const prevEvents = (entry.events || []).filter(e => e.note !== 'No noticeable mistakes');
+    const autoEvt    = { type: 'positive', note: 'No noticeable mistakes', ts: Date.now(), by: 'system', auto: true };
+    const events     = [...prevEvents, autoEvt];
+    const positives  = events.filter(e => e.type === 'positive').length;
+
+    const docRef = db.collection('entries').doc(`${rid}_${num}`);
+    batch.set(docRef, {
+      rehearsalId:   rid,
+      studentNumber: String(num),
+      mistakes:      entry.mistakes  || 0,
+      positives,
+      notes:         entry.notes     || '',
+      events,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: STATE.user?.email || ''
+    });
+
+    if (!STATE.entries[rid]) STATE.entries[rid] = {};
+    STATE.entries[rid][num] = { ...entry, events, positives };
+    count++;
+  }
+
+  r.ended = true;
+  db.collection('rehearsals').doc(rid).set({ ended: true }, { merge: true });
+  await batch.commit();
+  showToast(`Rehearsal ended — ${count} student${count !== 1 ? 's' : ''} received automatic positive.`);
+  reRender(rid);
+}
+
+function reopenRehearsal(rid) {
+  closeModal();
+  const r = STATE.rehearsals.find(r => r.id === rid);
+  if (!r) return;
+  r.ended = false;
+  db.collection('rehearsals').doc(rid).set({ ended: false }, { merge: true });
+  showToast('Rehearsal reopened.');
+  reRender(rid);
 }
 
 function confirmDeleteRehearsal(rid) {
