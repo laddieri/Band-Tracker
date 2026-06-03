@@ -327,12 +327,18 @@ function viewRoster() {
              value="${esc(_rosterSearch)}"
              oninput="filterRoster(this.value)" autocomplete="off">
     </div>
+    <div style="text-align:right;margin:-4px 0 12px">
+      <button class="btn btn-ghost btn-sm" style="color:var(--primary);font-size:0.8rem;padding:4px 0"
+              onclick="showImportModal()">
+        ↑ Import from CSV
+      </button>
+    </div>
     <div id="roster-list">${rosterRows(list, _rosterSearch)}</div>
     ${list.length === 0 ? `
       <div class="empty-state">
         <div class="empty-icon">👥</div>
         <p>No students yet.</p>
-        <p>Tap <strong>+</strong> above to add your first student.</p>
+        <p>Tap <strong>+</strong> above to add your first student,<br>or use <strong>Import from CSV</strong>.</p>
       </div>` : ''}
   `;
 }
@@ -859,6 +865,224 @@ function confirmDeleteRehearsal(rid) {
   closeModal();
   showToast('Rehearsal deleted');
   navigate('rehearsals');
+}
+
+// ── CSV Import ────────────────────────────────────────────────────────────────
+
+let _csvData = null;
+
+function showImportModal() {
+  _csvData = null;
+  openModal(`
+    <div class="modal-title">Import Roster from CSV</div>
+    <div class="import-hint">
+      <strong>Column names recognized</strong> (header row required):<br>
+      <em>Number / Student # / ID</em> &nbsp;·&nbsp; <em>Name</em> &nbsp;·&nbsp;
+      <em>Instrument / Inst</em> &nbsp;·&nbsp; <em>Section / Part</em> &nbsp;·&nbsp; <em>Notes</em>
+    </div>
+    <div class="form-group" style="margin-top:14px">
+      <label class="form-label">Choose .csv File</label>
+      <input type="file" accept=".csv,text/csv" id="csv-file-input"
+             class="form-input" style="padding:10px"
+             onchange="handleCSVFile(this)">
+    </div>
+    <div id="import-preview"></div>
+    <div class="modal-actions" id="import-actions">
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Cancel</button>
+    </div>
+  `);
+}
+
+function parseCSVLine(line) {
+  const fields = [];
+  let field = '';
+  let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQ) {
+      if (ch === '"') {
+        if (line[i+1] === '"') { field += '"'; i++; }
+        else inQ = false;
+      } else field += ch;
+    } else {
+      if (ch === '"') inQ = true;
+      else if (ch === ',') { fields.push(field.trim()); field = ''; }
+      else field += ch;
+    }
+  }
+  fields.push(field.trim());
+  return fields;
+}
+
+function parseCSV(text) {
+  return text.replace(/\r\n/g,'\n').replace(/\r/g,'\n')
+    .split('\n').filter(l => l.trim()).map(parseCSVLine);
+}
+
+const COL_ALIASES = {
+  number:     ['number','student number','student #','student no','student id','id','#','num','no.','no'],
+  name:       ['name','student name','full name','first name','last name','student'],
+  instrument: ['instrument','instruments','inst'],
+  section:    ['section','part','group','ensemble'],
+  notes:      ['notes','note','comments','comment','director notes']
+};
+
+function detectCols(headers) {
+  const norm = headers.map(h => h.toLowerCase().trim());
+  const map = {};
+  for (const [field, aliases] of Object.entries(COL_ALIASES)) {
+    const idx = norm.findIndex(h => aliases.includes(h));
+    if (idx !== -1) map[field] = idx;
+  }
+  return map;
+}
+
+function handleCSVFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const rows = parseCSV(e.target.result);
+      if (rows.length < 2) {
+        showImportError('File appears to be empty or has only a header row.');
+        return;
+      }
+      const headers = rows[0];
+      const colMap  = detectCols(headers);
+      if (colMap.number === undefined) {
+        showImportError(
+          `Could not find a student number column.<br>
+           Recognized names: <em>Number, Student #, ID, #</em><br>
+           Your headers: <em>${esc(headers.join(', '))}</em>`
+        );
+        return;
+      }
+      const dataRows = rows.slice(1).filter(r => r[colMap.number]?.trim());
+      if (!dataRows.length) {
+        showImportError('No data rows found after the header.');
+        return;
+      }
+      _csvData = { rows: dataRows, colMap, headers };
+      renderImportPreview();
+    } catch(err) {
+      showImportError('Could not read file: ' + esc(err.message));
+    }
+  };
+  reader.readAsText(file);
+}
+
+function showImportError(msg) {
+  document.getElementById('import-preview').innerHTML =
+    `<div class="import-error">${msg}</div>`;
+}
+
+function renderImportPreview() {
+  const { rows, colMap, headers } = _csvData;
+  const existing  = DB.getStudents();
+  const newCount  = rows.filter(r => !existing[r[colMap.number]?.trim()]).length;
+  const dupCount  = rows.length - newCount;
+  const preview   = rows.slice(0, 8);
+
+  const LABELS = { number:'Number', name:'Name', instrument:'Instrument', section:'Section', notes:'Notes' };
+  const fields  = Object.keys(colMap);
+
+  document.getElementById('import-preview').innerHTML = `
+    <hr class="divider">
+    <div class="import-summary">
+      <span class="badge badge-primary">${rows.length} row${rows.length!==1?'s':''}</span>
+      <span class="badge badge-success">${newCount} new</span>
+      ${dupCount > 0 ? `<span class="badge badge-danger">${dupCount} duplicate${dupCount!==1?'s':''}</span>` : ''}
+    </div>
+
+    <div class="col-map-grid">
+      ${fields.map(f => `
+        <div class="col-map-row">
+          <span class="col-map-field">${LABELS[f]}</span>
+          <span class="col-map-arrow">←</span>
+          <span class="col-map-src">${esc(headers[colMap[f]])}</span>
+        </div>`).join('')}
+    </div>
+
+    ${dupCount > 0 ? `
+      <div class="form-group" style="margin:12px 0 4px">
+        <label class="form-label">If a student number already exists</label>
+        <select class="form-select" id="dup-strategy">
+          <option value="skip">Skip — keep existing data</option>
+          <option value="overwrite">Overwrite — replace with CSV data</option>
+        </select>
+      </div>` : ''}
+
+    <div class="section-title" style="margin-top:14px">
+      Preview (first ${preview.length} of ${rows.length})
+    </div>
+    <div style="overflow-x:auto">
+      <table class="preview-table">
+        <thead>
+          <tr>
+            ${fields.map(f=>`<th>${LABELS[f]}</th>`).join('')}
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${preview.map(r => {
+            const num  = r[colMap.number]?.trim() || '';
+            const isDup = !!existing[num];
+            return `<tr class="${isDup ? 'dup-row' : ''}">
+              ${fields.map(f=>`<td>${esc(r[colMap[f]]||'')}</td>`).join('')}
+              <td>${isDup ? '<span style="color:var(--warning);font-size:0.72rem">exists</span>' : ''}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  document.getElementById('import-actions').innerHTML = `
+    <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="executeImport()">
+      Import ${newCount} Student${newCount!==1?'s':''}${dupCount>0?' (+'+dupCount+')':''}
+    </button>
+  `;
+}
+
+function executeImport() {
+  if (!_csvData) return;
+  const { rows, colMap } = _csvData;
+  const strategy = document.getElementById('dup-strategy')?.value || 'skip';
+  const students  = DB.getStudents();
+  let added = 0, updated = 0, skipped = 0;
+
+  for (const row of rows) {
+    const num = row[colMap.number]?.trim();
+    if (!num) continue;
+    const incoming = {
+      number:     num,
+      name:       (colMap.name       !== undefined ? row[colMap.name]       : '').trim(),
+      instrument: (colMap.instrument !== undefined ? row[colMap.instrument] : '').trim(),
+      section:    (colMap.section    !== undefined ? row[colMap.section]    : '').trim(),
+      notes:      (colMap.notes      !== undefined ? row[colMap.notes]      : '').trim(),
+      songs:      []
+    };
+    if (students[num]) {
+      if (strategy === 'overwrite') { students[num] = { ...students[num], ...incoming }; updated++; }
+      else skipped++;
+    } else {
+      students[num] = incoming;
+      added++;
+    }
+  }
+
+  DB.saveStudents(students);
+  _csvData = null;
+  closeModal();
+
+  const parts = [];
+  if (added)   parts.push(`${added} added`);
+  if (updated) parts.push(`${updated} updated`);
+  if (skipped) parts.push(`${skipped} skipped`);
+  showToast(`Import complete — ${parts.join(', ')}`);
+  render();
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
