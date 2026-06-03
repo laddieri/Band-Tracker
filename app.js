@@ -1008,7 +1008,9 @@ function viewRehearsal(rid) {
       ${allEvts.length > 0 ? `
         <div class="event-notes-section">
           <div class="event-notes-hdr">Notes per mark</div>
-          ${allEvts.map((e,i) => `
+          ${allEvts.map((e,i) => {
+            const canDelete = STATE.isAdmin || !e.by || e.by === STATE.user?.email;
+            return `
             <div class="event-note-row">
               <span class="event-note-type ${e.type==='mistake'?'is-mistake':'is-positive'}">${e.type==='mistake'?'✗':'✓'}</span>
               ${e.segment ? `<span class="event-seg">${esc(e.segment)}</span>` : ''}
@@ -1017,7 +1019,9 @@ function viewRehearsal(rid) {
                      value="${esc(e.note)}"
                      oninput="saveEventNote('${esc(rid)}','${esc(_activeNum)}',${i},this.value)">
               ${e.by ? `<span class="event-note-by">${esc(dirLabel(e.by))}</span>` : ''}
-            </div>`).join('')}
+              ${canDelete ? `<button class="event-note-del" onclick="deleteEvent('${esc(rid)}','${esc(_activeNum)}',${i})" aria-label="Delete mark">×</button>` : ''}
+            </div>`;
+          }).join('')}
         </div>` : ''}
 
       <textarea class="active-notes" placeholder="General note for today…"
@@ -1280,6 +1284,21 @@ function saveEventNote(rid, num, idx, note) {
   events[idx] = { ...events[idx], note };
   STATE.entries[rid][num] = { ...STATE.entries[rid][num], events };
   debounced(`evtnote_${rid}_${num}_${idx}`, () => fsUpsertEntry(rid, num, { events }));
+}
+
+function deleteEvent(rid, num, idx) {
+  const cur = STATE.entries[rid]?.[num];
+  if (!cur) return;
+  const evt = (cur.events || [])[idx];
+  if (!evt) return;
+  // Enforce ownership — non-admins can only delete their own marks
+  if (!STATE.isAdmin && evt.by && evt.by !== STATE.user?.email) return;
+  const events   = (cur.events || []).filter((_, i) => i !== idx);
+  const mistakes  = events.filter(e => e.type === 'mistake').length;
+  const positives = events.filter(e => e.type === 'positive').length;
+  STATE.entries[rid][num] = { ...cur, events, mistakes, positives };
+  fsUpsertEntry(rid, num, { events, mistakes, positives, notes: cur.notes || '' });
+  reRender(rid);
 }
 
 // ── Block Navigator ───────────────────────────────────────────────────────────
