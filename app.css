@@ -767,6 +767,65 @@ html, body {
   flex-shrink: 0;
 }
 
+/* ── Section Marks ───────────────────────────────────────────────────────────── */
+
+.section-marks-card {
+  background: var(--card-bg);
+  border: 1.5px solid #ddd6fe;
+  border-radius: var(--r);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+.section-marks-hdr {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: #7c3aed;
+  margin-bottom: 10px;
+}
+.section-mark-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid #ede9fe;
+}
+.section-mark-row:first-of-type { border-top: none; padding-top: 0; }
+.section-mark-name {
+  flex: 1;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text);
+}
+.sm-btn {
+  border: none;
+  border-radius: var(--r-sm);
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: filter .12s;
+}
+.sm-btn:active { filter: brightness(.88); }
+.sm-positive { background: var(--success-bg); color: var(--success); }
+.sm-mistake  { background: var(--danger-bg);  color: var(--danger); }
+
+.section-mark-badge {
+  display: inline-flex;
+  align-items: center;
+  background: #ede9fe;
+  color: #7c3aed;
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.is-section-mark { background: #faf5ff; }
+
 /* ── Instrument Filter Chips ─────────────────────────────────────────────────── */
 
 .inst-filter-row {
