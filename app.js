@@ -670,6 +670,12 @@ function instrumentsInRoster() {
   return [...seen].sort();
 }
 
+function sectionsInRoster() {
+  const seen = new Set();
+  Object.values(DB.getStudents()).forEach(s => { if (s.section) seen.add(s.section); });
+  return [...seen].sort();
+}
+
 function instrumentFilterChips(activeFilter, fnName, fnFirstArg) {
   const instruments = instrumentsInRoster();
   if (!instruments.length) return '';
@@ -846,8 +852,9 @@ function viewStudentPortal() {
             <div class="portal-rehearsal-detail">
               ${e.notes ? `<div class="portal-entry-note">${esc(e.notes)}</div>` : ''}
               ${noteEvts.map(ev => `
-                <div class="portal-event-row">
+                <div class="portal-event-row ${ev.sectionMark ? 'is-section-mark' : ''}">
                   <span class="event-note-type ${ev.type === 'mistake' ? 'is-mistake' : 'is-positive'}">${ev.type === 'mistake' ? '✗' : '✓'}</span>
+                  ${ev.sectionMark ? `<span class="section-mark-badge">§ ${esc(ev.section||'Section')}</span>` : ''}
                   ${ev.segment ? `<span class="event-seg">${esc(ev.segment)}</span>` : ''}
                   <span class="portal-event-text">${esc(ev.note)}</span>
                   ${ev.ts ? `<span class="event-note-time">${fmtTime(ev.ts)}</span>` : ''}
@@ -916,8 +923,8 @@ function viewStudent(num) {
       <div class="section-title">Rehearsal History</div>
       ${hist.map(({rehearsal:r, entry:e}) => {
         const evts = e.events || [];
-        const mn = evts.filter(ev=>ev.type==='mistake' &&ev.note.trim()).map(ev=>(ev.segment?`<span class="event-seg">${esc(ev.segment)}</span> `:'') +esc(ev.note)+(ev.by?` <em style="opacity:.6">(${esc(dirLabel(ev.by))})</em>`:''));
-        const pn = evts.filter(ev=>ev.type==='positive'&&ev.note.trim()).map(ev=>(ev.segment?`<span class="event-seg">${esc(ev.segment)}</span> `:'') +esc(ev.note)+(ev.by?` <em style="opacity:.6">(${esc(dirLabel(ev.by))})</em>`:''));
+        const mn = evts.filter(ev=>ev.type==='mistake' &&ev.note.trim()).map(ev=>(ev.sectionMark?`<span class="section-mark-badge">§ ${esc(ev.section||'Section')}</span> `:'')+(ev.segment?`<span class="event-seg">${esc(ev.segment)}</span> `:'') +esc(ev.note)+(ev.by&&ev.by!=='system'?` <em style="opacity:.6">(${esc(dirLabel(ev.by))})</em>`:''));
+        const pn = evts.filter(ev=>ev.type==='positive'&&ev.note.trim()).map(ev=>(ev.sectionMark?`<span class="section-mark-badge">§ ${esc(ev.section||'Section')}</span> `:'')+(ev.segment?`<span class="event-seg">${esc(ev.segment)}</span> `:'') +esc(ev.note)+(ev.by&&ev.by!=='system'?` <em style="opacity:.6">(${esc(dirLabel(ev.by))})</em>`:''));
         return `
         <div class="history-row ${e.mistakes>0?'had-mistakes':''} ${e.positives>0&&!e.mistakes?'had-positives':''}"
              onclick="navigate('rehearsal',{rid:'${esc(r.id)}'})">
@@ -1053,8 +1060,9 @@ function viewRehearsal(rid) {
           ${allEvts.map((e,i) => {
             const canDelete = STATE.isAdmin || !e.by || e.by === STATE.user?.email;
             return `
-            <div class="event-note-row">
+            <div class="event-note-row ${e.sectionMark ? 'is-section-mark' : ''}">
               <span class="event-note-type ${e.type==='mistake'?'is-mistake':'is-positive'}">${e.type==='mistake'?'✗':'✓'}</span>
+              ${e.sectionMark ? `<span class="section-mark-badge">§ ${esc(e.section||'Section')}</span>` : ''}
               ${e.segment ? `<span class="event-seg">${esc(e.segment)}</span>` : ''}
               <input type="text" class="event-note-inp"
                      placeholder="what happened…"
@@ -1143,6 +1151,21 @@ function viewRehearsal(rid) {
 
   return `
     ${trackerSection}
+
+    ${(() => {
+      const sections = sectionsInRoster();
+      if (!sections.length) return '';
+      return `
+      <div class="section-marks-card">
+        <div class="section-marks-hdr">Mark a Section</div>
+        ${sections.map(sec => `
+          <div class="section-mark-row">
+            <span class="section-mark-name">${esc(sec)}</span>
+            <button class="sm-btn sm-positive" onclick="showSectionMarkModal('${esc(rid)}','${esc(sec)}','positive')">✓ Positive</button>
+            <button class="sm-btn sm-mistake"  onclick="showSectionMarkModal('${esc(rid)}','${esc(sec)}','mistake')">✗ Mark</button>
+          </div>`).join('')}
+      </div>`;
+    })()}
 
     ${entryList.length ? `
       <div class="section-title">Tracked This Rehearsal (${entryList.length})</div>
@@ -1316,6 +1339,91 @@ function confirmMark(rid, num, type, note) {
 function confirmMarkCustom(rid, num, type) {
   const note = document.getElementById('mark-note-input')?.value.trim() || '';
   confirmMark(rid, num, type, note);
+}
+
+// ── Section Marks ──────────────────────────────────────────────────────────────
+
+function showSectionMarkModal(rid, sectionName, type) {
+  const isMistake = type === 'mistake';
+  const presets   = isMistake ? MISTAKE_PRESETS : POSITIVE_PRESETS;
+  const btnCls    = isMistake ? 'is-mistake' : 'is-positive';
+  const r         = DB.getRehearsals().find(r => r.id === rid);
+  const segments  = r?.segments || [];
+  const students  = Object.values(DB.getStudents()).filter(s => s.section === sectionName);
+
+  const segHtml = segments.length ? `
+    <div class="form-label" style="margin-bottom:7px">Which part of rehearsal?</div>
+    <div class="seg-chip-row">
+      ${segments.map(s => `
+        <button class="seg-chip${_pendingSegment === s ? ' seg-selected' : ''}"
+                data-seg="${esc(s)}"
+                onclick="selectSegment('${esc(s)}')">
+          ${esc(s)}
+        </button>`).join('')}
+    </div>
+    <div class="form-label" style="margin:14px 0 7px">${isMistake ? 'What was the mistake?' : 'What went well?'}</div>
+  ` : '';
+
+  openModal(`
+    <div class="modal-title">${isMistake ? '✗' : '✓'} ${esc(sectionName)} Section
+      <div style="font-size:0.78rem;font-weight:400;color:var(--text-muted);margin-top:2px">${students.length} student${students.length!==1?'s':''}</div>
+    </div>
+    ${segHtml}
+    <div class="quick-note-grid">
+      ${presets.map(p => `
+        <button class="quick-note-btn ${btnCls}"
+          onclick="confirmSectionMark('${esc(rid)}','${esc(sectionName)}','${esc(type)}','${esc(p)}')">
+          ${esc(p)}
+        </button>`).join('')}
+    </div>
+    <div class="form-group" style="margin-top:14px">
+      <label class="form-label">Custom note</label>
+      <input class="form-input" id="mark-note-input" type="text"
+             placeholder="or type your own…" autocomplete="off"
+             onkeydown="if(event.key==='Enter')confirmSectionMarkCustom('${esc(rid)}','${esc(sectionName)}','${esc(type)}')">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="confirmSectionMark('${esc(rid)}','${esc(sectionName)}','${esc(type)}','')">No Note</button>
+      <button class="btn btn-primary" onclick="confirmSectionMarkCustom('${esc(rid)}','${esc(sectionName)}','${esc(type)}')">Add Custom</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('mark-note-input')?.focus(), 80);
+}
+
+function confirmSectionMarkCustom(rid, sectionName, type) {
+  const note = document.getElementById('mark-note-input')?.value.trim() || '';
+  confirmSectionMark(rid, sectionName, type, note);
+}
+
+async function confirmSectionMark(rid, sectionName, type, note) {
+  const segment = _pendingSegment;
+  closeModal();
+  const stuList = Object.values(STATE.students).filter(s => s.section === sectionName);
+  if (!stuList.length) { showToast('No students found in that section.'); return; }
+  const field   = type === 'mistake' ? 'mistakes' : 'positives';
+  const batch   = db.batch();
+  const evt     = { type, note: note || '', segment, ts: Date.now(), by: STATE.user?.email || '', sectionMark: true, section: sectionName };
+
+  for (const stu of stuList) {
+    const num   = String(stu.number || stu._id);
+    const cur   = STATE.entries[rid]?.[num] || { mistakes: 0, positives: 0, notes: '', events: [] };
+    const events = [...(cur.events || []), evt];
+    const newVal = (cur[field] || 0) + 1;
+    if (!STATE.entries[rid]) STATE.entries[rid] = {};
+    STATE.entries[rid][num] = { ...cur, [field]: newVal, events };
+    batch.set(db.collection('entries').doc(`${rid}_${num}`), {
+      rehearsalId: rid, studentNumber: num,
+      mistakes: STATE.entries[rid][num].mistakes,
+      positives: STATE.entries[rid][num].positives,
+      notes: cur.notes || '', events,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: STATE.user?.email || ''
+    });
+  }
+
+  await batch.commit();
+  showToast(`${type === 'positive' ? 'Positive' : 'Mark'} applied to ${stuList.length} ${sectionName} student${stuList.length!==1?'s':''}.`);
+  reRender(rid);
 }
 
 function saveNote(rid, num, notes) {
