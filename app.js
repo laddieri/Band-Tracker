@@ -1142,27 +1142,29 @@ function viewStudentPortal() {
             <div class="portal-stat-label">Positives</div>
           </div>
         </div>
+      ` : ''}
 
-        ${STATE.songs.length > 0 ? `
-          <div class="section-title">Songs to Memorize</div>
-          <div class="portal-songs-list">
-            ${STATE.songs.map(song => {
-              const status = song.statuses?.[String(num)]?.status || 'not_attempted';
-              const overdue = song.dueDate && song.dueDate < today() && status !== 'passed';
-              return `
-              <div class="portal-song-row">
-                <div class="portal-song-info">
-                  <div class="portal-song-title">${esc(song.title)}</div>
-                  ${song.dueDate ? `<div class="portal-song-due ${overdue ? 'song-overdue' : ''}">Due ${fmtDate(song.dueDate)}</div>` : ''}
-                </div>
-                <span class="portal-song-status ${status === 'passed' ? 'pss-pass' : status === 'failed' ? 'pss-fail' : 'pss-na'}">
-                  ${status === 'passed' ? '✓ Passed' : status === 'failed' ? '✗ Failed' : '— Not Attempted'}
-                </span>
-              </div>`;
-            }).join('')}
-          </div>
-        ` : ''}
+      ${STATE.songs.length > 0 ? `
+        <div class="section-title">Songs to Memorize</div>
+        <div class="portal-songs-list">
+          ${STATE.songs.map(song => {
+            const status = song.statuses?.[String(num)]?.status || 'not_attempted';
+            const overdue = song.dueDate && song.dueDate < today() && status !== 'passed';
+            return `
+            <div class="portal-song-row">
+              <div class="portal-song-info">
+                <div class="portal-song-title">${esc(song.title)}</div>
+                ${song.dueDate ? `<div class="portal-song-due ${overdue ? 'song-overdue' : ''}">Due ${fmtDate(song.dueDate)}</div>` : ''}
+              </div>
+              <span class="portal-song-status ${status === 'passed' ? 'pss-pass' : status === 'failed' ? 'pss-fail' : 'pss-na'}">
+                ${status === 'passed' ? '✓ Passed' : status === 'failed' ? '✗ Failed' : '— Not Attempted'}
+              </span>
+            </div>`;
+          }).join('')}
+        </div>
+      ` : ''}
 
+      ${hist.length > 0 ? `
         <div class="section-title">Rehearsal History</div>
         ${hist.map(({rehearsal: r, entry: e}) => {
           const evts     = e.events || [];
@@ -1194,7 +1196,7 @@ function viewStudentPortal() {
             </div>
           </div>`;
         }).join('')}
-      ` : `<p class="empty-state">No rehearsal history yet.</p>`}
+      ` : `<p class="empty-state" style="padding:24px 0">No rehearsal history yet.</p>`}
     </div>`;
 }
 
