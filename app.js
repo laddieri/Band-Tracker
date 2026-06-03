@@ -148,6 +148,8 @@ function navigate(view, params = {}) {
   if (_view === 'rehearsal' && view !== 'rehearsal') {
     _activeNum  = null;
     _numSearch  = '';
+    _blockMode  = false;
+    _blockPath  = [];
   }
   _view   = view;
   _params = params;
@@ -160,6 +162,8 @@ function navigate(view, params = {}) {
 let _activeNum  = null;
 let _numSearch  = '';
 let _rosterSearch = '';
+let _blockMode  = false;
+let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
 
 // ── Debounce store for note fields ────────────────────────────────────────────
 
@@ -322,6 +326,7 @@ function render() {
       title.textContent = r ? fmtShort(r.date) + (r.label ? ` — ${r.label}` : '') : 'Rehearsal';
       actions.innerHTML = optBtn(`showRehearsalOptions('${esc(_params.rid)}')`) + userBtn();
       main.innerHTML = viewRehearsal(_params.rid);
+      if (_blockMode && !_activeNum) initBlockPinch(_params.rid);
       break;
     }
   }
@@ -727,88 +732,116 @@ function viewRehearsal(rid) {
   const activeEntry = _activeNum
     ? (entries[_activeNum] || { mistakes:0, positives:0, notes:'', events:[] })
     : null;
-  const allEvts    = activeEntry?.events || [];
-  const activeStu  = _activeNum ? students[_activeNum] : null;
+  const allEvts   = activeEntry?.events || [];
+  const activeStu = _activeNum ? students[_activeNum] : null;
 
   const entryList = Object.entries(entries)
     .sort(([a],[b]) => String(a).localeCompare(String(b), undefined, {numeric:true}));
 
-  return `
-    <div class="tracker-card">
-      <div class="tracker-label">Track a Student</div>
-      <input class="num-input" type="text" inputmode="numeric" pattern="[0-9]*"
-             id="num-input" placeholder="Student #"
-             value="${esc(_numSearch)}"
-             autocomplete="off" autocorrect="off" autocapitalize="off"
-             oninput="onNumInput(this.value,'${esc(rid)}')"
-             onkeydown="onNumKey(event,'${esc(rid)}')">
+  // Active student card — shared across block and normal modes
+  const activeCard = _activeNum ? `
+    <div class="active-card">
+      <div class="active-card-name">
+        #${esc(_activeNum)}
+        ${activeStu
+          ? `<span class="sub">${esc([fmtPos(activeStu.column,activeStu.row),activeStu.instrument,activeStu.name].filter(Boolean).join(' · '))}</span>`
+          : '<span class="sub" style="color:var(--warning)"> Not in roster</span>'}
+      </div>
 
-      ${_activeNum ? `
-        <div class="active-card">
-          <div class="active-card-name">
-            #${esc(_activeNum)}
-            ${activeStu
-              ? `<span class="sub">${esc([fmtPos(activeStu.column,activeStu.row),activeStu.instrument,activeStu.name].filter(Boolean).join(' · '))}</span>`
-              : '<span class="sub" style="color:var(--warning)"> Not in roster</span>'}
-          </div>
-
-          <div class="active-counters">
-            <div class="counter-col">
-              <div class="counter-col-label mistakes">Mistakes</div>
-              <div class="counter-value mistakes">${activeEntry.mistakes}</div>
-              <button class="count-btn add-mistake"
-                onclick="adjustCount('${esc(rid)}','${esc(_activeNum)}','mistakes',1)">
-                +1 Mistake
-              </button>
-              ${activeEntry.mistakes > 0 ? `
-                <button class="count-btn undo"
-                  onclick="adjustCount('${esc(rid)}','${esc(_activeNum)}','mistakes',-1)">
-                  Undo −1
-                </button>` : ''}
-            </div>
-
-            <div class="counter-col">
-              <div class="counter-col-label positives">Positives</div>
-              <div class="counter-value positives">${activeEntry.positives}</div>
-              <button class="count-btn add-positive"
-                onclick="adjustCount('${esc(rid)}','${esc(_activeNum)}','positives',1)">
-                +1 Positive
-              </button>
-              ${activeEntry.positives > 0 ? `
-                <button class="count-btn undo"
-                  onclick="adjustCount('${esc(rid)}','${esc(_activeNum)}','positives',-1)">
-                  Undo −1
-                </button>` : ''}
-            </div>
-          </div>
-
-          ${allEvts.length > 0 ? `
-            <div class="event-notes-section">
-              <div class="event-notes-hdr">Notes per mark</div>
-              ${allEvts.map((e,i) => `
-                <div class="event-note-row">
-                  <span class="event-note-type ${e.type==='mistake'?'is-mistake':'is-positive'}">${e.type==='mistake'?'✗':'✓'}</span>
-                  <input type="text" class="event-note-inp"
-                         placeholder="what happened…"
-                         value="${esc(e.note)}"
-                         oninput="saveEventNote('${esc(rid)}','${esc(_activeNum)}',${i},this.value)">
-                  ${e.by ? `<span class="event-note-by">${esc(dirLabel(e.by))}</span>` : ''}
-                </div>`).join('')}
-            </div>` : ''}
-
-          <textarea class="active-notes" placeholder="General note for today…"
-            oninput="saveNote('${esc(rid)}','${esc(_activeNum)}',this.value)">${esc(activeEntry.notes)}</textarea>
-
-          ${!activeStu && STATE.isAdmin ? `
-            <button class="btn btn-secondary btn-sm btn-full mt-8"
-              onclick="showAddStudentModal('${esc(_activeNum)}')">
-              + Add #${esc(_activeNum)} to Roster
+      <div class="active-counters">
+        <div class="counter-col">
+          <div class="counter-col-label mistakes">Mistakes</div>
+          <div class="counter-value mistakes">${activeEntry.mistakes}</div>
+          <button class="count-btn add-mistake"
+            onclick="adjustCount('${esc(rid)}','${esc(_activeNum)}','mistakes',1)">
+            +1 Mistake
+          </button>
+          ${activeEntry.mistakes > 0 ? `
+            <button class="count-btn undo"
+              onclick="adjustCount('${esc(rid)}','${esc(_activeNum)}','mistakes',-1)">
+              Undo −1
             </button>` : ''}
-
-          <button class="next-btn" onclick="clearActive()">Next Student →</button>
         </div>
-      ` : ''}
-    </div>
+        <div class="counter-col">
+          <div class="counter-col-label positives">Positives</div>
+          <div class="counter-value positives">${activeEntry.positives}</div>
+          <button class="count-btn add-positive"
+            onclick="adjustCount('${esc(rid)}','${esc(_activeNum)}','positives',1)">
+            +1 Positive
+          </button>
+          ${activeEntry.positives > 0 ? `
+            <button class="count-btn undo"
+              onclick="adjustCount('${esc(rid)}','${esc(_activeNum)}','positives',-1)">
+              Undo −1
+            </button>` : ''}
+        </div>
+      </div>
+
+      ${allEvts.length > 0 ? `
+        <div class="event-notes-section">
+          <div class="event-notes-hdr">Notes per mark</div>
+          ${allEvts.map((e,i) => `
+            <div class="event-note-row">
+              <span class="event-note-type ${e.type==='mistake'?'is-mistake':'is-positive'}">${e.type==='mistake'?'✗':'✓'}</span>
+              <input type="text" class="event-note-inp"
+                     placeholder="what happened…"
+                     value="${esc(e.note)}"
+                     oninput="saveEventNote('${esc(rid)}','${esc(_activeNum)}',${i},this.value)">
+              ${e.by ? `<span class="event-note-by">${esc(dirLabel(e.by))}</span>` : ''}
+            </div>`).join('')}
+        </div>` : ''}
+
+      <textarea class="active-notes" placeholder="General note for today…"
+        oninput="saveNote('${esc(rid)}','${esc(_activeNum)}',this.value)">${esc(activeEntry.notes)}</textarea>
+
+      ${!activeStu && STATE.isAdmin ? `
+        <button class="btn btn-secondary btn-sm btn-full mt-8"
+          onclick="showAddStudentModal('${esc(_activeNum)}')">
+          + Add #${esc(_activeNum)} to Roster
+        </button>` : ''}
+
+      <button class="next-btn" onclick="clearActive()">
+        ${_blockMode ? '← Back to Block Grid' : 'Next Student →'}
+      </button>
+    </div>` : '';
+
+  // Tracker section — changes based on block mode
+  let trackerSection;
+  if (_blockMode && !_activeNum) {
+    trackerSection = renderBlockNav(rid);
+  } else if (_blockMode && _activeNum) {
+    trackerSection = `
+      <div class="tracker-card">
+        <div class="block-active-hdr">
+          <span class="block-active-label">Selected from Block Grid</span>
+          <button class="block-ctrl-btn" onclick="clearActive()">← Grid</button>
+        </div>
+        ${activeCard}
+      </div>`;
+  } else {
+    trackerSection = `
+      <div class="tracker-card">
+        <div class="tracker-label">Track a Student</div>
+        <input class="num-input" type="text" inputmode="numeric" pattern="[0-9]*"
+               id="num-input" placeholder="Student #"
+               value="${esc(_numSearch)}"
+               autocomplete="off" autocorrect="off" autocapitalize="off"
+               oninput="onNumInput(this.value,'${esc(rid)}')"
+               onkeydown="onNumKey(event,'${esc(rid)}')">
+        ${activeCard}
+        ${!_activeNum ? `
+          <button class="block-toggle-btn" onclick="toggleBlockMode('${esc(rid)}')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+              <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+            </svg>
+            Open Block Grid
+          </button>` : ''}
+      </div>`;
+  }
+
+  return `
+    ${trackerSection}
 
     ${entryList.length ? `
       <div class="section-title">Tracked This Rehearsal (${entryList.length})</div>
@@ -865,8 +898,10 @@ function pickStudent(num, rid) {
 function clearActive() {
   _activeNum = null;
   _numSearch = '';
-  const inp = document.getElementById('num-input');
-  if (inp) { inp.value = ''; inp.focus(); }
+  if (!_blockMode) {
+    const inp = document.getElementById('num-input');
+    if (inp) { inp.value = ''; inp.focus(); }
+  }
   reRender(_params.rid);
 }
 
@@ -909,11 +944,165 @@ function saveEventNote(rid, num, idx, note) {
   debounced(`evtnote_${rid}_${num}_${idx}`, () => fsUpsertEntry(rid, num, { events }));
 }
 
+// ── Block Navigator ───────────────────────────────────────────────────────────
+
+function findStudentAtPos(col, row, students) {
+  for (const [num, s] of Object.entries(students)) {
+    if (s.column === col && String(s.row) === String(row)) return num;
+  }
+  return null;
+}
+
+function toggleBlockMode(rid) {
+  _blockMode = !_blockMode;
+  _blockPath = [];
+  if (_blockMode) { _activeNum = null; _numSearch = ''; }
+  reRender(rid);
+}
+
+function blockDrillIn(rid, c0, c1, r0, r1) {
+  _blockPath.push({ c0, c1, r0, r1 });
+  reRender(rid);
+}
+
+function blockZoomOut(rid) {
+  if (_blockPath.length > 0) { _blockPath.pop(); reRender(rid); }
+}
+
+function blockSelect(num, rid) {
+  _blockMode = false;
+  _blockPath = [];
+  pickStudent(String(num), rid);
+}
+
+function blockSelectEmpty(pos) {
+  showToast(`No student assigned to ${pos}`);
+}
+
+function initBlockPinch(rid) {
+  const el = document.getElementById('block-nav');
+  if (!el || _blockPath.length === 0) return;
+  let startDist = 0, armed = false;
+  el.addEventListener('touchstart', e => {
+    if (e.touches.length >= 2) {
+      armed = true;
+      startDist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+    }
+  }, { passive: true });
+  el.addEventListener('touchmove', e => {
+    if (!armed || e.touches.length < 2) return;
+    const d = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+    if (d < startDist * 0.65) { armed = false; blockZoomOut(rid); }
+  }, { passive: true });
+  el.addEventListener('touchend', () => { armed = false; }, { passive: true });
+}
+
+function blockMiniGrid(rid, c0, c1, r0, r1) {
+  const entries  = DB.getRehearsalEntries(rid);
+  const students = DB.getStudents();
+  const cols = c1 - c0 + 1;
+  let dots = '';
+  for (let r = r1; r >= r0; r--) {
+    for (let c = c0; c <= c1; c++) {
+      const num   = findStudentAtPos(COLUMNS[c], String(r), students);
+      const entry = num ? entries[num] : null;
+      const cls   = !num ? 'bd-empty'
+        : (entry?.mistakes  > 0 ? 'bd-mistake'
+        : (entry?.positives > 0 ? 'bd-positive' : 'bd-filled'));
+      dots += `<span class="bd-dot ${cls}"></span>`;
+    }
+  }
+  return `<div class="bd-mini" style="--bd-cols:${cols}">${dots}</div>`;
+}
+
+function renderBlockNav(rid) {
+  const level = _blockPath.length;
+  let c0 = 0, c1 = 11, r0 = 1, r1 = 12;
+  if (level > 0) ({ c0, c1, r0, r1 } = _blockPath[level - 1]);
+  const colCount = c1 - c0 + 1;
+  const rowCount = r1 - r0 + 1;
+
+  const crumb = level === 0 ? 'Full Block'
+    : `${COLUMNS[c0]}–${COLUMNS[c1]} · Rows ${r0}–${r1}`;
+
+  let gridHtml = '', gridCols = 2;
+
+  if (level < 2) {
+    const midC = c0 + Math.floor(colCount / 2) - 1;
+    const midR = r0 + Math.floor(rowCount / 2) - 1;
+    const regions = [
+      [c0,    midC, midR+1, r1  ],
+      [midC+1, c1,  midR+1, r1  ],
+      [c0,    midC, r0,     midR],
+      [midC+1, c1,  r0,     midR],
+    ];
+    gridHtml = regions.map(([rc0,rc1,rr0,rr1]) => `
+      <div class="block-region" onclick="blockDrillIn('${esc(rid)}',${rc0},${rc1},${rr0},${rr1})">
+        ${blockMiniGrid(rid, rc0, rc1, rr0, rr1)}
+        <div class="block-region-label">${COLUMNS[rc0]}–${COLUMNS[rc1]}<br><span>Rows ${rr0}–${rr1}</span></div>
+      </div>`).join('');
+  } else {
+    const entries  = DB.getRehearsalEntries(rid);
+    const students = DB.getStudents();
+    gridCols = colCount;
+    for (let r = r1; r >= r0; r--) {
+      for (let c = c0; c <= c1; c++) {
+        const col  = COLUMNS[c];
+        const pos  = `${col}${r}`;
+        const num  = findStudentAtPos(col, String(r), students);
+        const entry = num ? (entries[num] || null) : null;
+        const cls  = !num ? 'bc-empty'
+          : (entry?.mistakes  > 0 ? 'bc-mistake'
+          : (entry?.positives > 0 ? 'bc-positive' : 'bc-assigned'));
+        const fn   = num
+          ? `blockSelect('${esc(num)}','${esc(rid)}')`
+          : `blockSelectEmpty('${esc(pos)}')`;
+        gridHtml += `
+          <div class="block-cell ${cls}" onclick="${fn}">
+            <div class="bc-pos">${esc(pos)}</div>
+            ${num ? `<div class="bc-num">#${esc(num)}</div>` : ''}
+            ${(entry?.mistakes||0)+(entry?.positives||0) > 0 ? `
+              <div class="bc-marks">
+                ${entry.mistakes  > 0 ? `<span class="bc-m">${entry.mistakes}✗</span>`  : ''}
+                ${entry.positives > 0 ? `<span class="bc-p">${entry.positives}✓</span>` : ''}
+              </div>` : ''}
+          </div>`;
+      }
+    }
+  }
+
+  return `
+    <div class="block-nav" id="block-nav">
+      <div class="block-nav-hdr">
+        <div class="block-crumb">${esc(crumb)}</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          ${level > 0 ? `<button class="block-ctrl-btn" onclick="blockZoomOut('${esc(rid)}')">← Back</button>` : ''}
+          <button class="block-ctrl-btn" onclick="toggleBlockMode('${esc(rid)}')">✕ Close</button>
+        </div>
+      </div>
+      <div class="block-grid" style="grid-template-columns:repeat(${gridCols},1fr)">
+        ${gridHtml}
+      </div>
+      <div class="block-footer">
+        <span>Col A</span>
+        <span>↑ Back &nbsp;·&nbsp; Front ↓</span>
+        <span>Col ${COLUMNS[c1 > 11 ? 11 : c1]}</span>
+      </div>
+    </div>`;
+}
+
 function reRender(rid) {
   const mc = document.getElementById('main-content');
   const st = mc.scrollTop;
   mc.innerHTML = viewRehearsal(rid);
   mc.scrollTop = st;
+  if (_blockMode && !_activeNum) initBlockPinch(rid);
 }
 
 // ── Modals: Students ──────────────────────────────────────────────────────────

@@ -780,6 +780,173 @@ html, body {
 }
 .user-btn:hover { background: rgba(255,255,255,.35); }
 
+/* ── Block Navigator ─────────────────────────────────────────────────────────── */
+
+.block-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 11px 14px;
+  background: #0d1117;
+  border: 1.5px solid #1e40af;
+  border-radius: var(--r-sm);
+  color: #93c5fd;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background .15s, border-color .15s;
+}
+.block-toggle-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+.block-toggle-btn:hover { background: #1e3a8a; border-color: #3b82f6; }
+
+.block-nav {
+  background: #0d1117;
+  border-radius: var(--r);
+  border: 1.5px solid #1e40af;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.block-nav-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 9px;
+  border-bottom: 1px solid #1e3a8a;
+}
+
+.block-crumb {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: #93c5fd;
+}
+
+.block-ctrl-btn {
+  background: transparent;
+  border: 1px solid #1e3a8a;
+  color: #93c5fd;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background .12s;
+}
+.block-ctrl-btn:hover { background: #1e3a8a; }
+
+.block-grid {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  animation: blockZoom .16s ease-out;
+}
+@keyframes blockZoom {
+  from { opacity: 0; transform: scale(.93); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* Level 0–1: region blocks */
+.block-region {
+  background: #0f172a;
+  border: 1.5px solid #1e3a8a;
+  border-radius: 8px;
+  padding: 10px 8px 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  transition: border-color .12s, background .12s;
+  min-height: 110px;
+  justify-content: center;
+}
+.block-region:active { background: #1e3a8a; border-color: #3b82f6; }
+
+.bd-mini {
+  display: grid;
+  grid-template-columns: repeat(var(--bd-cols), 1fr);
+  gap: 2px;
+  width: 72px;
+}
+.bd-dot { aspect-ratio: 1; border-radius: 1px; }
+.bd-empty   { background: #1e293b; }
+.bd-filled  { background: #2563eb; }
+.bd-mistake { background: #dc2626; }
+.bd-positive { background: #16a34a; }
+
+.block-region-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #cbd5e1;
+  text-align: center;
+  line-height: 1.5;
+}
+.block-region-label span { color: #475569; font-weight: 400; font-size: 0.68rem; }
+
+/* Level 2: individual cells */
+.block-cell {
+  background: #0f172a;
+  border: 1.5px solid #1e3a8a;
+  border-radius: 6px;
+  padding: 6px 4px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 72px;
+  transition: border-color .12s, background .12s;
+}
+.block-cell:active { background: #1e3a8a; }
+.bc-empty    { opacity: .35; cursor: default; }
+.bc-assigned { }
+.bc-mistake  { background: rgba(220,38,38,.12); border-color: #7f1d1d; }
+.bc-mistake:active  { background: rgba(220,38,38,.25); }
+.bc-positive { background: rgba(22,163,74,.12); border-color: #14532d; }
+.bc-positive:active { background: rgba(22,163,74,.25); }
+
+.bc-pos  { font-size: 1rem; font-weight: 800; color: #e2e8f0; line-height: 1; }
+.bc-num  { font-size: 0.6rem; color: #475569; font-weight: 600; }
+.bc-marks { display: flex; gap: 3px; font-size: 0.62rem; font-weight: 700; line-height: 1; }
+.bc-m { color: #f87171; }
+.bc-p { color: #4ade80; }
+
+/* Footer orientation label */
+.block-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 12px 9px;
+  font-size: 0.62rem;
+  color: #334155;
+  font-weight: 600;
+  letter-spacing: .04em;
+}
+
+/* Active student header when selected from block */
+.block-active-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.block-active-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--primary);
+}
+
 .loading-view {
   display: flex;
   flex-direction: column;
