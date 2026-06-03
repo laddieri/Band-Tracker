@@ -1611,11 +1611,11 @@ function viewRehearsal(rid) {
   const attAbsent   = Object.values(allEntries).filter(e => e.attendance === 'absent').length;
   const attLate     = Object.values(allEntries).filter(e => e.attendance === 'late').length;
   const totalRoster = Object.keys(STATE.students).length;
-  const attSummary  = [
+  const attSummary  = (attAbsent || attLate) ? [
     attAbsent ? `${attAbsent} absent` : '',
     attLate   ? `${attLate} late`     : '',
-    totalRoster ? `${totalRoster - attAbsent - attLate} present` : ''
-  ].filter(Boolean).join(' · ');
+    `${totalRoster - attAbsent - attLate} present`
+  ].filter(Boolean).join(' · ') : '';
 
   return `
     <button class="att-screen-btn" onclick="navigate('attendance',{rid:'${esc(rid)}'})">
@@ -1830,9 +1830,9 @@ function viewAttendance(rid) {
     return `<div class="empty-state"><p>No students in the roster yet.</p></div>`;
   }
 
-  const absent  = students.filter(s => entries[s.number]?.attendance === 'absent').length;
-  const late    = students.filter(s => entries[s.number]?.attendance === 'late').length;
-  const present = students.length - absent - late;
+  const absent   = students.filter(s => entries[s.number]?.attendance === 'absent').length;
+  const late     = students.filter(s => entries[s.number]?.attendance === 'late').length;
+  const unmarked = students.length - absent - late; // unmarked = assumed present
 
   // Build sorted / grouped list
   let bodyHtml = '';
@@ -1885,7 +1885,7 @@ function viewAttendance(rid) {
     <div class="att-screen-summary-bar">
       <span class="att-summary-chip att-chip-absent">${absent} Absent</span>
       <span class="att-summary-chip att-chip-late">${late} Late</span>
-      <span class="att-summary-chip att-chip-present">${present} Present</span>
+      <span class="att-summary-chip att-chip-present">${unmarked} Present</span>
     </div>
 
     <div class="att-sort-row">
@@ -1909,7 +1909,7 @@ function viewAttendance(rid) {
 }
 
 function attStudentRow(rid, s, entries) {
-  const att  = entries[s.number]?.attendance || 'present';
+  const att  = entries[s.number]?.attendance || null; // null = unmarked = present
   const meta = [fmtPos(s.column, s.row), s.instrument, s.name].filter(Boolean).join(' · ');
   return `
     <div class="att-stu-row ${att === 'absent' ? 'att-stu-absent' : att === 'late' ? 'att-stu-late' : ''}">
@@ -1919,12 +1919,10 @@ function attStudentRow(rid, s, entries) {
         ${meta ? `<div class="att-stu-meta">${esc(meta)}</div>` : ''}
       </div>
       <div class="att-stu-btns">
-        <button class="att-btn att-present ${att==='present'?'att-on-present':''}"
-                onclick="setAttendance('${esc(rid)}','${esc(s.number)}','present')">✓</button>
-        <button class="att-btn att-late  ${att==='late'?'att-on-late':''}"
-                onclick="setAttendance('${esc(rid)}','${esc(s.number)}','late')">Late</button>
-        <button class="att-btn att-absent ${att==='absent'?'att-on-absent':''}"
-                onclick="setAttendance('${esc(rid)}','${esc(s.number)}','absent')">Absent</button>
+        <button class="att-btn att-late   ${att==='late'   ?'att-on-late':''}"
+                onclick="setAttendance('${esc(rid)}','${esc(s.number)}','late')">◷ Late</button>
+        <button class="att-btn att-absent ${att==='absent' ?'att-on-absent':''}"
+                onclick="setAttendance('${esc(rid)}','${esc(s.number)}','absent')">✗ Absent</button>
       </div>
     </div>`;
 }
