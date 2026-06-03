@@ -214,6 +214,7 @@ function navigate(view, params = {}) {
     _numSearch  = '';
     _blockMode  = false;
     _blockPath  = [];
+    _trackerInstrumentFilter = '';
   }
   _view   = view;
   _params = params;
@@ -226,6 +227,8 @@ function navigate(view, params = {}) {
 let _activeNum  = null;
 let _numSearch  = '';
 let _rosterSearch = '';
+let _rosterInstrumentFilter  = '';
+let _trackerInstrumentFilter = '';
 let _blockMode  = false;
 let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
 let _pendingSegment    = ''; // currently selected rehearsal segment in mark modal
@@ -652,18 +655,54 @@ function startToday() {
 
 // ── View: Roster ──────────────────────────────────────────────────────────────
 
+function instrumentsInRoster() {
+  const seen = new Set();
+  Object.values(DB.getStudents()).forEach(s => { if (s.instrument) seen.add(s.instrument); });
+  return [...seen].sort();
+}
+
+function instrumentFilterChips(activeFilter, fnName, fnFirstArg) {
+  const instruments = instrumentsInRoster();
+  if (!instruments.length) return '';
+  const call = (inst) => fnFirstArg !== undefined
+    ? `${fnName}('${esc(fnFirstArg)}','${inst}')`
+    : `${fnName}('${inst}')`;
+  return `
+    <div class="inst-filter-row">
+      <button class="inst-chip ${!activeFilter ? 'inst-active' : ''}"
+              onclick="${call('')}">All</button>
+      ${instruments.map(inst => `
+        <button class="inst-chip ${activeFilter === inst ? 'inst-active' : ''}"
+                onclick="${call(esc(inst))}">${esc(inst)}</button>
+      `).join('')}
+    </div>`;
+}
+
+function studentSuggestions(query, instrumentFilter) {
+  const q = query.toLowerCase().trim();
+  if (!q) return [];
+  return Object.values(DB.getStudents()).filter(s => {
+    if (instrumentFilter && s.instrument !== instrumentFilter) return false;
+    return (s.name||'').toLowerCase().includes(q) ||
+           String(s.number).includes(q) ||
+           (s.section||'').toLowerCase().includes(q);
+  }).sort((a,b) => String(a.number).localeCompare(String(b.number),undefined,{numeric:true}))
+    .slice(0, 10);
+}
+
 function viewRoster() {
   const students = DB.getStudents();
   const list = Object.values(students)
     .sort((a,b) => String(a.number).localeCompare(String(b.number), undefined, {numeric:true}));
 
   return `
+    ${instrumentFilterChips(_rosterInstrumentFilter, 'filterRosterInstrument')}
     <div class="search-wrap">
       <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
       </svg>
       <input class="search-input" type="search" id="roster-search"
-             placeholder="Search number, instrument, section…"
+             placeholder="Search by name, number, section…"
              value="${esc(_rosterSearch)}"
              oninput="filterRoster(this.value)" autocomplete="off">
     </div>
@@ -674,7 +713,7 @@ function viewRoster() {
         ↑ Import from CSV
       </button>
     </div>` : ''}
-    <div id="roster-list">${rosterRows(list, _rosterSearch)}</div>
+    <div id="roster-list">${rosterRows(list, _rosterSearch, _rosterInstrumentFilter)}</div>
     ${list.length === 0 ? `
       <div class="empty-state">
         <div class="empty-icon">👥</div>
@@ -684,15 +723,16 @@ function viewRoster() {
   `;
 }
 
-function rosterRows(list, search) {
+function rosterRows(list, search, instrumentFilter) {
   const q = search.toLowerCase().trim();
-  const filtered = q
-    ? list.filter(s =>
-        String(s.number).includes(q) ||
-        (s.instrument||'').toLowerCase().includes(q) ||
-        (s.section||'').toLowerCase().includes(q) ||
-        (s.name||'').toLowerCase().includes(q))
-    : list;
+  const filtered = list.filter(s => {
+    if (instrumentFilter && s.instrument !== instrumentFilter) return false;
+    if (!q) return true;
+    return String(s.number).includes(q) ||
+           (s.instrument||'').toLowerCase().includes(q) ||
+           (s.section||'').toLowerCase().includes(q) ||
+           (s.name||'').toLowerCase().includes(q);
+  });
 
   if (!filtered.length && q) {
     return `<div class="empty-state" style="padding:24px"><p>No students match "${esc(q)}"</p></div>`;
@@ -722,7 +762,20 @@ function filterRoster(val) {
   _rosterSearch = val;
   const list = Object.values(DB.getStudents())
     .sort((a,b) => String(a.number).localeCompare(String(b.number), undefined, {numeric:true}));
-  document.getElementById('roster-list').innerHTML = rosterRows(list, val);
+  document.getElementById('roster-list').innerHTML = rosterRows(list, val, _rosterInstrumentFilter);
+}
+
+function filterRosterInstrument(inst) {
+  _rosterInstrumentFilter = inst;
+  const main = document.getElementById('main-content');
+  if (main) main.innerHTML = viewRoster();
+}
+
+function filterTrackerInstrument(rid, inst) {
+  _trackerInstrumentFilter = inst;
+  _activeNum = null;
+  _numSearch = '';
+  reRender(rid);
 }
 
 // ── View: Student Detail ──────────────────────────────────────────────────────
@@ -995,15 +1048,44 @@ function viewRehearsal(rid) {
         ${activeCard}
       </div>`;
   } else {
+    const isNameSearch = _numSearch.trim() && !/^\d+$/.test(_numSearch.trim());
+    const suggestions  = isNameSearch ? studentSuggestions(_numSearch, _trackerInstrumentFilter) : [];
+    // When instrument filter is active with no text typed, list that section's students
+    const showAllForFilter = _trackerInstrumentFilter && !_numSearch.trim();
+    const allFiltered = showAllForFilter
+      ? Object.values(students)
+          .filter(s => s.instrument === _trackerInstrumentFilter)
+          .sort((a,b) => String(a.number).localeCompare(String(b.number),undefined,{numeric:true}))
+      : [];
+
     trackerSection = `
       <div class="tracker-card">
         <div class="tracker-label">Track a Student</div>
-        <input class="num-input" type="text" inputmode="numeric" pattern="[0-9]*"
-               id="num-input" placeholder="Student #"
+        ${instrumentFilterChips(_trackerInstrumentFilter, 'filterTrackerInstrument', rid)}
+        <input class="num-input" type="text" inputmode="text"
+               id="num-input" placeholder="Student # or name…"
                value="${esc(_numSearch)}"
                autocomplete="off" autocorrect="off" autocapitalize="off"
                oninput="onNumInput(this.value,'${esc(rid)}')"
                onkeydown="onNumKey(event,'${esc(rid)}')">
+        ${isNameSearch && suggestions.length > 0 ? `
+          <div class="student-suggestions">
+            ${suggestions.map(s => `
+              <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
+                <span class="suggestion-num">#${esc(s.number)}</span>
+                <span class="suggestion-name">${esc(s.name || '—')}</span>
+                <span class="suggestion-detail">${esc([fmtPos(s.column,s.row),s.instrument].filter(Boolean).join(' · '))}</span>
+              </div>`).join('')}
+          </div>` : ''}
+        ${showAllForFilter && !_activeNum ? `
+          <div class="student-suggestions">
+            ${allFiltered.map(s => `
+              <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
+                <span class="suggestion-num">#${esc(s.number)}</span>
+                <span class="suggestion-name">${esc(s.name || '—')}</span>
+                <span class="suggestion-detail">${esc(fmtPos(s.column,s.row))}</span>
+              </div>`).join('')}
+          </div>` : ''}
         ${activeCard}
         ${!_activeNum ? `
           <button class="block-toggle-btn" onclick="toggleBlockMode('${esc(rid)}')">
@@ -1049,7 +1131,16 @@ function viewRehearsal(rid) {
 
 function onNumInput(val, rid) {
   _numSearch = val;
-  _activeNum = val.trim() || null;
+  const trimmed = val.trim();
+  if (!trimmed) {
+    _activeNum = null;
+  } else if (/^\d+$/.test(trimmed)) {
+    // Pure number: direct select (existing behaviour)
+    _activeNum = trimmed;
+  } else {
+    // Name/text search: only select when user taps a suggestion
+    _activeNum = null;
+  }
   reRender(rid);
 }
 

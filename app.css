@@ -725,6 +725,85 @@ html, body {
   flex-shrink: 0;
 }
 
+/* ── Instrument Filter Chips ─────────────────────────────────────────────────── */
+
+.inst-filter-row {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 6px;
+  padding: 12px 16px 4px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.inst-filter-row::-webkit-scrollbar { display: none; }
+.inst-chip {
+  flex-shrink: 0;
+  background: var(--card-bg);
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  padding: 5px 14px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.inst-chip:hover { border-color: var(--primary); color: var(--primary); }
+.inst-chip.inst-active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+/* Tracker instrument chips live inside the card (no horizontal padding needed) */
+.tracker-card .inst-filter-row { padding: 0 0 8px; }
+
+/* ── Student Name Suggestions ────────────────────────────────────────────────── */
+
+.student-suggestions {
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  margin-top: 4px;
+  margin-bottom: 4px;
+  background: var(--card-bg);
+}
+.suggestion-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background .1s;
+  border-bottom: 1px solid var(--border);
+}
+.suggestion-row:last-child { border-bottom: none; }
+.suggestion-row:hover, .suggestion-row:active { background: var(--hover-bg, #f1f5f9); }
+.suggestion-num {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  min-width: 36px;
+}
+.suggestion-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.suggestion-detail {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 /* ── Student Portal ─────────────────────────────────────────────────────────── */
 
 .portal-view {
