@@ -629,6 +629,14 @@ html, body {
 }
 .event-note-inp:focus { outline: none; border-color: var(--primary); }
 
+.event-note-by {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-style: italic;
+  white-space: nowrap;
+}
+
 /* ── CSV Import ─────────────────────────────────────────────────────────────── */
 
 .import-hint {
