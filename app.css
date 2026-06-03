@@ -579,6 +579,56 @@ html, body {
 .mb-12 { margin-bottom: 12px; }
 .mb-16 { margin-bottom: 16px; }
 
+/* ── Per-event notes ────────────────────────────────────────────────────────── */
+
+.event-notes-section {
+  background: #f8fafc;
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+
+.event-notes-hdr {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.event-note-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.event-note-row:last-child { margin-bottom: 0; }
+
+.event-note-type {
+  font-size: 1rem;
+  font-weight: 700;
+  width: 20px;
+  flex-shrink: 0;
+  text-align: center;
+}
+.event-note-type.is-mistake  { color: var(--danger); }
+.event-note-type.is-positive { color: var(--success); }
+
+.event-note-inp {
+  flex: 1;
+  padding: 7px 10px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 0.875rem;
+  font-family: inherit;
+  background: var(--surface);
+  color: var(--text);
+  transition: border-color .15s;
+  min-width: 0;
+}
+.event-note-inp:focus { outline: none; border-color: var(--primary); }
+
 /* ── CSV Import ─────────────────────────────────────────────────────────────── */
 
 .import-hint {
