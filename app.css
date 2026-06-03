@@ -1686,3 +1686,114 @@ html, body {
 .att-portal-badge-absent { background: var(--danger-bg); color: var(--danger); }
 .att-portal-badge-late   { background: #fef9c3; color: #854d0e; }
 .pss-na   { background: #f1f5f9; color: var(--text-muted); }
+
+/* ── Take Attendance button (rehearsal page) ─────────────────────────────────── */
+
+.att-screen-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 13px 16px;
+  background: var(--surface);
+  border: 2px solid var(--primary);
+  border-radius: var(--r);
+  cursor: pointer;
+  font-family: inherit;
+  margin-bottom: 14px;
+  transition: background .15s, box-shadow .15s;
+  box-shadow: var(--shadow);
+}
+.att-screen-btn:hover  { background: #eff6ff; box-shadow: var(--shadow-md); }
+.att-screen-btn:active { transform: scale(.985); }
+.att-screen-btn-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+.att-screen-btn-summary {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* ── Attendance screen ───────────────────────────────────────────────────────── */
+
+.att-chip-present { background: var(--success-bg); color: var(--success); }
+
+.att-screen-summary-bar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.att-sort-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.att-sort-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.att-sort-chip {
+  padding: 5px 14px;
+  border-radius: 20px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color .12s, color .12s, background .12s;
+}
+.att-sort-chip:hover { border-color: var(--primary); color: var(--primary); }
+.att-sort-active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
+
+.att-group-hdr {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--text-muted);
+  padding: 10px 0 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2px;
+}
+.att-group-hdr:first-child { padding-top: 0; }
+
+.att-stu-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  transition: background .1s;
+}
+.att-stu-row:last-child { border-bottom: none; }
+.att-stu-absent { background: #fff5f5; border-radius: var(--r-sm); padding-left: 8px; padding-right: 8px; }
+.att-stu-late   { background: #fefce8; border-radius: var(--r-sm); padding-left: 8px; padding-right: 8px; }
+
+.att-stu-info { flex: 1; min-width: 0; }
+.att-stu-num  { font-size: 0.8rem; font-weight: 700; color: var(--primary); margin-right: 6px; }
+.att-stu-name { font-size: 0.9rem; font-weight: 600; }
+.att-stu-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 1px; }
+
+.att-stu-btns { display: flex; gap: 5px; flex-shrink: 0; }
+.att-present   { background: var(--success-bg); color: var(--success); border-color: #86efac; }
+.att-on-present { background: var(--success); color: white; border-color: var(--success); }

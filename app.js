@@ -247,6 +247,7 @@ let _rosterSearch = '';
 let _rosterInstrumentFilter  = '';
 let _trackerInstrumentFilter = '';
 let _songSectionFilter       = '';
+let _attSort                 = 'instrument'; // attendance screen sort: instrument | row | column
 let _blockMode  = false;
 let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
 let _pendingSegment    = ''; // currently selected rehearsal segment in mark modal
@@ -411,9 +412,10 @@ function render() {
   const isTop = ['home','roster','rehearsals','songs'].includes(_view);
   backBtn.classList.toggle('hidden', isTop);
   backBtn.onclick = () => {
-    if (_view === 'student')   navigate('roster');
-    else if (_view === 'rehearsal') navigate('rehearsals');
-    else if (_view === 'song') navigate('songs');
+    if (_view === 'student')    navigate('roster');
+    else if (_view === 'rehearsal')  navigate('rehearsals');
+    else if (_view === 'attendance') navigate('rehearsal', { rid: _params.rid });
+    else if (_view === 'song')  navigate('songs');
     else navigate('home');
   };
 
@@ -421,9 +423,10 @@ function render() {
     const match = t.dataset.view;
     t.classList.toggle('active',
       match === _view ||
-      (_view === 'student'   && match === 'roster') ||
-      (_view === 'rehearsal' && match === 'rehearsals') ||
-      (_view === 'song'      && match === 'songs')
+      (_view === 'student'    && match === 'roster') ||
+      (_view === 'rehearsal'  && match === 'rehearsals') ||
+      (_view === 'attendance' && match === 'rehearsals') ||
+      (_view === 'song'       && match === 'songs')
     );
   });
 
@@ -462,6 +465,13 @@ function render() {
       actions.innerHTML = optBtn(`showRehearsalOptions('${esc(_params.rid)}')`) + userBtn();
       main.innerHTML = viewRehearsal(_params.rid);
       if (_blockMode && !_activeNum) initBlockPinch(_params.rid);
+      break;
+    }
+
+    case 'attendance': {
+      title.textContent = 'Take Attendance';
+      actions.innerHTML = userBtn();
+      main.innerHTML = viewAttendance(_params.rid);
       break;
     }
 
@@ -1596,7 +1606,28 @@ function viewRehearsal(rid) {
       </div>`;
   }
 
+  // Attendance summary for the button
+  const allEntries  = STATE.entries[rid] || {};
+  const attAbsent   = Object.values(allEntries).filter(e => e.attendance === 'absent').length;
+  const attLate     = Object.values(allEntries).filter(e => e.attendance === 'late').length;
+  const totalRoster = Object.keys(STATE.students).length;
+  const attSummary  = [
+    attAbsent ? `${attAbsent} absent` : '',
+    attLate   ? `${attLate} late`     : '',
+    totalRoster ? `${totalRoster - attAbsent - attLate} present` : ''
+  ].filter(Boolean).join(' · ');
+
   return `
+    <button class="att-screen-btn" onclick="navigate('attendance',{rid:'${esc(rid)}'})">
+      <div class="att-screen-btn-label">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;flex-shrink:0">
+          <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+        </svg>
+        Take Attendance
+      </div>
+      ${attSummary ? `<div class="att-screen-btn-summary">${attSummary}</div>` : ''}
+    </button>
+
     ${trackerSection}
 
     ${(() => {
@@ -1788,6 +1819,137 @@ function confirmMark(rid, num, type, note) {
 function confirmMarkCustom(rid, num, type) {
   const note = document.getElementById('mark-note-input')?.value.trim() || '';
   confirmMark(rid, num, type, note);
+}
+
+// ── Attendance Screen ─────────────────────────────────────────────────────────
+
+function viewAttendance(rid) {
+  const students = Object.values(DB.getStudents());
+  const entries  = STATE.entries[rid] || {};
+  if (!students.length) {
+    return `<div class="empty-state"><p>No students in the roster yet.</p></div>`;
+  }
+
+  const absent  = students.filter(s => entries[s.number]?.attendance === 'absent').length;
+  const late    = students.filter(s => entries[s.number]?.attendance === 'late').length;
+  const present = students.length - absent - late;
+
+  // Build sorted / grouped list
+  let bodyHtml = '';
+
+  if (_attSort === 'instrument') {
+    const groups = {};
+    for (const s of students) {
+      const key = s.instrument || '(No instrument)';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(s);
+    }
+    for (const [inst, list] of Object.entries(groups).sort(([a],[b]) => a.localeCompare(b))) {
+      list.sort((a,b) => String(a.number).localeCompare(String(b.number),undefined,{numeric:true}));
+      bodyHtml += `<div class="att-group-hdr">${esc(inst)}</div>`;
+      bodyHtml += list.map(s => attStudentRow(rid, s, entries)).join('');
+    }
+  } else if (_attSort === 'row') {
+    const groups = {};
+    for (const s of students) {
+      const key = s.row != null ? String(s.row) : '—';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(s);
+    }
+    const sorted = Object.entries(groups).sort(([a],[b]) =>
+      a === '—' ? 1 : b === '—' ? -1 : Number(a) - Number(b)
+    );
+    for (const [row, list] of sorted) {
+      list.sort((a,b) => String(a.column||'').localeCompare(String(b.column||'')));
+      bodyHtml += `<div class="att-group-hdr">Row ${esc(row)}</div>`;
+      bodyHtml += list.map(s => attStudentRow(rid, s, entries)).join('');
+    }
+  } else { // column
+    const groups = {};
+    for (const s of students) {
+      const key = s.column || '—';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(s);
+    }
+    const sorted = Object.entries(groups).sort(([a],[b]) =>
+      a === '—' ? 1 : b === '—' ? -1 : a.localeCompare(b)
+    );
+    for (const [col, list] of sorted) {
+      list.sort((a,b) => Number(a.row||0) - Number(b.row||0));
+      bodyHtml += `<div class="att-group-hdr">Column ${esc(col)}</div>`;
+      bodyHtml += list.map(s => attStudentRow(rid, s, entries)).join('');
+    }
+  }
+
+  return `
+    <div class="att-screen-summary-bar">
+      <span class="att-summary-chip att-chip-absent">${absent} Absent</span>
+      <span class="att-summary-chip att-chip-late">${late} Late</span>
+      <span class="att-summary-chip att-chip-present">${present} Present</span>
+    </div>
+
+    <div class="att-sort-row">
+      <span class="att-sort-label">Sort by</span>
+      <button class="att-sort-chip ${_attSort==='instrument'?'att-sort-active':''}"
+              onclick="setAttSort('instrument','${esc(rid)}')">Instrument</button>
+      <button class="att-sort-chip ${_attSort==='row'?'att-sort-active':''}"
+              onclick="setAttSort('row','${esc(rid)}')">Row</button>
+      <button class="att-sort-chip ${_attSort==='column'?'att-sort-active':''}"
+              onclick="setAttSort('column','${esc(rid)}')">Column</button>
+    </div>
+
+    <button class="btn btn-secondary btn-full mb-12" onclick="markAllPresent('${esc(rid)}')">
+      ✓ Mark All Present
+    </button>
+
+    <div class="att-student-list">
+      ${bodyHtml}
+    </div>
+  `;
+}
+
+function attStudentRow(rid, s, entries) {
+  const att  = entries[s.number]?.attendance || 'present';
+  const meta = [fmtPos(s.column, s.row), s.instrument, s.name].filter(Boolean).join(' · ');
+  return `
+    <div class="att-stu-row ${att === 'absent' ? 'att-stu-absent' : att === 'late' ? 'att-stu-late' : ''}">
+      <div class="att-stu-info">
+        <span class="att-stu-num">#${esc(s.number)}</span>
+        ${s.name ? `<span class="att-stu-name">${esc(s.name)}</span>` : ''}
+        ${meta ? `<div class="att-stu-meta">${esc(meta)}</div>` : ''}
+      </div>
+      <div class="att-stu-btns">
+        <button class="att-btn att-present ${att==='present'?'att-on-present':''}"
+                onclick="setAttendance('${esc(rid)}','${esc(s.number)}','present')">✓</button>
+        <button class="att-btn att-late  ${att==='late'?'att-on-late':''}"
+                onclick="setAttendance('${esc(rid)}','${esc(s.number)}','late')">Late</button>
+        <button class="att-btn att-absent ${att==='absent'?'att-on-absent':''}"
+                onclick="setAttendance('${esc(rid)}','${esc(s.number)}','absent')">Absent</button>
+      </div>
+    </div>`;
+}
+
+function setAttSort(sort, rid) {
+  _attSort = sort;
+  const mc = document.getElementById('main-content');
+  if (mc) { const st = mc.scrollTop; mc.innerHTML = viewAttendance(rid); mc.scrollTop = st; }
+}
+
+async function markAllPresent(rid) {
+  const entries = STATE.entries[rid] || {};
+  const marked  = Object.entries(entries).filter(([, e]) => e.attendance);
+  if (!marked.length) { showToast('All students already marked present.'); return; }
+  const batch = db.batch();
+  for (const [num] of marked) {
+    const docId = `${rid}_${num}`;
+    batch.update(db.collection('entries').doc(docId), {
+      attendance: firebase.firestore.FieldValue.delete()
+    });
+    STATE.entries[rid][num] = { ...STATE.entries[rid][num], attendance: null };
+  }
+  await batch.commit();
+  showToast(`${marked.length} student${marked.length !== 1 ? 's' : ''} marked present.`);
+  reRender(rid);
 }
 
 function setAttendance(rid, num, status) {
@@ -2086,6 +2248,8 @@ function reRender(rid) {
   const st = mc.scrollTop;
   if (_view === 'student') {
     mc.innerHTML = viewStudent(_params.num);
+  } else if (_view === 'attendance') {
+    mc.innerHTML = viewAttendance(rid);
   } else {
     mc.innerHTML = viewRehearsal(rid);
     if (_blockMode && !_activeNum) initBlockPinch(rid);
