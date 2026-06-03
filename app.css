@@ -311,6 +311,27 @@ html, body {
 .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
 .modal-actions .btn { flex: 1; }
 
+.quick-note-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 4px;
+}
+.quick-note-btn {
+  padding: 10px 15px;
+  border-radius: 50px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  border: 2px solid transparent;
+  line-height: 1;
+  transition: transform .1s, filter .1s;
+}
+.quick-note-btn:active { transform: scale(.94); filter: brightness(.88); }
+.quick-note-btn.is-mistake  { background: var(--danger-bg);  color: var(--danger);  border-color: #fca5a5; }
+.quick-note-btn.is-positive { background: var(--success-bg); color: var(--success); border-color: #86efac; }
+
 /* ── Toast ──────────────────────────────────────────────────────────────── */
 
 #toast-container {
