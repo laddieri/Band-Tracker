@@ -658,6 +658,19 @@ html, body {
   font-style: italic;
   white-space: nowrap;
 }
+.event-note-del {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+  opacity: 0.4;
+  transition: opacity .15s, color .15s;
+}
+.event-note-del:hover { opacity: 1; color: var(--danger); }
 
 /* ── Segment / Rehearsal Plan ───────────────────────────────────────────────── */
 
