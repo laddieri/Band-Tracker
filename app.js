@@ -167,6 +167,7 @@ let _numSearch  = '';
 let _rosterSearch = '';
 let _blockMode  = false;
 let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
+let _pendingSegment = ''; // currently selected rehearsal segment in mark modal
 
 // ── Debounce store for note fields ────────────────────────────────────────────
 
@@ -649,8 +650,8 @@ function viewStudent(num) {
       <div class="section-title">Rehearsal History</div>
       ${hist.map(({rehearsal:r, entry:e}) => {
         const evts = e.events || [];
-        const mn = evts.filter(ev=>ev.type==='mistake' &&ev.note.trim()).map(ev=>esc(ev.note)+(ev.by?` <em style="opacity:.6">(${esc(dirLabel(ev.by))})</em>`:''));
-        const pn = evts.filter(ev=>ev.type==='positive'&&ev.note.trim()).map(ev=>esc(ev.note)+(ev.by?` <em style="opacity:.6">(${esc(dirLabel(ev.by))})</em>`:''));
+        const mn = evts.filter(ev=>ev.type==='mistake' &&ev.note.trim()).map(ev=>(ev.segment?`<span class="event-seg">${esc(ev.segment)}</span> `:'') +esc(ev.note)+(ev.by?` <em style="opacity:.6">(${esc(dirLabel(ev.by))})</em>`:''));
+        const pn = evts.filter(ev=>ev.type==='positive'&&ev.note.trim()).map(ev=>(ev.segment?`<span class="event-seg">${esc(ev.segment)}</span> `:'') +esc(ev.note)+(ev.by?` <em style="opacity:.6">(${esc(dirLabel(ev.by))})</em>`:''));
         return `
         <div class="history-row ${e.mistakes>0?'had-mistakes':''} ${e.positives>0&&!e.mistakes?'had-positives':''}"
              onclick="navigate('rehearsal',{rid:'${esc(r.id)}'})">
@@ -786,6 +787,7 @@ function viewRehearsal(rid) {
           ${allEvts.map((e,i) => `
             <div class="event-note-row">
               <span class="event-note-type ${e.type==='mistake'?'is-mistake':'is-positive'}">${e.type==='mistake'?'✗':'✓'}</span>
+              ${e.segment ? `<span class="event-seg">${esc(e.segment)}</span>` : ''}
               <input type="text" class="event-note-inp"
                      placeholder="what happened…"
                      value="${esc(e.note)}"
@@ -933,8 +935,25 @@ function showMarkModal(rid, num, type) {
   const isMistake = type === 'mistake';
   const presets   = isMistake ? MISTAKE_PRESETS : POSITIVE_PRESETS;
   const btnCls    = isMistake ? 'is-mistake' : 'is-positive';
+  const r         = DB.getRehearsals().find(r => r.id === rid);
+  const segments  = r?.segments || [];
+
+  const segHtml = segments.length ? `
+    <div class="form-label" style="margin-bottom:7px">Which part of rehearsal?</div>
+    <div class="seg-chip-row">
+      ${segments.map(s => `
+        <button class="seg-chip${_pendingSegment === s ? ' seg-selected' : ''}"
+                data-seg="${esc(s)}"
+                onclick="selectSegment('${esc(s)}')">
+          ${esc(s)}
+        </button>`).join('')}
+    </div>
+    <div class="form-label" style="margin:14px 0 7px">${isMistake ? 'What was the mistake?' : 'What went well?'}</div>
+  ` : '';
+
   openModal(`
-    <div class="modal-title">${isMistake ? '✗ What was the mistake?' : '✓ What went well?'}</div>
+    <div class="modal-title">${isMistake ? '✗ Log Mistake' : '✓ Log Positive'}</div>
+    ${segHtml}
     <div class="quick-note-grid">
       ${presets.map(p => `
         <button class="quick-note-btn ${btnCls}"
@@ -957,13 +976,14 @@ function showMarkModal(rid, num, type) {
 }
 
 function confirmMark(rid, num, type, note) {
+  const segment = _pendingSegment;
   closeModal();
   const field  = type === 'mistake' ? 'mistakes' : 'positives';
   const ents   = DB.getRehearsalEntries(rid);
   const cur    = ents[num] || { mistakes:0, positives:0, notes:'', events:[] };
   const newVal = (cur[field]||0) + 1;
   const events = [...(cur.events || [])];
-  events.push({ type, note: note || '', ts: Date.now(), by: STATE.user?.email || '' });
+  events.push({ type, note: note || '', segment, ts: Date.now(), by: STATE.user?.email || '' });
   if (!STATE.entries[rid]) STATE.entries[rid] = {};
   STATE.entries[rid][num] = { ...cur, [field]: newVal, events };
   fsUpsertEntry(rid, num, { mistakes: STATE.entries[rid][num].mistakes, positives: STATE.entries[rid][num].positives, notes: STATE.entries[rid][num].notes || '', events });
@@ -1358,6 +1378,7 @@ function saveNewRehearsal() {
 function showRehearsalOptions(rid) {
   const r = DB.getRehearsals().find(r => r.id === rid);
   if (!r) return;
+  const segments = r.segments || [];
   openModal(`
     <div class="modal-title">Rehearsal Options</div>
     <div class="form-group">
@@ -1369,10 +1390,31 @@ function showRehearsalOptions(rid) {
       <input class="form-input" id="m-label" type="text" value="${esc(r.label||'')}"
              placeholder="e.g. Evening, Full Band…" autocomplete="off">
     </div>
-    <div class="modal-actions">
+    <div class="modal-actions" style="margin-bottom:0">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveRehearsalEdit('${esc(rid)}')">Save</button>
     </div>
+
+    <div class="section-title" style="margin-top:24px">Rehearsal Plan</div>
+    <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:10px">
+      Segments let directors tag which part of rehearsal a mark was noticed in.
+    </p>
+    ${segments.length ? `
+      <div class="seg-plan-list">
+        ${segments.map((s, i) => `
+          <div class="seg-plan-item">
+            <span>${esc(s)}</span>
+            ${STATE.isAdmin ? `<button class="seg-plan-remove" onclick="removeSegment('${esc(rid)}',${i})" title="Remove">×</button>` : ''}
+          </div>`).join('')}
+      </div>` : `<p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:10px">No segments added yet.</p>`}
+    ${STATE.isAdmin ? `
+      <div class="flex gap-8">
+        <input class="form-input" id="seg-input" type="text"
+               placeholder="e.g. Warmup, Closer drill…" autocomplete="off"
+               onkeydown="if(event.key==='Enter')addSegment('${esc(rid)}')">
+        <button class="btn btn-primary btn-sm" style="flex-shrink:0" onclick="addSegment('${esc(rid)}')">+ Add</button>
+      </div>` : ''}
+
     <div class="danger-zone">
       <div class="danger-zone-title">Danger Zone</div>
       <button class="btn btn-danger btn-full" onclick="confirmDeleteRehearsal('${esc(rid)}')">
@@ -1380,6 +1422,34 @@ function showRehearsalOptions(rid) {
       </button>
     </div>
   `);
+}
+
+function addSegment(rid) {
+  const inp  = document.getElementById('seg-input');
+  const name = inp?.value.trim();
+  if (!name) return;
+  const r = STATE.rehearsals.find(r => r.id === rid);
+  if (!r) return;
+  const segments = [...(r.segments || []), name];
+  r.segments = segments;
+  db.collection('rehearsals').doc(rid).set({ segments }, { merge: true });
+  showRehearsalOptions(rid);
+}
+
+function removeSegment(rid, idx) {
+  const r = STATE.rehearsals.find(r => r.id === rid);
+  if (!r) return;
+  const segments = (r.segments || []).filter((_, i) => i !== idx);
+  r.segments = segments;
+  db.collection('rehearsals').doc(rid).set({ segments }, { merge: true });
+  showRehearsalOptions(rid);
+}
+
+function selectSegment(name) {
+  _pendingSegment = (_pendingSegment === name) ? '' : name;
+  document.querySelectorAll('.seg-chip').forEach(el => {
+    el.classList.toggle('seg-selected', el.dataset.seg === _pendingSegment);
+  });
 }
 
 function saveRehearsalEdit(rid) {

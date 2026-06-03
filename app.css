@@ -658,6 +658,72 @@ html, body {
   white-space: nowrap;
 }
 
+/* ── Segment / Rehearsal Plan ───────────────────────────────────────────────── */
+
+.seg-plan-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 10px;
+}
+.seg-plan-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f1f5f9;
+  border-radius: var(--r-sm);
+  padding: 6px 10px;
+  font-size: 0.88rem;
+  color: var(--text);
+}
+.seg-plan-item span { flex: 1; }
+.seg-plan-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 2px;
+}
+.seg-plan-remove:hover { color: var(--danger); }
+
+.seg-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 4px;
+}
+.seg-chip {
+  background: #e0e7ff;
+  color: #3730a3;
+  border: 1.5px solid #c7d2fe;
+  border-radius: 20px;
+  padding: 5px 14px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.seg-chip:hover { background: #c7d2fe; }
+.seg-chip.seg-selected {
+  background: #4f46e5;
+  color: #fff;
+  border-color: #4f46e5;
+}
+
+.event-seg {
+  display: inline-block;
+  background: #e0e7ff;
+  color: #3730a3;
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 /* ── CSV Import ─────────────────────────────────────────────────────────────── */
 
 .import-hint {
