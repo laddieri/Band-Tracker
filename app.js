@@ -1017,8 +1017,6 @@ function blockZoomOut(rid) {
 }
 
 function blockSelect(num, rid) {
-  _blockMode = false;
-  _blockPath = [];
   pickStudent(String(num), rid);
 }
 
