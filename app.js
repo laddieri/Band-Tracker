@@ -34,10 +34,11 @@ const STATE = {
   authChecking: true,
   loading:      true,
   isAdmin:      false,
-  studentNum:   null, // student number linked to logged-in user's email
+  studentNum:   null,
   students:     {},
   rehearsals:   [],
   entries:      {},
+  songs:        [],
   _unsubs:      []
 };
 
@@ -78,7 +79,7 @@ function startListeners() {
 
   function tick(key) {
     loaded.add(key);
-    if (loaded.size >= 3 && STATE.loading) {
+    if (loaded.size >= 4 && STATE.loading) {
       // All collections loaded — reject anonymous sessions with no valid student code
       if (STATE.user?.isAnonymous && !STATE.studentNum) {
         localStorage.removeItem('bandStudentCode');
@@ -167,6 +168,13 @@ function startListeners() {
         }
       });
       tick('entries');
+    }),
+
+    db.collection('songs').onSnapshot(snap => {
+      STATE.songs = snap.docs
+        .map(d => ({ ...d.data(), id: d.id }))
+        .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
+      tick('songs');
     })
   );
 
@@ -201,6 +209,7 @@ auth.onAuthStateChanged(user => {
     STATE.students   = {};
     STATE.rehearsals = [];
     STATE.entries    = {};
+    STATE.songs      = [];
     render();
   }
 });
@@ -218,6 +227,9 @@ function navigate(view, params = {}) {
     _blockPath  = [];
     _trackerInstrumentFilter = '';
   }
+  if (_view === 'song' && view !== 'song') {
+    _songSectionFilter = '';
+  }
   _view   = view;
   _params = params;
   render();
@@ -231,6 +243,7 @@ let _numSearch  = '';
 let _rosterSearch = '';
 let _rosterInstrumentFilter  = '';
 let _trackerInstrumentFilter = '';
+let _songSectionFilter       = '';
 let _blockMode  = false;
 let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
 let _pendingSegment    = ''; // currently selected rehearsal segment in mark modal
@@ -384,11 +397,12 @@ function render() {
     return;
   }
 
-  const isTop = ['home','roster','rehearsals'].includes(_view);
+  const isTop = ['home','roster','rehearsals','songs'].includes(_view);
   backBtn.classList.toggle('hidden', isTop);
   backBtn.onclick = () => {
-    if (_view === 'student')    navigate('roster');
+    if (_view === 'student')   navigate('roster');
     else if (_view === 'rehearsal') navigate('rehearsals');
+    else if (_view === 'song') navigate('songs');
     else navigate('home');
   };
 
@@ -396,8 +410,9 @@ function render() {
     const match = t.dataset.view;
     t.classList.toggle('active',
       match === _view ||
-      (_view === 'student'    && match === 'roster') ||
-      (_view === 'rehearsal'  && match === 'rehearsals')
+      (_view === 'student'   && match === 'roster') ||
+      (_view === 'rehearsal' && match === 'rehearsals') ||
+      (_view === 'song'      && match === 'songs')
     );
   });
 
@@ -436,6 +451,20 @@ function render() {
       actions.innerHTML = optBtn(`showRehearsalOptions('${esc(_params.rid)}')`) + userBtn();
       main.innerHTML = viewRehearsal(_params.rid);
       if (_blockMode && !_activeNum) initBlockPinch(_params.rid);
+      break;
+    }
+
+    case 'songs':
+      title.textContent = 'Songs';
+      actions.innerHTML = (STATE.isAdmin ? addBtn('showAddSongModal()') : '') + userBtn();
+      main.innerHTML = viewSongs();
+      break;
+
+    case 'song': {
+      const song = STATE.songs.find(s => s.id === _params.sid);
+      title.textContent = song?.title || 'Song';
+      actions.innerHTML = (STATE.isAdmin ? editBtn(`showEditSongModal('${esc(_params.sid)}')`) : '') + userBtn();
+      main.innerHTML = viewSong(_params.sid);
       break;
     }
   }
@@ -811,6 +840,235 @@ function filterTrackerInstrument(rid, inst) {
 
 // ── View: Student Detail ──────────────────────────────────────────────────────
 
+// ── View: Songs ───────────────────────────────────────────────────────────────
+
+function viewSongs() {
+  const songs    = STATE.songs;
+  const total    = Object.keys(STATE.students).length;
+
+  return `
+    ${songs.length === 0 ? `
+      <div class="empty-state" style="padding:48px 24px">
+        <div class="empty-icon">🎵</div>
+        <p>No songs added yet.</p>
+        ${STATE.isAdmin ? `<p>Tap <strong>+</strong> to add a song to memorize.</p>` : ''}
+      </div>` : `
+      <div style="padding:8px 0">
+        ${songs.map(song => {
+          const passed  = Object.values(song.statuses || {}).filter(s => s.status === 'passed').length;
+          const failed  = Object.values(song.statuses || {}).filter(s => s.status === 'failed').length;
+          const pct     = total ? Math.round(passed / total * 100) : 0;
+          const overdue = song.dueDate && song.dueDate < today();
+          return `
+          <div class="song-row" onclick="navigate('song',{sid:'${esc(song.id)}'})">
+            <div class="song-row-info">
+              <div class="song-row-title">${esc(song.title)}</div>
+              ${song.dueDate ? `<div class="song-row-due ${overdue ? 'song-overdue' : ''}">
+                Due ${fmtDate(song.dueDate)}${overdue ? ' — overdue' : ''}
+              </div>` : ''}
+            </div>
+            <div class="song-row-right">
+              <div class="song-prog-wrap">
+                <div class="song-prog-bar"><div class="song-prog-fill" style="width:${pct}%"></div></div>
+                <div class="song-prog-lbl">${passed}✓ ${failed > 0 ? `${failed}✗ ` : ''}/ ${total}</div>
+              </div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`}
+  `;
+}
+
+function viewSong(sid) {
+  const song = STATE.songs.find(s => s.id === sid);
+  if (!song) return `<div class="empty-state"><p>Song not found.</p></div>`;
+
+  const students = Object.values(DB.getStudents())
+    .sort((a, b) => String(a.number).localeCompare(String(b.number), undefined, {numeric:true}));
+  const statuses  = song.statuses || {};
+  const getStatus = num => statuses[String(num)]?.status || 'not_attempted';
+
+  const passed  = students.filter(s => getStatus(s.number) === 'passed').length;
+  const failed  = students.filter(s => getStatus(s.number) === 'failed').length;
+  const notAtt  = students.filter(s => getStatus(s.number) === 'not_attempted').length;
+  const sections = sectionsInRoster();
+
+  return `
+    <div class="song-detail-view">
+      ${song.dueDate ? `<div class="song-detail-due ${song.dueDate < today() ? 'song-overdue' : ''}">
+        Due ${fmtDate(song.dueDate)}${song.dueDate < today() ? ' — overdue' : ''}
+      </div>` : ''}
+
+      <div class="song-stats-row">
+        <div class="song-stat song-stat-pass"><div class="song-stat-val">${passed}</div><div class="song-stat-lbl">Passed</div></div>
+        <div class="song-stat song-stat-fail"><div class="song-stat-val">${failed}</div><div class="song-stat-lbl">Failed</div></div>
+        <div class="song-stat song-stat-na">  <div class="song-stat-val">${notAtt}</div><div class="song-stat-lbl">Not Attempted</div></div>
+      </div>
+
+      ${sections.length ? instrumentFilterChips(_songSectionFilter, 'filterSongSection', sid) : ''}
+
+      <div id="song-student-list">
+        ${songStudentRows(sid, students, statuses)}
+      </div>
+    </div>`;
+}
+
+function songStudentRows(sid, students, statuses) {
+  const getStatus  = num => statuses[String(num)]?.status || 'not_attempted';
+  const getMeta    = num => {
+    const s = statuses[String(num)];
+    if (!s || s.status === 'not_attempted') return '';
+    return [s.updatedBy ? dirLabel(s.updatedBy) : '', s.updatedAt ? fmtTime(s.updatedAt) : ''].filter(Boolean).join(' · ');
+  };
+  const filtered = _songSectionFilter
+    ? students.filter(s => s.section === _songSectionFilter)
+    : students;
+
+  if (!filtered.length) return `<div class="empty-state" style="padding:24px"><p>No students in this section.</p></div>`;
+
+  return filtered.map(s => {
+    const status = getStatus(s.number);
+    const meta   = getMeta(s.number);
+    return `
+      <div class="song-stu-row">
+        <div class="song-stu-info">
+          <span class="song-stu-num">#${esc(s.number)}</span>
+          ${s.name ? `<span class="song-stu-name">${esc(s.name)}</span>` : ''}
+          <span class="song-stu-status ${status === 'passed' ? 'sss-pass' : status === 'failed' ? 'sss-fail' : 'sss-na'}">
+            ${status === 'passed' ? '✓ Passed' : status === 'failed' ? '✗ Failed' : '— Not Attempted'}
+          </span>
+          ${meta ? `<span class="song-stu-meta">${esc(meta)}</span>` : ''}
+        </div>
+        <div class="song-stu-btns">
+          <button class="ssb ${status === 'passed' ? 'ssb-on-pass' : 'ssb-pass'}"
+                  onclick="setSongStatus('${esc(sid)}','${esc(s.number)}','passed')">✓</button>
+          <button class="ssb ${status === 'failed' ? 'ssb-on-fail' : 'ssb-fail'}"
+                  onclick="setSongStatus('${esc(sid)}','${esc(s.number)}','failed')">✗</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function filterSongSection(sid, section) {
+  _songSectionFilter = section;
+  const song     = STATE.songs.find(s => s.id === sid);
+  const students = Object.values(DB.getStudents())
+    .sort((a, b) => String(a.number).localeCompare(String(b.number), undefined, {numeric:true}));
+  // Re-render the full song view so filter chips update active state
+  document.getElementById('main-content').innerHTML = viewSong(sid);
+}
+
+function setSongStatus(sid, num, newStatus) {
+  const song = STATE.songs.find(s => s.id === sid);
+  if (!song) return;
+  if (!song.statuses) song.statuses = {};
+
+  const curStatus = song.statuses[String(num)]?.status || 'not_attempted';
+  // Tapping the active button resets to not_attempted
+  const status = curStatus === newStatus ? 'not_attempted' : newStatus;
+
+  if (status === 'not_attempted') {
+    delete song.statuses[String(num)];
+    db.collection('songs').doc(sid).update({
+      [`statuses.${num}`]: firebase.firestore.FieldValue.delete()
+    }).catch(() => {
+      // Document may not exist yet — use set+merge instead
+      db.collection('songs').doc(sid).set({ statuses: song.statuses }, { merge: false });
+    });
+  } else {
+    song.statuses[String(num)] = { status, updatedAt: Date.now(), updatedBy: STATE.user?.email || '' };
+    db.collection('songs').doc(sid).set({ statuses: { [String(num)]: song.statuses[String(num)] } }, { merge: true });
+  }
+
+  // Targeted update — don't destroy the list
+  const listEl = document.getElementById('song-student-list');
+  if (listEl) {
+    const students = Object.values(DB.getStudents())
+      .sort((a, b) => String(a.number).localeCompare(String(b.number), undefined, {numeric:true}));
+    listEl.innerHTML = songStudentRows(sid, students, song.statuses || {});
+  }
+}
+
+function showAddSongModal() {
+  openModal(`
+    <div class="modal-title">Add Song</div>
+    <div class="form-group">
+      <label class="form-label">Song Title</label>
+      <input class="form-input" id="m-song-title" type="text" placeholder="e.g. Fight Song" autocomplete="off"
+             onkeydown="if(event.key==='Enter')saveSong()">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Memorization Due Date (optional)</label>
+      <input class="form-input" id="m-song-due" type="date">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSong()">Add Song</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('m-song-title')?.focus(), 80);
+}
+
+function saveSong() {
+  const title   = document.getElementById('m-song-title')?.value.trim();
+  const dueDate = document.getElementById('m-song-due')?.value || '';
+  if (!title) { showToast('Please enter a song title.'); return; }
+  closeModal();
+  const ref = db.collection('songs').doc();
+  const doc = { title, dueDate, addedBy: STATE.user?.email || '', addedAt: Date.now(), statuses: {} };
+  STATE.songs.push({ ...doc, id: ref.id });
+  STATE.songs.sort((a, b) => (a.dueDate || 'z').localeCompare(b.dueDate || 'z'));
+  ref.set(doc);
+  render();
+  showToast(`"${title}" added.`);
+}
+
+function showEditSongModal(sid) {
+  const song = STATE.songs.find(s => s.id === sid);
+  if (!song) return;
+  openModal(`
+    <div class="modal-title">Edit Song</div>
+    <div class="form-group">
+      <label class="form-label">Song Title</label>
+      <input class="form-input" id="m-song-title" type="text" value="${esc(song.title)}" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Due Date</label>
+      <input class="form-input" id="m-song-due" type="date" value="${esc(song.dueDate || '')}">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="updateSong('${esc(sid)}')">Save</button>
+    </div>
+    <div class="danger-zone">
+      <div class="danger-zone-title">Danger Zone</div>
+      <button class="btn btn-danger btn-full" onclick="confirmDeleteSong('${esc(sid)}')">Delete Song</button>
+    </div>
+  `);
+}
+
+function updateSong(sid) {
+  const title   = document.getElementById('m-song-title')?.value.trim();
+  const dueDate = document.getElementById('m-song-due')?.value || '';
+  if (!title) { showToast('Please enter a song title.'); return; }
+  const song = STATE.songs.find(s => s.id === sid);
+  if (!song) return;
+  song.title   = title;
+  song.dueDate = dueDate;
+  db.collection('songs').doc(sid).set({ title, dueDate }, { merge: true });
+  closeModal();
+  render();
+}
+
+function confirmDeleteSong(sid) {
+  if (!confirm('Delete this song and all its memorization data?\n\nThis cannot be undone.')) return;
+  STATE.songs = STATE.songs.filter(s => s.id !== sid);
+  db.collection('songs').doc(sid).delete();
+  closeModal();
+  navigate('songs');
+  showToast('Song deleted.');
+}
+
 function viewStudentPortal() {
   const num  = STATE.studentNum;
   const s    = STATE.students[num];
@@ -846,6 +1104,26 @@ function viewStudentPortal() {
             <div class="portal-stat-label">Positives</div>
           </div>
         </div>
+
+        ${STATE.songs.length > 0 ? `
+          <div class="section-title">Songs to Memorize</div>
+          <div class="portal-songs-list">
+            ${STATE.songs.map(song => {
+              const status = song.statuses?.[String(num)]?.status || 'not_attempted';
+              const overdue = song.dueDate && song.dueDate < today() && status !== 'passed';
+              return `
+              <div class="portal-song-row">
+                <div class="portal-song-info">
+                  <div class="portal-song-title">${esc(song.title)}</div>
+                  ${song.dueDate ? `<div class="portal-song-due ${overdue ? 'song-overdue' : ''}">Due ${fmtDate(song.dueDate)}</div>` : ''}
+                </div>
+                <span class="portal-song-status ${status === 'passed' ? 'pss-pass' : status === 'failed' ? 'pss-fail' : 'pss-na'}">
+                  ${status === 'passed' ? '✓ Passed' : status === 'failed' ? '✗ Failed' : '— Not Attempted'}
+                </span>
+              </div>`;
+            }).join('')}
+          </div>
+        ` : ''}
 
         <div class="section-title">Rehearsal History</div>
         ${hist.map(({rehearsal: r, entry: e}) => {
