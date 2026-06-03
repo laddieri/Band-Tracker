@@ -14,6 +14,9 @@ const INSTRUMENTS = [
 
 const SECTIONS = ['Woodwinds','Brass','Percussion','Front Ensemble','Color Guard','Leadership'];
 
+const COLUMNS = ['A','B','C','D','E','F','G','H','I','J','K','L'];
+const ROWS    = [1,2,3,4,5,6,7,8,9,10,11,12];
+
 // ── Firebase init ─────────────────────────────────────────────────────────────
 
 firebase.initializeApp(FIREBASE_CONFIG);
@@ -191,6 +194,11 @@ function fmtShort(d) {
   const [, m, day] = d.split('-').map(Number);
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   return `${months[m-1]} ${day}`;
+}
+
+function fmtPos(col, row) {
+  if (!col && !row) return '';
+  return `${col || ''}${row || ''}`;
 }
 
 function dirLabel(email) {
@@ -568,7 +576,7 @@ function rosterRows(list, search) {
         <div class="student-num">#${esc(s.number)}</div>
         <div class="student-info">
           ${s.name ? `<div class="student-name">${esc(s.name)}</div>` : ''}
-          <div class="student-detail">${esc([s.instrument,s.section].filter(Boolean).join(' · ')) || '<em style="color:var(--text-muted)">No instrument set</em>'}</div>
+          <div class="student-detail">${esc([fmtPos(s.column,s.row),s.instrument,s.section].filter(Boolean).join(' · ')) || '<em style="color:var(--text-muted)">No details set</em>'}</div>
         </div>
         <div class="student-badges">
           ${avg !== null ? `<span class="badge badge-danger">${avg}✗</span>` : ''}
@@ -602,6 +610,7 @@ function viewStudent(num) {
       <div style="font-size:2.6rem;font-weight:800;color:var(--primary);line-height:1;margin-bottom:6px">#${esc(s.number)}</div>
       ${s.name ? `<div style="font-size:1.1rem;font-weight:600;margin-bottom:8px">${esc(s.name)}</div>` : ''}
       <div class="flex gap-6" style="justify-content:center;flex-wrap:wrap">
+        ${fmtPos(s.column,s.row) ? `<span class="badge badge-primary" style="font-size:0.85rem;font-weight:800">${esc(fmtPos(s.column,s.row))}</span>` : ''}
         ${s.instrument ? `<span class="badge badge-primary">${esc(s.instrument)}</span>` : ''}
         ${s.section    ? `<span class="badge badge-neutral">${esc(s.section)}</span>` : ''}
       </div>
@@ -739,7 +748,7 @@ function viewRehearsal(rid) {
           <div class="active-card-name">
             #${esc(_activeNum)}
             ${activeStu
-              ? `<span class="sub">${esc([activeStu.instrument, activeStu.name].filter(Boolean).join(' · '))}</span>`
+              ? `<span class="sub">${esc([fmtPos(activeStu.column,activeStu.row),activeStu.instrument,activeStu.name].filter(Boolean).join(' · '))}</span>`
               : '<span class="sub" style="color:var(--warning)"> Not in roster</span>'}
           </div>
 
@@ -811,7 +820,7 @@ function viewRehearsal(rid) {
             <div class="entry-header">
               <div class="entry-student">
                 #${esc(num)}
-                ${stu ? `<span class="sub">${esc([stu.instrument,stu.name].filter(Boolean).join(' · '))}</span>` : '<span class="sub" style="color:var(--warning)">Not in roster</span>'}
+                ${stu ? `<span class="sub">${esc([fmtPos(stu.column,stu.row),stu.instrument,stu.name].filter(Boolean).join(' · '))}</span>` : '<span class="sub" style="color:var(--warning)">Not in roster</span>'}
               </div>
               <div class="entry-badges">
                 <span class="badge ${entry.mistakes>0?'badge-danger':'badge-neutral'}">${entry.mistakes}✗</span>
@@ -922,6 +931,22 @@ function showAddStudentModal(prefill = '') {
       <label class="form-label">Name (optional)</label>
       <input class="form-input" id="m-name" type="text" placeholder="First Last" autocomplete="off">
     </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Column (A–L)</label>
+        <select class="form-select" id="m-column">
+          <option value="">—</option>
+          ${COLUMNS.map(c=>`<option value="${c}">${c}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Row (1–12)</label>
+        <select class="form-select" id="m-row">
+          <option value="">—</option>
+          ${ROWS.map(r=>`<option value="${r}">${r}</option>`).join('')}
+        </select>
+      </div>
+    </div>
     <div class="form-group">
       <label class="form-label">Instrument</label>
       <select class="form-select" id="m-instrument">
@@ -956,6 +981,8 @@ function saveNewStudent() {
   const student = {
     number:     num,
     name:       document.getElementById('m-name').value.trim(),
+    column:     document.getElementById('m-column').value,
+    row:        document.getElementById('m-row').value,
     instrument: document.getElementById('m-instrument').value,
     section:    document.getElementById('m-section').value,
     notes:      document.getElementById('m-notes').value.trim(),
@@ -979,6 +1006,22 @@ function showEditStudentModal(num) {
     <div class="form-group">
       <label class="form-label">Name (optional)</label>
       <input class="form-input" id="m-name" type="text" value="${esc(s.name||'')}" autocomplete="off">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Column (A–L)</label>
+        <select class="form-select" id="m-column">
+          <option value="">—</option>
+          ${COLUMNS.map(c=>`<option value="${c}" ${s.column===c?'selected':''}>${c}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Row (1–12)</label>
+        <select class="form-select" id="m-row">
+          <option value="">—</option>
+          ${ROWS.map(r=>`<option value="${r}" ${String(s.row)===String(r)?'selected':''}>${r}</option>`).join('')}
+        </select>
+      </div>
     </div>
     <div class="form-group">
       <label class="form-label">Instrument</label>
@@ -1015,6 +1058,8 @@ function saveEditStudent(num) {
   if (!STATE.students[num]) return;
   const patch = {
     name:       document.getElementById('m-name').value.trim(),
+    column:     document.getElementById('m-column').value,
+    row:        document.getElementById('m-row').value,
     instrument: document.getElementById('m-instrument').value,
     section:    document.getElementById('m-section').value,
     notes:      document.getElementById('m-notes').value.trim(),
@@ -1188,6 +1233,8 @@ function parseCSV(text) {
 const COL_ALIASES = {
   number:     ['number','student number','student #','student no','student id','id','#','num','no.','no'],
   name:       ['name','student name','full name','first name','last name','student'],
+  column:     ['column','col','letter','column letter','file'],
+  row:        ['row','rank','row number','set'],
   instrument: ['instrument','instruments','inst'],
   section:    ['section','part','group','ensemble'],
   notes:      ['notes','note','comments','comment','director notes']
@@ -1317,6 +1364,8 @@ async function executeImport() {
     const incoming = {
       number:     num,
       name:       (colMap.name       !== undefined ? row[colMap.name]       : '').trim(),
+      column:     (colMap.column     !== undefined ? row[colMap.column]     : '').trim().toUpperCase(),
+      row:        (colMap.row        !== undefined ? row[colMap.row]        : '').trim(),
       instrument: (colMap.instrument !== undefined ? row[colMap.instrument] : '').trim(),
       section:    (colMap.section    !== undefined ? row[colMap.section]    : '').trim(),
       notes:      (colMap.notes      !== undefined ? row[colMap.notes]      : '').trim(),
