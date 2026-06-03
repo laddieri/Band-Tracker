@@ -262,6 +262,15 @@ function fmtDate(d) {
   return `${months[m-1]} ${day}, ${y}`;
 }
 
+function fmtTime(ts) {
+  if (!ts) return '';
+  const d    = new Date(ts);
+  const h    = d.getHours();
+  const m    = d.getMinutes().toString().padStart(2, '0');
+  const ampm = h >= 12 ? 'pm' : 'am';
+  return `${h % 12 || 12}:${m}${ampm}`;
+}
+
 function fmtShort(d) {
   if (!d) return '';
   const [, m, day] = d.split('-').map(Number);
@@ -841,6 +850,7 @@ function viewStudentPortal() {
                   <span class="event-note-type ${ev.type === 'mistake' ? 'is-mistake' : 'is-positive'}">${ev.type === 'mistake' ? '✗' : '✓'}</span>
                   ${ev.segment ? `<span class="event-seg">${esc(ev.segment)}</span>` : ''}
                   <span class="portal-event-text">${esc(ev.note)}</span>
+                  ${ev.ts ? `<span class="event-note-time">${fmtTime(ev.ts)}</span>` : ''}
                 </div>`).join('')}
             </div>
           </div>`;
@@ -1050,6 +1060,7 @@ function viewRehearsal(rid) {
                      placeholder="what happened…"
                      value="${esc(e.note)}"
                      oninput="saveEventNote('${esc(rid)}','${esc(_activeNum)}',${i},this.value)">
+              ${e.ts ? `<span class="event-note-time">${fmtTime(e.ts)}</span>` : ''}
               ${e.by ? `<span class="event-note-by">${esc(dirLabel(e.by))}</span>` : ''}
               ${canDelete ? `<button class="event-note-del" onclick="deleteEvent('${esc(rid)}','${esc(_activeNum)}',${i})" aria-label="Delete mark">×</button>` : ''}
             </div>`;
