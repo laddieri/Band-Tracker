@@ -1,5 +1,5 @@
 // =============================================================================
-// BAND TRACKER
+// BAND TRACKER — Firebase Edition
 // =============================================================================
 
 const INSTRUMENTS = [
@@ -14,85 +14,152 @@ const INSTRUMENTS = [
 
 const SECTIONS = ['Woodwinds','Brass','Percussion','Front Ensemble','Color Guard','Leadership'];
 
-// ── Data Layer ───────────────────────────────────────────────────────────────
+// ── Firebase init ─────────────────────────────────────────────────────────────
+
+firebase.initializeApp(FIREBASE_CONFIG);
+const auth = firebase.auth();
+const db   = firebase.firestore();
+db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+
+// ── State ─────────────────────────────────────────────────────────────────────
+
+const STATE = {
+  user:         null,
+  authChecking: true,
+  loading:      true,
+  students:     {},
+  rehearsals:   [],
+  entries:      {},
+  _unsubs:      []
+};
+
+// ── DB read layer (same API as before — views unchanged) ──────────────────────
 
 const DB = {
-  _get(key, def) {
-    try { return JSON.parse(localStorage.getItem(key)) ?? def; } catch { return def; }
-  },
-  _set(key, val) {
-    try { localStorage.setItem(key, JSON.stringify(val)); }
-    catch(e) { showToast('Storage full — data may not save'); }
-  },
-
-  getStudents()        { return this._get('bt_students', {}); },
-  saveStudents(v)      { this._set('bt_students', v); },
-  getRehearsals()      { return this._get('bt_rehearsals', []); },
-  saveRehearsals(v)    { this._set('bt_rehearsals', v); },
-  getEntries()         { return this._get('bt_entries', {}); },
-  saveEntries(v)       { this._set('bt_entries', v); },
-
-  getRehearsalEntries(rid) {
-    return this.getEntries()[rid] || {};
-  },
-
-  upsertEntry(rid, num, patch) {
-    const all = this.getEntries();
-    if (!all[rid]) all[rid] = {};
-    const cur = all[rid][num] || { mistakes: 0, positives: 0, notes: '' };
-    all[rid][num] = { ...cur, ...patch };
-    this.saveEntries(all);
-  },
-
+  getStudents()        { return STATE.students; },
+  getRehearsals()      { return STATE.rehearsals; },
+  getRehearsalEntries(rid) { return STATE.entries[rid] || {}; },
   getStudentHistory(num) {
-    const entries = this.getEntries();
-    return this.getRehearsals()
-      .filter(r => entries[r.id]?.[num])
-      .map(r => ({ rehearsal: r, entry: entries[r.id][num] }))
+    return STATE.rehearsals
+      .filter(r => STATE.entries[r.id]?.[num])
+      .map(r => ({ rehearsal: r, entry: STATE.entries[r.id][num] }))
       .sort((a, b) => b.rehearsal.date.localeCompare(a.rehearsal.date));
-  },
-
-  deleteRehearsal(rid) {
-    this.saveRehearsals(this.getRehearsals().filter(r => r.id !== rid));
-    const e = this.getEntries();
-    delete e[rid];
-    this.saveEntries(e);
-  },
-
-  deleteStudent(num) {
-    const s = this.getStudents();
-    delete s[num];
-    this.saveStudents(s);
-    const e = this.getEntries();
-    for (const rid in e) delete e[rid][num];
-    this.saveEntries(e);
   }
 };
 
-// ── Router ───────────────────────────────────────────────────────────────────
+// ── Firestore write helpers ───────────────────────────────────────────────────
 
-let _view = 'home';
+async function fsUpsertEntry(rid, num, data) {
+  const docId = `${rid}_${String(num)}`;
+  await db.collection('entries').doc(docId).set({
+    rehearsalId: rid,
+    studentNumber: String(num),
+    ...data,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    updatedBy: STATE.user?.email || ''
+  }, { merge: true });
+}
+
+// ── Firestore listeners ───────────────────────────────────────────────────────
+
+function startListeners() {
+  STATE._unsubs.forEach(u => u());
+  STATE._unsubs = [];
+  STATE.loading = true;
+  const loaded = new Set();
+
+  function tick(key) {
+    loaded.add(key);
+    if (loaded.size >= 3 && STATE.loading) {
+      STATE.loading = false;
+      render();
+    } else if (!STATE.loading) {
+      render();
+    }
+  }
+
+  STATE._unsubs = [
+    db.collection('students').onSnapshot(snap => {
+      snap.docChanges().forEach(ch => {
+        if (ch.type === 'removed') delete STATE.students[ch.doc.id];
+        else STATE.students[ch.doc.id] = { ...ch.doc.data(), _id: ch.doc.id };
+      });
+      tick('students');
+    }),
+
+    db.collection('rehearsals').onSnapshot(snap => {
+      STATE.rehearsals = snap.docs
+        .map(d => ({ ...d.data(), id: d.id }))
+        .sort((a, b) => b.date.localeCompare(a.date));
+      tick('rehearsals');
+    }),
+
+    db.collection('entries').onSnapshot(snap => {
+      snap.docChanges().forEach(ch => {
+        const d = ch.doc.data();
+        if (!d.rehearsalId || !d.studentNumber) return;
+        if (ch.type === 'removed') {
+          if (STATE.entries[d.rehearsalId]) delete STATE.entries[d.rehearsalId][d.studentNumber];
+        } else {
+          if (!STATE.entries[d.rehearsalId]) STATE.entries[d.rehearsalId] = {};
+          STATE.entries[d.rehearsalId][d.studentNumber] = d;
+        }
+      });
+      tick('entries');
+    })
+  ];
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+
+auth.onAuthStateChanged(user => {
+  STATE.user = user;
+  STATE.authChecking = false;
+  if (user) {
+    startListeners();
+  } else {
+    STATE._unsubs.forEach(u => u());
+    STATE._unsubs = [];
+    STATE.loading  = false;
+    STATE.students  = {};
+    STATE.rehearsals = [];
+    STATE.entries   = {};
+    render();
+  }
+});
+
+// ── Router ────────────────────────────────────────────────────────────────────
+
+let _view   = 'home';
 let _params = {};
 
 function navigate(view, params = {}) {
-  // Reset rehearsal state when leaving rehearsal
   if (_view === 'rehearsal' && view !== 'rehearsal') {
-    _activeNum = null;
-    _numSearch = '';
+    _activeNum  = null;
+    _numSearch  = '';
   }
-  _view = view;
+  _view   = view;
   _params = params;
   render();
   document.getElementById('main-content').scrollTop = 0;
 }
 
-// ── Rehearsal state ──────────────────────────────────────────────────────────
+// ── Rehearsal state ───────────────────────────────────────────────────────────
 
-let _activeNum = null;   // currently selected student number in rehearsal
-let _numSearch = '';     // value of the student # input
+let _activeNum  = null;
+let _numSearch  = '';
 let _rosterSearch = '';
 
-// ── Utilities ────────────────────────────────────────────────────────────────
+// ── Debounce store for note fields ────────────────────────────────────────────
+
+const _debounce = {};
+
+function debounced(key, fn, ms = 800) {
+  clearTimeout(_debounce[key]);
+  _debounce[key] = setTimeout(fn, ms);
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
 
 function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -146,7 +213,7 @@ function openModal(html) {
   document.getElementById('modal-overlay').classList.remove('hidden');
 }
 
-// ── Render engine ────────────────────────────────────────────────────────────
+// ── Render engine ─────────────────────────────────────────────────────────────
 
 function render() {
   const backBtn = document.getElementById('back-btn');
@@ -154,23 +221,50 @@ function render() {
   const actions = document.getElementById('header-actions');
   const main    = document.getElementById('main-content');
   const tabs    = document.querySelectorAll('.nav-tab');
+  const nav     = document.getElementById('bottom-nav');
 
-  // Back button — only show on sub-views
+  if (STATE.authChecking) {
+    backBtn.classList.add('hidden');
+    title.textContent = 'Band Tracker';
+    actions.innerHTML = '';
+    nav.style.display = 'none';
+    main.innerHTML = `<div class="loading-view"><div class="spinner"></div></div>`;
+    return;
+  }
+
+  if (!STATE.user) {
+    backBtn.classList.add('hidden');
+    title.textContent = 'Band Tracker';
+    actions.innerHTML = '';
+    nav.style.display = 'none';
+    main.innerHTML = viewLogin();
+    return;
+  }
+
+  nav.style.display = '';
+
+  if (STATE.loading) {
+    backBtn.classList.add('hidden');
+    title.textContent = 'Band Tracker';
+    actions.innerHTML = userBtn();
+    main.innerHTML = `<div class="loading-view"><div class="spinner"></div><span>Loading data…</span></div>`;
+    return;
+  }
+
   const isTop = ['home','roster','rehearsals'].includes(_view);
   backBtn.classList.toggle('hidden', isTop);
   backBtn.onclick = () => {
-    if (_view === 'student')   navigate('roster');
+    if (_view === 'student')    navigate('roster');
     else if (_view === 'rehearsal') navigate('rehearsals');
     else navigate('home');
   };
 
-  // Active tab highlight
   tabs.forEach(t => {
     const match = t.dataset.view;
     t.classList.toggle('active',
       match === _view ||
-      (_view === 'student'   && match === 'roster') ||
-      (_view === 'rehearsal' && match === 'rehearsals')
+      (_view === 'student'    && match === 'roster') ||
+      (_view === 'rehearsal'  && match === 'rehearsals')
     );
   });
 
@@ -179,33 +273,34 @@ function render() {
   switch (_view) {
     case 'home':
       title.textContent = 'Band Tracker';
+      actions.innerHTML = userBtn();
       main.innerHTML = viewHome();
       break;
 
     case 'roster':
       title.textContent = 'Student Roster';
-      actions.innerHTML = addBtn('showAddStudentModal()');
+      actions.innerHTML = addBtn('showAddStudentModal()') + userBtn();
       main.innerHTML = viewRoster();
       break;
 
     case 'student': {
       const s = DB.getStudents()[_params.num];
       title.textContent = s ? `Student #${esc(s.number)}` : 'Student';
-      actions.innerHTML = editBtn(`showEditStudentModal('${esc(_params.num)}')`);
+      actions.innerHTML = editBtn(`showEditStudentModal('${esc(_params.num)}')`) + userBtn();
       main.innerHTML = viewStudent(_params.num);
       break;
     }
 
     case 'rehearsals':
       title.textContent = 'Rehearsals';
-      actions.innerHTML = addBtn('showNewRehearsalModal()');
+      actions.innerHTML = addBtn('showNewRehearsalModal()') + userBtn();
       main.innerHTML = viewRehearsals();
       break;
 
     case 'rehearsal': {
       const r = DB.getRehearsals().find(r => r.id === _params.rid);
       title.textContent = r ? fmtShort(r.date) + (r.label ? ` — ${r.label}` : '') : 'Rehearsal';
-      actions.innerHTML = optBtn(`showRehearsalOptions('${esc(_params.rid)}')`);
+      actions.innerHTML = optBtn(`showRehearsalOptions('${esc(_params.rid)}')`) + userBtn();
       main.innerHTML = viewRehearsal(_params.rid);
       break;
     }
@@ -236,15 +331,109 @@ function optBtn(fn) {
     </svg></button>`;
 }
 
+function userBtn() {
+  const initials = (STATE.user?.email || '?').slice(0, 2).toUpperCase();
+  return `<button class="user-btn" onclick="showUserMenu()" title="${esc(STATE.user?.email || '')}">${esc(initials)}</button>`;
+}
+
+// ── Auth views ────────────────────────────────────────────────────────────────
+
+function viewLogin() {
+  return `
+    <div class="login-view">
+      <div class="login-logo">🎺</div>
+      <div class="login-title">Band Tracker</div>
+      <div class="login-sub">Director login required</div>
+
+      <div id="auth-error"></div>
+
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input class="form-input" id="auth-email" type="email"
+               placeholder="director@school.edu" autocomplete="email"
+               onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input class="form-input" id="auth-password" type="password"
+               placeholder="••••••••" autocomplete="current-password"
+               onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+
+      <button class="btn btn-primary btn-full btn-lg" onclick="doLogin()">Sign In</button>
+      <div class="login-divider">or</div>
+      <button class="btn btn-secondary btn-full" onclick="doSignup()">Create Account</button>
+    </div>
+  `;
+}
+
+function showAuthError(msg) {
+  const el = document.getElementById('auth-error');
+  if (el) el.innerHTML = `<div class="auth-error">${esc(msg)}</div>`;
+}
+
+function authMsg(code) {
+  const map = {
+    'auth/user-not-found':        'No account found with that email.',
+    'auth/wrong-password':        'Incorrect password.',
+    'auth/invalid-email':         'Invalid email address.',
+    'auth/email-already-in-use':  'An account already exists with that email.',
+    'auth/weak-password':         'Password must be at least 6 characters.',
+    'auth/too-many-requests':     'Too many attempts. Try again later.',
+    'auth/invalid-credential':    'Incorrect email or password.',
+  };
+  return map[code] || 'Something went wrong. Please try again.';
+}
+
+async function doLogin() {
+  const email = document.getElementById('auth-email')?.value.trim();
+  const pass  = document.getElementById('auth-password')?.value;
+  if (!email || !pass) { showAuthError('Email and password are required.'); return; }
+  try {
+    await auth.signInWithEmailAndPassword(email, pass);
+  } catch(e) {
+    showAuthError(authMsg(e.code));
+  }
+}
+
+async function doSignup() {
+  const email = document.getElementById('auth-email')?.value.trim();
+  const pass  = document.getElementById('auth-password')?.value;
+  if (!email || !pass) { showAuthError('Email and password are required.'); return; }
+  try {
+    await auth.createUserWithEmailAndPassword(email, pass);
+  } catch(e) {
+    showAuthError(authMsg(e.code));
+  }
+}
+
+async function doLogout() {
+  closeModal();
+  await auth.signOut();
+}
+
+function showUserMenu() {
+  openModal(`
+    <div class="modal-title">Account</div>
+    <div style="font-size:0.9rem;color:var(--text-muted);margin-bottom:20px">
+      Signed in as<br><strong style="color:var(--text)">${esc(STATE.user?.email || '')}</strong>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Close</button>
+      <button class="btn btn-danger btn-full" onclick="doLogout()">Sign Out</button>
+    </div>
+  `);
+}
+
 // ── View: Home ────────────────────────────────────────────────────────────────
 
 function viewHome() {
-  const students  = DB.getStudents();
+  const students   = DB.getStudents();
   const rehearsals = DB.getRehearsals();
-  const todayStr  = today();
-  const todayR    = rehearsals.find(r => r.date === todayStr);
-  const sc        = Object.keys(students).length;
-  const recent    = [...rehearsals].sort((a,b) => b.date.localeCompare(a.date)).slice(0,5);
+  const todayStr   = today();
+  const todayR     = rehearsals.find(r => r.date === todayStr);
+  const sc         = Object.keys(students).length;
+  const recent     = [...rehearsals].sort((a,b) => b.date.localeCompare(a.date)).slice(0,5);
 
   return `
     <div class="hero">
@@ -253,13 +442,13 @@ function viewHome() {
       <div class="hero-sub">${sc} student${sc!==1?'s':''} · ${rehearsals.length} rehearsal${rehearsals.length!==1?'s':''}</div>
       ${todayR
         ? `<button class="btn btn-full btn-lg" style="background:white;color:var(--primary);margin-bottom:10px"
-             onclick="navigate('rehearsal',{rid:'${esc(todayR.id)}'})">
-             Continue Today's Rehearsal →
-           </button>`
+               onclick="navigate('rehearsal',{rid:'${esc(todayR.id)}'})">
+               Continue Today's Rehearsal →
+             </button>`
         : `<button class="btn btn-full btn-lg" style="background:white;color:var(--primary);margin-bottom:10px"
-             onclick="startToday()">
-             Start Today's Rehearsal
-           </button>`
+               onclick="startToday()">
+               Start Today's Rehearsal
+             </button>`
       }
       <button class="btn btn-full btn-lg"
         style="background:rgba(255,255,255,.15);color:white;border:2px solid rgba(255,255,255,.4);"
@@ -304,9 +493,9 @@ function viewHome() {
 
 function startToday() {
   const id = genId();
-  const rehearsals = DB.getRehearsals();
-  rehearsals.push({ id, date: today(), label: '' });
-  DB.saveRehearsals(rehearsals);
+  const r  = { id, date: today(), label: '' };
+  STATE.rehearsals.unshift(r);
+  db.collection('rehearsals').doc(id).set(r);
   navigate('rehearsal', { rid: id });
 }
 
@@ -390,11 +579,11 @@ function viewStudent(num) {
   const s = DB.getStudents()[num];
   if (!s) return `<div class="empty-state"><p>Student not found.</p></div>`;
 
-  const hist  = DB.getStudentHistory(num);
-  const errs  = hist.reduce((sum,e)=>sum+(e.entry.mistakes||0),0);
-  const pos   = hist.reduce((sum,e)=>sum+(e.entry.positives||0),0);
-  const avgE  = hist.length ? (errs/hist.length).toFixed(1) : '—';
-  const avgP  = hist.length ? (pos/hist.length).toFixed(1) : '—';
+  const hist = DB.getStudentHistory(num);
+  const errs = hist.reduce((sum,e)=>sum+(e.entry.mistakes||0),0);
+  const pos  = hist.reduce((sum,e)=>sum+(e.entry.positives||0),0);
+  const avgE = hist.length ? (errs/hist.length).toFixed(1) : '—';
+  const avgP = hist.length ? (pos/hist.length).toFixed(1)  : '—';
 
   return `
     <div class="card mb-12" style="text-align:center">
@@ -512,19 +701,18 @@ function viewRehearsal(rid) {
   const r = DB.getRehearsals().find(r => r.id === rid);
   if (!r) return `<div class="empty-state"><p>Rehearsal not found.</p></div>`;
 
-  const entries  = DB.getRehearsalEntries(rid);
-  const students = DB.getStudents();
+  const entries    = DB.getRehearsalEntries(rid);
+  const students   = DB.getStudents();
   const activeEntry = _activeNum
     ? (entries[_activeNum] || { mistakes:0, positives:0, notes:'', events:[] })
     : null;
-  const allEvts   = activeEntry?.events || [];
-  const activeStu = _activeNum ? students[_activeNum] : null;
+  const allEvts    = activeEntry?.events || [];
+  const activeStu  = _activeNum ? students[_activeNum] : null;
 
   const entryList = Object.entries(entries)
     .sort(([a],[b]) => String(a).localeCompare(String(b), undefined, {numeric:true}));
 
   return `
-    <!-- Tracker input -->
     <div class="tracker-card">
       <div class="tracker-label">Track a Student</div>
       <input class="num-input" type="text" inputmode="numeric" pattern="[0-9]*"
@@ -600,7 +788,6 @@ function viewRehearsal(rid) {
       ` : ''}
     </div>
 
-    <!-- Tracked list -->
     ${entryList.length ? `
       <div class="section-title">Tracked This Rehearsal (${entryList.length})</div>
       ${entryList.map(([num, entry]) => {
@@ -641,8 +828,6 @@ function onNumKey(e, rid) {
     const num = _numSearch.trim();
     if (num) {
       _activeNum = num;
-      // Ensure entry record exists
-      DB.upsertEntry(rid, num, {});
       reRender(rid);
     }
   }
@@ -678,20 +863,28 @@ function adjustCount(rid, num, field, delta) {
     }
   }
 
-  DB.upsertEntry(rid, num, { [field]: newVal, events });
+  // Optimistic update
+  if (!STATE.entries[rid]) STATE.entries[rid] = {};
+  STATE.entries[rid][num] = { ...cur, [field]: newVal, events };
+
+  fsUpsertEntry(rid, num, { mistakes: STATE.entries[rid][num].mistakes, positives: STATE.entries[rid][num].positives, notes: STATE.entries[rid][num].notes || '', events });
   reRender(rid);
 }
 
 function saveNote(rid, num, notes) {
-  DB.upsertEntry(rid, num, { notes });
+  if (!STATE.entries[rid]) STATE.entries[rid] = {};
+  const cur = STATE.entries[rid][num] || { mistakes:0, positives:0, notes:'', events:[] };
+  STATE.entries[rid][num] = { ...cur, notes };
+  debounced(`note_${rid}_${num}`, () => fsUpsertEntry(rid, num, { notes }));
 }
 
 function saveEventNote(rid, num, idx, note) {
-  const cur = DB.getRehearsalEntries(rid)[num];
-  if (!cur) return;
-  const events = [...(cur.events || [])];
-  if (events[idx]) events[idx] = { ...events[idx], note };
-  DB.upsertEntry(rid, num, { events });
+  if (!STATE.entries[rid]?.[num]) return;
+  const events = [...(STATE.entries[rid][num].events || [])];
+  if (!events[idx]) return;
+  events[idx] = { ...events[idx], note };
+  STATE.entries[rid][num] = { ...STATE.entries[rid][num], events };
+  debounced(`evtnote_${rid}_${num}_${idx}`, () => fsUpsertEntry(rid, num, { events }));
 }
 
 function reRender(rid) {
@@ -701,7 +894,7 @@ function reRender(rid) {
   mc.scrollTop = st;
 }
 
-// ── Modals ────────────────────────────────────────────────────────────────────
+// ── Modals: Students ──────────────────────────────────────────────────────────
 
 function showAddStudentModal(prefill = '') {
   openModal(`
@@ -744,18 +937,19 @@ function showAddStudentModal(prefill = '') {
 function saveNewStudent() {
   const num = document.getElementById('m-num').value.trim();
   if (!num) { showToast('Student number is required'); return; }
-  const students = DB.getStudents();
-  if (students[num]) { showToast(`Student #${num} already exists`); return; }
+  if (STATE.students[num]) { showToast(`Student #${num} already exists`); return; }
 
-  students[num] = {
-    number: num,
-    name: document.getElementById('m-name').value.trim(),
+  const student = {
+    number:     num,
+    name:       document.getElementById('m-name').value.trim(),
     instrument: document.getElementById('m-instrument').value,
-    section: document.getElementById('m-section').value,
-    notes: document.getElementById('m-notes').value.trim(),
-    songs: []
+    section:    document.getElementById('m-section').value,
+    notes:      document.getElementById('m-notes').value.trim(),
+    songs:      []
   };
-  DB.saveStudents(students);
+
+  STATE.students[num] = student;
+  db.collection('students').doc(num).set(student);
   closeModal();
   showToast(`Student #${num} added`);
   if (_view === 'roster' || _view === 'student') render();
@@ -803,16 +997,15 @@ function showEditStudentModal(num) {
 }
 
 function saveEditStudent(num) {
-  const students = DB.getStudents();
-  if (!students[num]) return;
-  students[num] = {
-    ...students[num],
-    name: document.getElementById('m-name').value.trim(),
+  if (!STATE.students[num]) return;
+  const patch = {
+    name:       document.getElementById('m-name').value.trim(),
     instrument: document.getElementById('m-instrument').value,
-    section: document.getElementById('m-section').value,
-    notes: document.getElementById('m-notes').value.trim(),
+    section:    document.getElementById('m-section').value,
+    notes:      document.getElementById('m-notes').value.trim(),
   };
-  DB.saveStudents(students);
+  STATE.students[num] = { ...STATE.students[num], ...patch };
+  db.collection('students').doc(num).set(patch, { merge: true });
   closeModal();
   showToast('Student updated');
   render();
@@ -820,11 +1013,20 @@ function saveEditStudent(num) {
 
 function confirmDeleteStudent(num) {
   if (!confirm(`Delete student #${num} and all their rehearsal data?\n\nThis cannot be undone.`)) return;
-  DB.deleteStudent(num);
+  delete STATE.students[num];
+  db.collection('students').doc(num).delete();
+  // Delete all entries for this student
+  db.collection('entries').where('studentNumber', '==', String(num)).get().then(snap => {
+    const batch = db.batch();
+    snap.forEach(doc => batch.delete(doc.ref));
+    batch.commit();
+  });
   closeModal();
   showToast(`Student #${num} deleted`);
   navigate('roster');
 }
+
+// ── Modals: Rehearsals ────────────────────────────────────────────────────────
 
 function showNewRehearsalModal() {
   openModal(`
@@ -849,9 +1051,10 @@ function saveNewRehearsal() {
   const date = document.getElementById('m-date').value;
   if (!date) { showToast('Date is required'); return; }
   const id = genId();
-  const rehearsals = DB.getRehearsals();
-  rehearsals.push({ id, date, label: document.getElementById('m-label').value.trim() });
-  DB.saveRehearsals(rehearsals);
+  const r  = { id, date, label: document.getElementById('m-label').value.trim() };
+  STATE.rehearsals.unshift(r);
+  STATE.rehearsals.sort((a,b) => b.date.localeCompare(a.date));
+  db.collection('rehearsals').doc(id).set(r);
   closeModal();
   _activeNum = null;
   _numSearch = '';
@@ -886,15 +1089,14 @@ function showRehearsalOptions(rid) {
 }
 
 function saveRehearsalEdit(rid) {
-  const rehearsals = DB.getRehearsals();
-  const idx = rehearsals.findIndex(r => r.id === rid);
+  const idx = STATE.rehearsals.findIndex(r => r.id === rid);
   if (idx === -1) return;
-  rehearsals[idx] = {
-    ...rehearsals[idx],
+  const patch = {
     date:  document.getElementById('m-date').value,
     label: document.getElementById('m-label').value.trim()
   };
-  DB.saveRehearsals(rehearsals);
+  STATE.rehearsals[idx] = { ...STATE.rehearsals[idx], ...patch };
+  db.collection('rehearsals').doc(rid).set(patch, { merge: true });
   closeModal();
   showToast('Rehearsal updated');
   render();
@@ -902,7 +1104,14 @@ function saveRehearsalEdit(rid) {
 
 function confirmDeleteRehearsal(rid) {
   if (!confirm('Delete this rehearsal and all its data?\n\nThis cannot be undone.')) return;
-  DB.deleteRehearsal(rid);
+  STATE.rehearsals = STATE.rehearsals.filter(r => r.id !== rid);
+  delete STATE.entries[rid];
+  db.collection('rehearsals').doc(rid).delete();
+  db.collection('entries').where('rehearsalId', '==', rid).get().then(snap => {
+    const batch = db.batch();
+    snap.forEach(doc => batch.delete(doc.ref));
+    batch.commit();
+  });
   closeModal();
   showToast('Rehearsal deleted');
   navigate('rehearsals');
@@ -985,10 +1194,7 @@ function handleCSVFile(input) {
   reader.onload = e => {
     try {
       const rows = parseCSV(e.target.result);
-      if (rows.length < 2) {
-        showImportError('File appears to be empty or has only a header row.');
-        return;
-      }
+      if (rows.length < 2) { showImportError('File appears to be empty or has only a header row.'); return; }
       const headers = rows[0];
       const colMap  = detectCols(headers);
       if (colMap.number === undefined) {
@@ -1000,10 +1206,7 @@ function handleCSVFile(input) {
         return;
       }
       const dataRows = rows.slice(1).filter(r => r[colMap.number]?.trim());
-      if (!dataRows.length) {
-        showImportError('No data rows found after the header.');
-        return;
-      }
+      if (!dataRows.length) { showImportError('No data rows found after the header.'); return; }
       _csvData = { rows: dataRows, colMap, headers };
       renderImportPreview();
     } catch(err) {
@@ -1014,8 +1217,7 @@ function handleCSVFile(input) {
 }
 
 function showImportError(msg) {
-  document.getElementById('import-preview').innerHTML =
-    `<div class="import-error">${msg}</div>`;
+  document.getElementById('import-preview').innerHTML = `<div class="import-error">${msg}</div>`;
 }
 
 function renderImportPreview() {
@@ -1024,9 +1226,8 @@ function renderImportPreview() {
   const newCount  = rows.filter(r => !existing[r[colMap.number]?.trim()]).length;
   const dupCount  = rows.length - newCount;
   const preview   = rows.slice(0, 8);
-
-  const LABELS = { number:'Number', name:'Name', instrument:'Instrument', section:'Section', notes:'Notes' };
-  const fields  = Object.keys(colMap);
+  const LABELS    = { number:'Number', name:'Name', instrument:'Instrument', section:'Section', notes:'Notes' };
+  const fields    = Object.keys(colMap);
 
   document.getElementById('import-preview').innerHTML = `
     <hr class="divider">
@@ -1059,15 +1260,13 @@ function renderImportPreview() {
     </div>
     <div style="overflow-x:auto">
       <table class="preview-table">
-        <thead>
-          <tr>
-            ${fields.map(f=>`<th>${LABELS[f]}</th>`).join('')}
-            <th></th>
-          </tr>
-        </thead>
+        <thead><tr>
+          ${fields.map(f=>`<th>${LABELS[f]}</th>`).join('')}
+          <th></th>
+        </tr></thead>
         <tbody>
           ${preview.map(r => {
-            const num  = r[colMap.number]?.trim() || '';
+            const num   = r[colMap.number]?.trim() || '';
             const isDup = !!existing[num];
             return `<tr class="${isDup ? 'dup-row' : ''}">
               ${fields.map(f=>`<td>${esc(r[colMap[f]]||'')}</td>`).join('')}
@@ -1087,12 +1286,14 @@ function renderImportPreview() {
   `;
 }
 
-function executeImport() {
+async function executeImport() {
   if (!_csvData) return;
   const { rows, colMap } = _csvData;
   const strategy = document.getElementById('dup-strategy')?.value || 'skip';
-  const students  = DB.getStudents();
+  const existing = DB.getStudents();
   let added = 0, updated = 0, skipped = 0;
+
+  const batch = db.batch();
 
   for (const row of rows) {
     const num = row[colMap.number]?.trim();
@@ -1105,16 +1306,22 @@ function executeImport() {
       notes:      (colMap.notes      !== undefined ? row[colMap.notes]      : '').trim(),
       songs:      []
     };
-    if (students[num]) {
-      if (strategy === 'overwrite') { students[num] = { ...students[num], ...incoming }; updated++; }
-      else skipped++;
+    if (existing[num]) {
+      if (strategy === 'overwrite') {
+        STATE.students[num] = { ...STATE.students[num], ...incoming };
+        batch.set(db.collection('students').doc(num), incoming, { merge: true });
+        updated++;
+      } else {
+        skipped++;
+      }
     } else {
-      students[num] = incoming;
+      STATE.students[num] = incoming;
+      batch.set(db.collection('students').doc(num), incoming);
       added++;
     }
   }
 
-  DB.saveStudents(students);
+  await batch.commit();
   _csvData = null;
   closeModal();
 
