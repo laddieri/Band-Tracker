@@ -1390,3 +1390,193 @@ html, body {
   animation: spin .7s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Songs list view ─────────────────────────────────────────────────────────── */
+
+.song-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border-radius: var(--r-sm);
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: box-shadow .1s, transform .1s;
+}
+.song-row:active { transform: scale(.985); }
+.song-row:hover  { box-shadow: var(--shadow-md); }
+
+.song-row-info { flex: 1; min-width: 0; }
+.song-row-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.song-row-due {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.song-overdue { color: var(--danger) !important; font-weight: 600; }
+
+.song-row-right {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 80px;
+}
+.song-prog-wrap { width: 80px; }
+.song-prog-bar {
+  height: 6px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 3px;
+}
+.song-prog-fill {
+  height: 100%;
+  background: var(--success);
+  border-radius: 4px;
+  transition: width .3s ease;
+}
+.song-prog-lbl {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* ── Song detail view ────────────────────────────────────────────────────────── */
+
+.song-detail-view { padding-bottom: 8px; }
+.song-detail-due {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+  font-weight: 500;
+}
+
+.song-stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.song-stat {
+  background: var(--surface);
+  border-radius: var(--r-sm);
+  padding: 12px 8px;
+  text-align: center;
+  box-shadow: var(--shadow);
+}
+.song-stat-val {
+  font-size: 1.6rem;
+  font-weight: 800;
+  line-height: 1;
+}
+.song-stat-lbl {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.song-stat-pass .song-stat-val { color: var(--success); }
+.song-stat-fail .song-stat-val { color: var(--danger); }
+.song-stat-na   .song-stat-val { color: var(--text-muted); }
+
+/* ── Song student rows ───────────────────────────────────────────────────────── */
+
+.song-stu-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border);
+}
+.song-stu-row:last-child { border-bottom: none; }
+
+.song-stu-info { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.song-stu-num  { font-size: 0.78rem; font-weight: 700; color: var(--primary); }
+.song-stu-name { font-size: 0.9rem; font-weight: 600; }
+.song-stu-status {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+.sss-pass { background: var(--success-bg); color: var(--success); }
+.sss-fail { background: var(--danger-bg);  color: var(--danger); }
+.sss-na   { background: #f1f5f9; color: var(--text-muted); }
+.song-stu-meta { font-size: 0.72rem; color: var(--text-muted); flex-basis: 100%; margin-top: -2px; }
+
+.song-stu-btns { display: flex; gap: 6px; flex-shrink: 0; }
+.ssb {
+  width: 34px;
+  height: 34px;
+  border: 2px solid transparent;
+  border-radius: var(--r-sm);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: filter .12s, transform .1s;
+}
+.ssb:active { transform: scale(.9); }
+.ssb-pass     { background: var(--success-bg); color: var(--success); border-color: #86efac; }
+.ssb-fail     { background: var(--danger-bg);  color: var(--danger);  border-color: #fca5a5; }
+.ssb-on-pass  { background: var(--success); color: white; border-color: var(--success); }
+.ssb-on-fail  { background: var(--danger);  color: white; border-color: var(--danger); }
+
+/* ── Student portal songs ────────────────────────────────────────────────────── */
+
+.portal-songs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.portal-song-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 12px 14px;
+}
+.portal-song-info { flex: 1; min-width: 0; }
+.portal-song-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.portal-song-due {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.portal-song-status {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.pss-pass { background: var(--success-bg); color: var(--success); }
+.pss-fail { background: var(--danger-bg);  color: var(--danger); }
+.pss-na   { background: #f1f5f9; color: var(--text-muted); }
