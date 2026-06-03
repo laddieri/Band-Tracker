@@ -185,6 +185,10 @@ function fmtShort(d) {
   return `${months[m-1]} ${day}`;
 }
 
+function dirLabel(email) {
+  return email ? email.split('@')[0] : '';
+}
+
 function esc(str) {
   return String(str ?? '')
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
@@ -618,8 +622,8 @@ function viewStudent(num) {
       <div class="section-title">Rehearsal History</div>
       ${hist.map(({rehearsal:r, entry:e}) => {
         const evts = e.events || [];
-        const mn = evts.filter(ev=>ev.type==='mistake' &&ev.note.trim()).map(ev=>esc(ev.note));
-        const pn = evts.filter(ev=>ev.type==='positive'&&ev.note.trim()).map(ev=>esc(ev.note));
+        const mn = evts.filter(ev=>ev.type==='mistake' &&ev.note.trim()).map(ev=>esc(ev.note)+(ev.by?` <em style="opacity:.6">(${esc(dirLabel(ev.by))})</em>`:''));
+        const pn = evts.filter(ev=>ev.type==='positive'&&ev.note.trim()).map(ev=>esc(ev.note)+(ev.by?` <em style="opacity:.6">(${esc(dirLabel(ev.by))})</em>`:''));
         return `
         <div class="history-row ${e.mistakes>0?'had-mistakes':''} ${e.positives>0&&!e.mistakes?'had-positives':''}"
              onclick="navigate('rehearsal',{rid:'${esc(r.id)}'})">
@@ -769,6 +773,7 @@ function viewRehearsal(rid) {
                          placeholder="what happened…"
                          value="${esc(e.note)}"
                          oninput="saveEventNote('${esc(rid)}','${esc(_activeNum)}',${i},this.value)">
+                  ${e.by ? `<span class="event-note-by">${esc(dirLabel(e.by))}</span>` : ''}
                 </div>`).join('')}
             </div>` : ''}
 
@@ -854,7 +859,7 @@ function adjustCount(rid, num, field, delta) {
   const evtType = field === 'mistakes' ? 'mistake' : 'positive';
 
   if (delta > 0) {
-    events.push({ type: evtType, note: '', ts: Date.now() });
+    events.push({ type: evtType, note: '', ts: Date.now(), by: STATE.user?.email || '' });
   } else if (delta < 0 && newVal < (cur[field]||0)) {
     for (let i = events.length - 1; i >= 0; i--) {
       if (events[i].type === evtType) { events.splice(i, 1); break; }
