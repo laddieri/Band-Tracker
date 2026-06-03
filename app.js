@@ -2456,19 +2456,36 @@ async function endRehearsal(rid) {
   const entries  = STATE.entries[rid] || {};
   const students = STATE.students;
   const batch    = db.batch();
-  let count      = 0;
+  let onTimeCount     = 0;
+  let noMistakeCount  = 0;
 
   for (const [num] of Object.entries(students)) {
-    const entry     = entries[num] || { mistakes: 0, positives: 0, notes: '', events: [] };
-    if ((entry.mistakes || 0) > 0) continue; // has mistakes — skip
+    const entry = entries[num] || { mistakes: 0, positives: 0, notes: '', events: [] };
+    const att   = entry.attendance || 'present';
 
-    // Remove any previous auto-mark so re-ending doesn't duplicate
-    const prevEvents = (entry.events || []).filter(e => e.note !== 'No noticeable mistakes');
-    const autoEvt    = { type: 'positive', note: 'No noticeable mistakes', ts: Date.now(), by: 'system', auto: true };
-    const events     = [...prevEvents, autoEvt];
-    const positives  = events.filter(e => e.type === 'positive').length;
+    if (att === 'absent') continue; // absent students receive no auto-marks
 
-    const docRef = db.collection('entries').doc(`${rid}_${num}`);
+    const isOnTime   = att !== 'late';
+    const noMistakes = (entry.mistakes || 0) === 0;
+
+    if (!isOnTime && !noMistakes) continue;
+
+    // Strip previous auto-marks so re-ending a rehearsal doesn't duplicate
+    let events = (entry.events || []).filter(e =>
+      e.note !== 'On time to rehearsal' && e.note !== 'No noticeable mistakes'
+    );
+
+    if (isOnTime) {
+      events.push({ type: 'positive', note: 'On time to rehearsal', ts: Date.now(), by: 'system', auto: true });
+      onTimeCount++;
+    }
+    if (noMistakes) {
+      events.push({ type: 'positive', note: 'No noticeable mistakes', ts: Date.now(), by: 'system', auto: true });
+      noMistakeCount++;
+    }
+
+    const positives = events.filter(e => e.type === 'positive').length;
+    const docRef    = db.collection('entries').doc(`${rid}_${num}`);
     batch.set(docRef, {
       rehearsalId:   rid,
       studentNumber: String(num),
@@ -2476,19 +2493,22 @@ async function endRehearsal(rid) {
       positives,
       notes:         entry.notes     || '',
       events,
+      ...(entry.attendance ? { attendance: entry.attendance } : {}),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       updatedBy: STATE.user?.email || ''
     });
 
     if (!STATE.entries[rid]) STATE.entries[rid] = {};
     STATE.entries[rid][num] = { ...entry, events, positives };
-    count++;
   }
 
   r.ended = true;
   db.collection('rehearsals').doc(rid).set({ ended: true }, { merge: true });
   await batch.commit();
-  showToast(`Rehearsal ended — ${count} student${count !== 1 ? 's' : ''} received automatic positive.`);
+  const parts = [];
+  if (onTimeCount)    parts.push(`${onTimeCount} on time`);
+  if (noMistakeCount) parts.push(`${noMistakeCount} no-mistake`);
+  showToast(`Rehearsal ended — ${parts.length ? parts.join(', ') + ' positives applied.' : 'no auto-positives.'}`);
   reRender(rid);
 }
 
