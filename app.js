@@ -290,6 +290,13 @@ function fmtTime(ts) {
   return `${h % 12 || 12}:${m}${ampm}`;
 }
 
+function fmtDateFromTs(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+}
+
 function fmtShort(d) {
   if (!d) return '';
   const [, m, day] = d.split('-').map(Number);
@@ -1260,10 +1267,14 @@ function viewStudent(num) {
       <div class="section-title">Songs to Memorize</div>
       <div class="card mb-12" style="padding:8px 12px">
         ${STATE.songs.map(song => {
-          const st = song.statuses?.[String(num)]?.status || 'not_attempted';
-          const meta = song.statuses?.[String(num)]?.updatedBy
-            ? `${st === 'passed' ? 'Passed' : 'Failed'} by ${dirLabel(song.statuses[String(num)].updatedBy)}`
-            : '';
+          const st         = song.statuses?.[String(num)]?.status || 'not_attempted';
+          const statusData = song.statuses?.[String(num)];
+          const metaParts  = [];
+          if (statusData && st !== 'not_attempted') {
+            if (statusData.updatedAt) metaParts.push(fmtDateFromTs(statusData.updatedAt));
+            if (statusData.updatedBy) metaParts.push(`by ${dirLabel(statusData.updatedBy)}`);
+          }
+          const meta = metaParts.join(' ');
           const overdue = song.dueDate && song.dueDate < today() && st !== 'passed';
           return `
           <div class="stu-song-row">
