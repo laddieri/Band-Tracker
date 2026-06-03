@@ -14,6 +14,9 @@ const INSTRUMENTS = [
 
 const SECTIONS = ['Woodwinds','Brass','Percussion','Front Ensemble','Color Guard','Leadership'];
 
+const MISTAKE_PRESETS  = ['Out of step','Missed turn','Poor posture','Late to mark','Wrong direction','Dress/cover issue','Instrument angle','Off the line'];
+const POSITIVE_PRESETS = ['Snappy turns','Great marching style','Good posture','Strong presence','Perfect timing','Excellent dress/cover','High energy','Great recovery'];
+
 const COLUMNS = ['A','B','C','D','E','F','G','H','I','J','K','L'];
 const ROWS    = [1,2,3,4,5,6,7,8,9,10,11,12];
 
@@ -906,26 +909,70 @@ function clearActive() {
 }
 
 function adjustCount(rid, num, field, delta) {
+  if (delta > 0) {
+    showMarkModal(rid, num, field === 'mistakes' ? 'mistake' : 'positive');
+    return;
+  }
+  // Undo — instant, no modal
   const ents    = DB.getRehearsalEntries(rid);
   const cur     = ents[num] || { mistakes:0, positives:0, notes:'', events:[] };
-  const newVal  = Math.max(0, (cur[field]||0) + delta);
+  const newVal  = Math.max(0, (cur[field]||0) - 1);
+  if (newVal === (cur[field]||0)) return;
   const events  = [...(cur.events || [])];
   const evtType = field === 'mistakes' ? 'mistake' : 'positive';
-
-  if (delta > 0) {
-    events.push({ type: evtType, note: '', ts: Date.now(), by: STATE.user?.email || '' });
-  } else if (delta < 0 && newVal < (cur[field]||0)) {
-    for (let i = events.length - 1; i >= 0; i--) {
-      if (events[i].type === evtType) { events.splice(i, 1); break; }
-    }
+  for (let i = events.length - 1; i >= 0; i--) {
+    if (events[i].type === evtType) { events.splice(i, 1); break; }
   }
-
-  // Optimistic update
   if (!STATE.entries[rid]) STATE.entries[rid] = {};
   STATE.entries[rid][num] = { ...cur, [field]: newVal, events };
-
   fsUpsertEntry(rid, num, { mistakes: STATE.entries[rid][num].mistakes, positives: STATE.entries[rid][num].positives, notes: STATE.entries[rid][num].notes || '', events });
   reRender(rid);
+}
+
+function showMarkModal(rid, num, type) {
+  const isMistake = type === 'mistake';
+  const presets   = isMistake ? MISTAKE_PRESETS : POSITIVE_PRESETS;
+  const btnCls    = isMistake ? 'is-mistake' : 'is-positive';
+  openModal(`
+    <div class="modal-title">${isMistake ? '✗ What was the mistake?' : '✓ What went well?'}</div>
+    <div class="quick-note-grid">
+      ${presets.map(p => `
+        <button class="quick-note-btn ${btnCls}"
+          onclick="confirmMark('${esc(rid)}','${esc(num)}','${esc(type)}','${esc(p)}')">
+          ${esc(p)}
+        </button>`).join('')}
+    </div>
+    <div class="form-group" style="margin-top:14px">
+      <label class="form-label">Custom note</label>
+      <input class="form-input" id="mark-note-input" type="text"
+             placeholder="or type your own…" autocomplete="off"
+             onkeydown="if(event.key==='Enter')confirmMarkCustom('${esc(rid)}','${esc(num)}','${esc(type)}')">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="confirmMark('${esc(rid)}','${esc(num)}','${esc(type)}','')">No Note</button>
+      <button class="btn btn-primary" onclick="confirmMarkCustom('${esc(rid)}','${esc(num)}','${esc(type)}')">Add Custom</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('mark-note-input')?.focus(), 80);
+}
+
+function confirmMark(rid, num, type, note) {
+  closeModal();
+  const field  = type === 'mistake' ? 'mistakes' : 'positives';
+  const ents   = DB.getRehearsalEntries(rid);
+  const cur    = ents[num] || { mistakes:0, positives:0, notes:'', events:[] };
+  const newVal = (cur[field]||0) + 1;
+  const events = [...(cur.events || [])];
+  events.push({ type, note: note || '', ts: Date.now(), by: STATE.user?.email || '' });
+  if (!STATE.entries[rid]) STATE.entries[rid] = {};
+  STATE.entries[rid][num] = { ...cur, [field]: newVal, events };
+  fsUpsertEntry(rid, num, { mistakes: STATE.entries[rid][num].mistakes, positives: STATE.entries[rid][num].positives, notes: STATE.entries[rid][num].notes || '', events });
+  reRender(rid);
+}
+
+function confirmMarkCustom(rid, num, type) {
+  const note = document.getElementById('mark-note-input')?.value.trim() || '';
+  confirmMark(rid, num, type, note);
 }
 
 function saveNote(rid, num, notes) {
