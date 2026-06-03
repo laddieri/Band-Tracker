@@ -1068,24 +1068,20 @@ function viewRehearsal(rid) {
                autocomplete="off" autocorrect="off" autocapitalize="off"
                oninput="onNumInput(this.value,'${esc(rid)}')"
                onkeydown="onNumKey(event,'${esc(rid)}')">
-        ${isNameSearch && suggestions.length > 0 ? `
-          <div class="student-suggestions">
-            ${suggestions.map(s => `
-              <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
-                <span class="suggestion-num">#${esc(s.number)}</span>
-                <span class="suggestion-name">${esc(s.name || '—')}</span>
-                <span class="suggestion-detail">${esc([fmtPos(s.column,s.row),s.instrument].filter(Boolean).join(' · '))}</span>
-              </div>`).join('')}
-          </div>` : ''}
-        ${showAllForFilter && !_activeNum ? `
-          <div class="student-suggestions">
-            ${allFiltered.map(s => `
-              <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
-                <span class="suggestion-num">#${esc(s.number)}</span>
-                <span class="suggestion-name">${esc(s.name || '—')}</span>
-                <span class="suggestion-detail">${esc(fmtPos(s.column,s.row))}</span>
-              </div>`).join('')}
-          </div>` : ''}
+        <div id="tracker-suggestions" class="student-suggestions">
+          ${isNameSearch ? suggestions.map(s => `
+            <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
+              <span class="suggestion-num">#${esc(s.number)}</span>
+              <span class="suggestion-name">${esc(s.name || '—')}</span>
+              <span class="suggestion-detail">${esc([fmtPos(s.column,s.row),s.instrument].filter(Boolean).join(' · '))}</span>
+            </div>`).join('') : ''}
+          ${showAllForFilter && !_activeNum ? allFiltered.map(s => `
+            <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
+              <span class="suggestion-num">#${esc(s.number)}</span>
+              <span class="suggestion-name">${esc(s.name || '—')}</span>
+              <span class="suggestion-detail">${esc(fmtPos(s.column,s.row))}</span>
+            </div>`).join('') : ''}
+        </div>
         ${activeCard}
         ${!_activeNum ? `
           <button class="block-toggle-btn" onclick="toggleBlockMode('${esc(rid)}')">
@@ -1134,14 +1130,27 @@ function onNumInput(val, rid) {
   const trimmed = val.trim();
   if (!trimmed) {
     _activeNum = null;
+    reRender(rid);
   } else if (/^\d+$/.test(trimmed)) {
-    // Pure number: direct select (existing behaviour)
+    // Pure number: direct select — full re-render to show/update student card
     _activeNum = trimmed;
+    reRender(rid);
   } else {
-    // Name/text search: only select when user taps a suggestion
+    // Name search: update only the suggestions list so the input keeps focus
     _activeNum = null;
+    const el = document.getElementById('tracker-suggestions');
+    if (el) {
+      const matches = studentSuggestions(trimmed, _trackerInstrumentFilter);
+      el.innerHTML = matches.map(s => `
+        <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
+          <span class="suggestion-num">#${esc(s.number)}</span>
+          <span class="suggestion-name">${esc(s.name || '—')}</span>
+          <span class="suggestion-detail">${esc([fmtPos(s.column,s.row),s.instrument].filter(Boolean).join(' · '))}</span>
+        </div>`).join('');
+    } else {
+      reRender(rid); // fallback if container not found
+    }
   }
-  reRender(rid);
 }
 
 function onNumKey(e, rid) {

@@ -763,12 +763,14 @@ html, body {
 /* ── Student Name Suggestions ────────────────────────────────────────────────── */
 
 .student-suggestions {
-  border: 1.5px solid var(--border);
   border-radius: var(--r-sm);
   overflow: hidden;
   margin-top: 4px;
   margin-bottom: 4px;
   background: var(--card-bg);
+}
+.student-suggestions:not(:empty) {
+  border: 1.5px solid var(--border);
 }
 .suggestion-row {
   display: flex;
