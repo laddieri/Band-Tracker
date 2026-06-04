@@ -1794,7 +1794,10 @@ function viewLeaderboard() {
                     return `
                     <div class="lb-rank-row ${isMe ? 'lb-rank-me' : ''} ${i % 2 === 1 ? 'lb-stat-row-alt' : ''}">
                       <span class="lb-rank-medal">${medal}</span>
-                      <span class="lb-rank-name">${esc(name)}${isMe ? ' <span class="lb-you-badge">you</span>' : ''}</span>
+                      <span class="lb-rank-name">
+                        ${esc(name)}${isMe ? ' <span class="lb-you-badge">you</span>' : ''}
+                        ${STATE.isAdmin ? `<span class="lb-real-name">${esc(s.name || `#${s.number}`)}</span>` : ''}
+                      </span>
                       <span class="lb-rank-score ${score > 0 ? 'lb-val-ok' : score < 0 ? 'lb-val-warn' : ''}">${score > 0 ? '+' : ''}${score}</span>
                     </div>`;
                   }).join('')}

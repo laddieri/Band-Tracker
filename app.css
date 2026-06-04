@@ -1217,7 +1217,8 @@ html, body {
 .lb-rank-me { background: #fef9c3; }
 
 .lb-rank-medal { font-size: 1rem; width: 28px; flex-shrink: 0; text-align: center; }
-.lb-rank-name  { flex: 1; font-size: 0.88rem; font-weight: 600; color: var(--text); }
+.lb-rank-name  { flex: 1; font-size: 0.88rem; font-weight: 600; color: var(--text); display: flex; flex-direction: column; gap: 1px; }
+.lb-real-name  { font-size: 0.72rem; font-weight: 400; color: var(--text-muted); }
 .lb-rank-score { font-size: 0.9rem; font-weight: 700; flex-shrink: 0; }
 
 .lb-you-badge {
