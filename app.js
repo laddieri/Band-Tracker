@@ -39,6 +39,8 @@ const STATE = {
   rehearsals:   [],
   entries:      {},
   songs:        [],
+  mistakePresets:  [...MISTAKE_PRESETS],
+  positivePresets: [...POSITIVE_PRESETS],
   _unsubs:      []
 };
 
@@ -97,13 +99,19 @@ function startListeners() {
 
   const listeners = [];
 
-  // Admin listener — not applicable to anonymous student sessions
+  // Admin + settings listeners — not applicable to anonymous student sessions
   if (!STATE.user.isAnonymous && STATE.user.email) {
     listeners.push(
       db.collection('admins').doc(STATE.user.email).onSnapshot(doc => {
         const prev = STATE.isAdmin;
         STATE.isAdmin = doc.exists;
         if (prev !== STATE.isAdmin && !STATE.loading) render();
+      }),
+      db.collection('settings').doc('presets').onSnapshot(doc => {
+        const d = doc.exists ? doc.data() : {};
+        STATE.mistakePresets  = d.mistakePresets?.length  ? d.mistakePresets  : [...MISTAKE_PRESETS];
+        STATE.positivePresets = d.positivePresets?.length ? d.positivePresets : [...POSITIVE_PRESETS];
+        if (!STATE.loading) render();
       })
     );
   }
@@ -916,6 +924,13 @@ function showRosterOptionsModal() {
         <div>
           <div class="options-menu-label">Import from CSV</div>
           <div class="options-menu-sub">Add or update students in bulk</div>
+        </div>
+      </button>
+      <button class="options-menu-item" onclick="closeModal();showManagePresetsModal()">
+        <div class="options-menu-icon">✏️</div>
+        <div>
+          <div class="options-menu-label">Manage Mark Presets</div>
+          <div class="options-menu-sub">Edit preset comments for marks</div>
         </div>
       </button>
       <button class="options-menu-item options-menu-item-danger" onclick="closeModal();showDeleteRosterModal()">
@@ -2037,7 +2052,7 @@ function adjustCount(rid, num, field, delta) {
 
 function showMarkModal(rid, num, type) {
   const isMistake = type === 'mistake';
-  const presets   = isMistake ? MISTAKE_PRESETS : POSITIVE_PRESETS;
+  const presets   = isMistake ? STATE.mistakePresets : STATE.positivePresets;
   const btnCls    = isMistake ? 'is-mistake' : 'is-positive';
   const r         = DB.getRehearsals().find(r => r.id === rid);
   const segments  = r?.segments || [];
@@ -2417,7 +2432,7 @@ function _groupMatches(s, groupName) {
 
 function showGroupMarkModal(rid, groupName, type) {
   const isMistake   = type === 'mistake';
-  const presets     = isMistake ? MISTAKE_PRESETS : POSITIVE_PRESETS;
+  const presets     = isMistake ? STATE.mistakePresets : STATE.positivePresets;
   const btnCls      = isMistake ? 'is-mistake' : 'is-positive';
   const r           = DB.getRehearsals().find(r => r.id === rid);
   const segments    = r?.segments || [];
@@ -3150,6 +3165,112 @@ function confirmDeleteRehearsal(rid) {
 }
 
 // ── CSV Import ────────────────────────────────────────────────────────────────
+
+// ── Preset Management ─────────────────────────────────────────────────────────
+
+function _renderPresetList(type) {
+  const arr = type === 'mistake' ? STATE.mistakePresets : STATE.positivePresets;
+  if (!arr.length) return `<div class="preset-empty">No presets — add one below.</div>`;
+  return arr.map((p, i) => `
+    <div class="preset-item">
+      <span class="preset-item-text">${esc(p)}</span>
+      <div class="preset-item-btns">
+        <button class="preset-btn-edit" onclick="editPreset('${type}',${i})">Edit</button>
+        <button class="preset-btn-del"  onclick="deletePreset('${type}',${i})">×</button>
+      </div>
+    </div>`).join('');
+}
+
+function showManagePresetsModal() {
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Mark Presets</div>
+
+    <div class="preset-section">
+      <div class="preset-section-hdr preset-mistake-hdr">✗ Mistake Marks</div>
+      <div id="preset-list-mistake">${_renderPresetList('mistake')}</div>
+      <div class="preset-add-row">
+        <input class="preset-add-input" id="add-mistake-input" type="text"
+               placeholder="New mistake preset…" maxlength="80"
+               onkeydown="if(event.key==='Enter')addPreset('mistake')">
+        <button class="preset-add-btn preset-add-btn-mistake" onclick="addPreset('mistake')">Add</button>
+      </div>
+    </div>
+
+    <div class="preset-section" style="margin-top:16px">
+      <div class="preset-section-hdr preset-positive-hdr">✓ Positive Marks</div>
+      <div id="preset-list-positive">${_renderPresetList('positive')}</div>
+      <div class="preset-add-row">
+        <input class="preset-add-input" id="add-positive-input" type="text"
+               placeholder="New positive preset…" maxlength="80"
+               onkeydown="if(event.key==='Enter')addPreset('positive')">
+        <button class="preset-add-btn preset-add-btn-positive" onclick="addPreset('positive')">Add</button>
+      </div>
+    </div>
+
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Done</button>
+    </div>
+  `);
+}
+
+function addPreset(type) {
+  const input = document.getElementById(`add-${type}-input`);
+  const val = input?.value.trim();
+  if (!val) return;
+  if (type === 'mistake') STATE.mistakePresets = [...STATE.mistakePresets, val];
+  else                    STATE.positivePresets = [...STATE.positivePresets, val];
+  _savePresets();
+  input.value = '';
+  document.getElementById(`preset-list-${type}`).innerHTML = _renderPresetList(type);
+}
+
+function deletePreset(type, idx) {
+  if (type === 'mistake') STATE.mistakePresets  = STATE.mistakePresets.filter((_,i)  => i !== idx);
+  else                    STATE.positivePresets = STATE.positivePresets.filter((_,i) => i !== idx);
+  _savePresets();
+  document.getElementById(`preset-list-${type}`).innerHTML = _renderPresetList(type);
+}
+
+function editPreset(type, idx) {
+  const arr     = type === 'mistake' ? STATE.mistakePresets : STATE.positivePresets;
+  const current = arr[idx];
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Edit Preset</div>
+    <input class="form-input" id="edit-preset-input" type="text"
+           value="${esc(current)}" maxlength="80"
+           onkeydown="if(event.key==='Enter')saveEditPreset('${type}',${idx})">
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn btn-secondary" onclick="showManagePresetsModal()">Cancel</button>
+      <button class="btn btn-primary"   onclick="saveEditPreset('${type}',${idx})">Save</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('edit-preset-input')?.focus(), 60);
+}
+
+function saveEditPreset(type, idx) {
+  const val = document.getElementById('edit-preset-input')?.value.trim();
+  if (!val) return;
+  if (type === 'mistake') STATE.mistakePresets[idx]  = val;
+  else                    STATE.positivePresets[idx] = val;
+  _savePresets();
+  showManagePresetsModal();
+}
+
+async function _savePresets() {
+  try {
+    await db.collection('settings').doc('presets').set({
+      mistakePresets:  STATE.mistakePresets,
+      positivePresets: STATE.positivePresets
+    });
+  } catch(e) {
+    console.error('Failed to save presets:', e);
+    showToast('Failed to save presets.');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 let _csvData = null;
 
