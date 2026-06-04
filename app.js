@@ -1640,7 +1640,7 @@ function viewRehearsal(rid) {
     : null;
   const allEvts   = activeEntry?.events || [];
   const activeStu = _activeNum ? students[_activeNum] : null;
-  const activeAtt = activeEntry?.attendance || 'present';
+
 
   const entryList = Object.entries(entries)
     .sort(([a],[b]) => (students[a]?.name || '').localeCompare(students[b]?.name || ''));
@@ -1704,16 +1704,6 @@ function viewRehearsal(rid) {
             </div>`;
           }).join('')}
         </div>` : ''}
-
-      <div class="attendance-row">
-        <span class="attendance-lbl">Attendance</span>
-        <div class="attendance-btns">
-          <button class="att-btn att-late  ${activeAtt==='late'   ?'att-on-late':''}"
-                  onclick="setAttendance('${esc(rid)}','${esc(_activeNum)}','late')">◷ Late</button>
-          <button class="att-btn att-absent ${activeAtt==='absent' ?'att-on-absent':''}"
-                  onclick="setAttendance('${esc(rid)}','${esc(_activeNum)}','absent')">✗ Absent</button>
-        </div>
-      </div>
 
       <textarea class="active-notes" placeholder="General note for today…"
         oninput="saveNote('${esc(rid)}','${esc(_activeNum)}',this.value)">${esc(activeEntry.notes)}</textarea>
