@@ -122,6 +122,10 @@ function startListeners() {
           STATE.studentNum = storedNum;
         } else if (_pendingStudentCode) {
           STATE.studentNum = null;
+          const allCodes = Object.values(STATE.students).map(s => s.studentCode).filter(Boolean);
+          console.log('[BandTracker] Looking for code:', _pendingStudentCode);
+          console.log('[BandTracker] Students loaded:', Object.keys(STATE.students).length);
+          console.log('[BandTracker] Codes in DB:', allCodes);
           for (const [num, s] of Object.entries(STATE.students)) {
             if (s.studentCode && s.studentCode.toUpperCase() === _pendingStudentCode.toUpperCase()) {
               STATE.studentNum = num;
@@ -130,7 +134,7 @@ function startListeners() {
               break;
             }
           }
-          // Invalid code — tick() will detect this once all collections load
+          console.log('[BandTracker] Match found:', STATE.studentNum);
         }
       } else {
         // Regular (email) users: look up by studentEmail field
