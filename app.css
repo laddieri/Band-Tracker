@@ -397,6 +397,79 @@ html, body {
 .quick-note-btn.is-mistake  { background: var(--danger-bg);  color: var(--danger);  border-color: #fca5a5; }
 .quick-note-btn.is-positive { background: var(--success-bg); color: var(--success); border-color: #86efac; }
 
+/* ── Preset Management ───────────────────────────────────────────────────── */
+
+.preset-section {
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.preset-section-hdr {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: 8px 12px;
+}
+.preset-mistake-hdr  { background: var(--danger-bg);  color: var(--danger); }
+.preset-positive-hdr { background: var(--success-bg); color: var(--success); }
+
+.preset-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-top: 1px solid var(--border);
+}
+.preset-item-text { flex: 1; font-size: 0.88rem; color: var(--text); }
+.preset-item-btns { display: flex; gap: 6px; flex-shrink: 0; }
+
+.preset-btn-edit {
+  font-size: 0.75rem; font-weight: 600;
+  padding: 3px 9px; border-radius: 50px;
+  border: 1.5px solid var(--border);
+  background: var(--surface); color: var(--text-muted);
+  cursor: pointer;
+}
+.preset-btn-del {
+  font-size: 0.9rem; font-weight: 700;
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 1.5px solid #fca5a5;
+  background: var(--danger-bg); color: var(--danger);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.preset-btn-edit:hover { background: var(--bg); }
+.preset-btn-del:hover  { filter: brightness(.92); }
+
+.preset-empty {
+  padding: 12px; font-size: 0.83rem;
+  color: var(--text-muted); border-top: 1px solid var(--border);
+}
+
+.preset-add-row {
+  display: flex; gap: 8px; align-items: center;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+.preset-add-input {
+  flex: 1; padding: 7px 10px;
+  font-size: 0.85rem;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface); color: var(--text);
+  outline: none;
+}
+.preset-add-input:focus { border-color: var(--primary); }
+.preset-add-btn {
+  padding: 7px 14px; border-radius: var(--r-sm);
+  font-size: 0.82rem; font-weight: 700;
+  border: none; cursor: pointer; white-space: nowrap;
+}
+.preset-add-btn-mistake  { background: var(--danger-bg);  color: var(--danger); }
+.preset-add-btn-positive { background: var(--success-bg); color: var(--success); }
+.preset-add-btn:hover    { filter: brightness(.93); }
+
 /* ── Toast ──────────────────────────────────────────────────────────────── */
 
 #toast-container {
