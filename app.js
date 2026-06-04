@@ -2,6 +2,40 @@
 // BAND TRACKER — Firebase Edition
 // =============================================================================
 
+const FAKE_ADJECTIVES = [
+  'Fluffy','Speedy','Grumpy','Happy','Sleepy','Bouncy','Sparkly','Wobbly',
+  'Snappy','Fuzzy','Silly','Jolly','Brave','Clever','Dizzy','Fancy',
+  'Gentle','Hungry','Jumpy','Lazy','Mighty','Noisy','Orange','Peppy',
+  'Quirky','Rusty','Sassy','Tiny','Vivid','Wavy','Zappy','Cheeky',
+  'Dozy','Eager','Frisky','Goofy','Hasty','Inky','Lumpy','Misty',
+  'Nutty','Plucky','Rainy','Soggy','Wacky','Zippy','Bumpy','Curly',
+  'Droopy','Flaky'
+];
+const FAKE_ANIMALS = [
+  'Panda','Giraffe','Alligator','Penguin','Flamingo','Hedgehog','Capybara',
+  'Platypus','Narwhal','Axolotl','Wombat','Lemur','Tapir','Okapi','Quokka',
+  'Pangolin','Echidna','Manatee','Sloth','Armadillo','Salamander','Gecko',
+  'Chameleon','Toucan','Cockatoo','Cassowary','Kiwi','Meerkat','Mongoose',
+  'Ocelot','Wolverine','Badger','Otter','Ferret','Chinchilla','Capybara',
+  'Binturong','Tarantula','Axolotl','Dugong','Aardvark','Numbat','Kakapo',
+  'Fossa','Saiga','Blobfish','Tardigrade','Mudskipper','Shoebill','Potoo'
+];
+
+function _strHash(str) {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) {
+    h = Math.imul(h, 31) + str.charCodeAt(i) | 0;
+  }
+  return Math.abs(h);
+}
+
+function fakeAnimalName(id) {
+  const h   = _strHash(String(id));
+  const adj = FAKE_ADJECTIVES[h % FAKE_ADJECTIVES.length];
+  const ani = FAKE_ANIMALS[Math.floor(h / FAKE_ADJECTIVES.length) % FAKE_ANIMALS.length];
+  return `${adj} ${ani}`;
+}
+
 const INSTRUMENTS = [
   'Piccolo','Flute','Clarinet','Bass Clarinet',
   'Alto Saxophone','Tenor Saxophone','Baritone Saxophone',
@@ -41,8 +75,9 @@ const STATE = {
   songs:        [],
   mistakePresets:  [...MISTAKE_PRESETS],
   positivePresets: [...POSITIVE_PRESETS],
-  instruments:     [...INSTRUMENTS],
-  sections:        [...SECTIONS],
+  instruments:              [...INSTRUMENTS],
+  sections:                 [...SECTIONS],
+  marchingLeaderboardEnabled: false,
   _unsubs:      []
 };
 
@@ -113,8 +148,9 @@ function startListeners() {
         const d = doc.exists ? doc.data() : {};
         STATE.mistakePresets  = d.mistakePresets?.length  ? d.mistakePresets  : [...MISTAKE_PRESETS];
         STATE.positivePresets = d.positivePresets?.length ? d.positivePresets : [...POSITIVE_PRESETS];
-        STATE.instruments     = d.instruments?.length     ? d.instruments     : [...INSTRUMENTS];
-        STATE.sections        = d.sections?.length        ? d.sections        : [...SECTIONS];
+        STATE.instruments               = d.instruments?.length ? d.instruments : [...INSTRUMENTS];
+        STATE.sections                  = d.sections?.length   ? d.sections   : [...SECTIONS];
+        STATE.marchingLeaderboardEnabled = !!d.marchingLeaderboardEnabled;
         if (!STATE.loading) render();
       })
     );
@@ -1445,6 +1481,7 @@ function viewStudentPortal() {
         <div>
           <div class="portal-name">${esc(s?.name || 'Student #' + num)}</div>
           ${metaParts.length ? `<div class="portal-meta">${metaParts.map(esc).join(' &middot; ')}</div>` : ''}
+          <div class="portal-animal-name">🐾 Leaderboard name: <strong>${esc(fakeAnimalName(num))}</strong></div>
         </div>
       </div>
 
@@ -1647,6 +1684,45 @@ function viewLeaderboard() {
           </div>`).join('')}
         </div>
       ` : ''}
+
+      ${(STATE.marchingLeaderboardEnabled || STATE.isAdmin) ? (() => {
+        const scored = Object.entries(STATE.students).map(([docId, s]) => {
+          const score = Object.values(STATE.entries).reduce((sum, rehEntries) => {
+            const e = rehEntries[String(s.number)];
+            return sum + (e ? (e.positives || 0) - (e.mistakes || 0) : 0);
+          }, 0);
+          return { docId, s, score, name: fakeAnimalName(docId) };
+        }).sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+
+        const myDocId = STATE.studentNum;
+
+        return `
+          <div class="lb-marching-hdr">
+            <div class="section-title" style="margin-bottom:0">Marching Leaderboard</div>
+            ${STATE.isAdmin ? `
+              <button class="lb-toggle-btn ${STATE.marchingLeaderboardEnabled ? 'lb-toggle-on' : 'lb-toggle-off'}"
+                      onclick="toggleMarchingLeaderboard()">
+                ${STATE.marchingLeaderboardEnabled ? 'Visible to students' : 'Hidden from students'}
+              </button>` : ''}
+          </div>
+          ${!STATE.marchingLeaderboardEnabled && STATE.isAdmin
+            ? `<p class="lb-hidden-note">Students cannot see this leaderboard. Toggle above to enable it.</p>`
+            : ''}
+          <div class="card mb-12" style="padding:0;overflow:hidden">
+            ${scored.length === 0
+              ? `<div class="lb-stat-row"><div class="lb-stat-label">No data yet.</div></div>`
+              : scored.map(({ docId, name, score }, i) => {
+                  const isMe = docId === myDocId;
+                  const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
+                  return `
+                  <div class="lb-rank-row ${isMe ? 'lb-rank-me' : ''} ${i % 2 === 1 ? 'lb-stat-row-alt' : ''}">
+                    <span class="lb-rank-medal">${medal}</span>
+                    <span class="lb-rank-name">${esc(name)}${isMe ? ' <span class="lb-you-badge">you</span>' : ''}</span>
+                    <span class="lb-rank-score ${score > 0 ? 'lb-val-ok' : score < 0 ? 'lb-val-warn' : ''}">${score > 0 ? '+' : ''}${score}</span>
+                  </div>`;
+                }).join('')}
+          </div>`;
+      })() : ''}
 
     </div>`;
 }
@@ -3445,6 +3521,20 @@ async function _saveInstruments() {
     console.error('Failed to save instruments:', e);
     showToast('Failed to save instruments.');
   }
+}
+
+async function toggleMarchingLeaderboard() {
+  STATE.marchingLeaderboardEnabled = !STATE.marchingLeaderboardEnabled;
+  try {
+    await db.collection('settings').doc('presets').set(
+      { marchingLeaderboardEnabled: STATE.marchingLeaderboardEnabled }, { merge: true }
+    );
+  } catch(e) {
+    console.error('Failed to save leaderboard setting:', e);
+    showToast('Failed to save setting.');
+    STATE.marchingLeaderboardEnabled = !STATE.marchingLeaderboardEnabled; // revert
+  }
+  render();
 }
 
 // ── Section Management ────────────────────────────────────────────────────────
