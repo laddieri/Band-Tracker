@@ -42,6 +42,7 @@ const STATE = {
   mistakePresets:  [...MISTAKE_PRESETS],
   positivePresets: [...POSITIVE_PRESETS],
   instruments:     [...INSTRUMENTS],
+  sections:        [...SECTIONS],
   _unsubs:      []
 };
 
@@ -113,6 +114,7 @@ function startListeners() {
         STATE.mistakePresets  = d.mistakePresets?.length  ? d.mistakePresets  : [...MISTAKE_PRESETS];
         STATE.positivePresets = d.positivePresets?.length ? d.positivePresets : [...POSITIVE_PRESETS];
         STATE.instruments     = d.instruments?.length     ? d.instruments     : [...INSTRUMENTS];
+        STATE.sections        = d.sections?.length        ? d.sections        : [...SECTIONS];
         if (!STATE.loading) render();
       })
     );
@@ -933,6 +935,13 @@ function showRosterOptionsModal() {
         <div>
           <div class="options-menu-label">Manage Instruments</div>
           <div class="options-menu-sub">Add, edit, or remove available instruments</div>
+        </div>
+      </button>
+      <button class="options-menu-item" onclick="closeModal();showManageSectionsModal()">
+        <div class="options-menu-icon">🗂️</div>
+        <div>
+          <div class="options-menu-label">Manage Sections</div>
+          <div class="options-menu-sub">Add, edit, or remove band sections</div>
         </div>
       </button>
       <button class="options-menu-item" onclick="closeModal();showManagePresetsModal()">
@@ -2821,7 +2830,7 @@ function showAddStudentModal(prefill = '') {
       <label class="form-label">Section</label>
       <select class="form-select" id="m-section">
         <option value="">— Select section —</option>
-        ${SECTIONS.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('')}
+        ${STATE.sections.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('')}
       </select>
     </div>
     <div class="form-group">
@@ -2897,7 +2906,7 @@ function showEditStudentModal(num) {
       <label class="form-label">Section</label>
       <select class="form-select" id="m-section">
         <option value="">— Select section —</option>
-        ${SECTIONS.map(sec=>`<option value="${esc(sec)}" ${s.section===sec?'selected':''}>${esc(sec)}</option>`).join('')}
+        ${STATE.sections.map(sec=>`<option value="${esc(sec)}" ${s.section===sec?'selected':''}>${esc(sec)}</option>`).join('')}
       </select>
     </div>
     <div class="form-group">
@@ -3309,6 +3318,98 @@ async function _saveInstruments() {
   } catch(e) {
     console.error('Failed to save instruments:', e);
     showToast('Failed to save instruments.');
+  }
+}
+
+// ── Section Management ────────────────────────────────────────────────────────
+
+function showManageSectionsModal() {
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Sections</div>
+    <div class="preset-section">
+      <div id="section-list">${_renderSectionList()}</div>
+      <div class="preset-add-row">
+        <input class="preset-add-input" id="add-section-input" type="text"
+               placeholder="New section…" maxlength="60"
+               onkeydown="if(event.key==='Enter')addSection()">
+        <button class="preset-add-btn preset-add-btn-positive" onclick="addSection()">Add</button>
+      </div>
+    </div>
+    <button class="btn btn-secondary" style="width:100%;margin-top:10px;font-size:0.8rem"
+            onclick="resetSectionsToDefaults()">Reset to defaults</button>
+    <div class="modal-actions" style="margin-top:10px">
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Done</button>
+    </div>
+  `);
+}
+
+function _renderSectionList() {
+  if (!STATE.sections.length) return `<div class="preset-empty">No sections — add one below.</div>`;
+  return STATE.sections.map((sec, i) => `
+    <div class="preset-item">
+      <span class="preset-item-text">${esc(sec)}</span>
+      <div class="preset-item-btns">
+        <button class="preset-btn-edit" onclick="editSection(${i})">Edit</button>
+        <button class="preset-btn-del"  onclick="deleteSection(${i})">×</button>
+      </div>
+    </div>`).join('');
+}
+
+function addSection() {
+  const input = document.getElementById('add-section-input');
+  const val = input?.value.trim();
+  if (!val) return;
+  STATE.sections = [...STATE.sections, val];
+  _saveSections();
+  input.value = '';
+  document.getElementById('section-list').innerHTML = _renderSectionList();
+}
+
+function deleteSection(idx) {
+  STATE.sections = STATE.sections.filter((_, i) => i !== idx);
+  _saveSections();
+  document.getElementById('section-list').innerHTML = _renderSectionList();
+}
+
+function editSection(idx) {
+  const current = STATE.sections[idx];
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Edit Section</div>
+    <input class="form-input" id="edit-section-input" type="text"
+           value="${esc(current)}" maxlength="60"
+           onkeydown="if(event.key==='Enter')saveEditSection(${idx})">
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn btn-secondary" onclick="showManageSectionsModal()">Cancel</button>
+      <button class="btn btn-primary"   onclick="saveEditSection(${idx})">Save</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('edit-section-input')?.focus(), 60);
+}
+
+function saveEditSection(idx) {
+  const val = document.getElementById('edit-section-input')?.value.trim();
+  if (!val) return;
+  STATE.sections[idx] = val;
+  _saveSections();
+  showManageSectionsModal();
+}
+
+function resetSectionsToDefaults() {
+  STATE.sections = [...SECTIONS];
+  _saveSections();
+  document.getElementById('section-list').innerHTML = _renderSectionList();
+}
+
+async function _saveSections() {
+  try {
+    await db.collection('settings').doc('presets').set(
+      { sections: STATE.sections }, { merge: true }
+    );
+  } catch(e) {
+    console.error('Failed to save sections:', e);
+    showToast('Failed to save sections.');
   }
 }
 
