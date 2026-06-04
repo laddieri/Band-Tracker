@@ -1590,17 +1590,28 @@ function viewRehearsals() {
         const cnt  = Object.keys(ents).length;
         const errs = Object.values(ents).reduce((s,e)=>s+(e.mistakes||0),0);
         const pos  = Object.values(ents).reduce((s,e)=>s+(e.positives||0),0);
+        const ended    = !!r.ended;
+        const attDone  = !!r.attendanceSubmitted;
+        const stateCls = ended ? 'rh-card-ended' : 'rh-card-open';
         return `
-          <div class="card clickable" onclick="navigate('rehearsal',{rid:'${esc(r.id)}'})">
+          <div class="card clickable rh-card ${stateCls}" onclick="navigate('rehearsal',{rid:'${esc(r.id)}'})">
             <div class="flex items-center justify-between">
               <div>
                 <div class="font-bold">${fmtDate(r.date)}</div>
                 ${r.label ? `<div class="text-muted text-sm mt-4">${esc(r.label)}</div>` : ''}
+                <div class="rh-status-row">
+                  ${ended
+                    ? `<span class="rh-badge rh-badge-ended">Ended</span>`
+                    : `<span class="rh-badge rh-badge-open">Open</span>`}
+                  ${attDone
+                    ? `<span class="rh-badge rh-badge-att">Attendance ✓</span>`
+                    : ''}
+                </div>
               </div>
               <div class="flex gap-6 items-center">
-                <span class="badge badge-neutral">${cnt} tracked</span>
-                ${errs>0 ? `<span class="badge badge-danger">${errs}✗</span>` : ''}
-                ${pos>0  ? `<span class="badge badge-success">${pos}✓</span>` : ''}
+                ${cnt > 0 ? `<span class="badge badge-neutral">${cnt} tracked</span>` : ''}
+                ${errs > 0 ? `<span class="badge badge-danger">${errs}✗</span>` : ''}
+                ${pos  > 0 ? `<span class="badge badge-success">${pos}✓</span>` : ''}
               </div>
             </div>
           </div>`;
