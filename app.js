@@ -295,6 +295,10 @@ function navigate(view, params = {}) {
     _songHidePassedFilter = false;
     _songSearch           = '';
   }
+  if (_view === 'leaderboard' && view !== 'leaderboard') {
+    _lbInstrumentFilter = '';
+    _lbSectionFilter    = '';
+  }
   _view   = view;
   _params = params;
   render();
@@ -310,6 +314,8 @@ let _rosterInstrumentFilter  = '';
 let _trackerInstrumentFilter = '';
 let _songSectionFilter       = '';
 let _songHidePassedFilter    = false;
+let _lbInstrumentFilter      = '';
+let _lbSectionFilter         = '';
 let _songSearch              = '';
 let _attFilterField = null; // null | 'instrument' | 'row' | 'column'
 let _attFilterValue = null;
@@ -1699,8 +1705,11 @@ function viewLeaderboard() {
       ` : ''}
 
       ${(STATE.marchingLeaderboardEnabled || STATE.isAdmin) ? (() => {
-        const scored = Object.entries(STATE.students).map(([docId, s]) => {
-          const score = Object.values(STATE.entries).reduce((sum, rehEntries) => {
+        const allScored = Object.entries(STATE.students).map(([docId, s]) => {
+          const songPoints = STATE.songs.reduce((sum, song) => {
+            return sum + (song.statuses?.[String(s.number)]?.status === 'passed' ? 1 : 0);
+          }, 0);
+          const score = songPoints + Object.values(STATE.entries).reduce((sum, rehEntries) => {
             const e = rehEntries[String(s.number)];
             return sum + (e ? (e.positives || 0) - (e.mistakes || 0)
                               - (e.attendance === 'absent' ? 1 : 0)
@@ -1709,7 +1718,16 @@ function viewLeaderboard() {
           return { docId, s, score, name: fakeAnimalName(docId) };
         }).sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
 
-        const myDocId = STATE.studentNum;
+        const scored = allScored
+          .filter(({ s }) => !_lbInstrumentFilter || normInstrument(s.instrument) === _lbInstrumentFilter)
+          .filter(({ s }) => !_lbSectionFilter    || s.section === _lbSectionFilter);
+
+        const myDocId    = STATE.studentNum;
+        const instruments = instrumentsInRoster();
+        const sections    = sectionsInRoster();
+
+        const filterChip = (label, active, onclick) =>
+          `<button class="inst-chip ${active ? 'inst-active' : ''}" onclick="${onclick}">${esc(label)}</button>`;
 
         return `
           <div class="lb-marching-hdr">
@@ -1723,9 +1741,19 @@ function viewLeaderboard() {
           ${!STATE.marchingLeaderboardEnabled && STATE.isAdmin
             ? `<p class="lb-hidden-note">Students cannot see this leaderboard. Toggle above to enable it.</p>`
             : ''}
+          ${instruments.length ? `
+            <div class="inst-filter-row" style="padding:4px 0 4px">
+              ${filterChip('All', !_lbInstrumentFilter, "filterLb('instrument','')")}
+              ${instruments.map(i => filterChip(i, _lbInstrumentFilter === i, `filterLb('instrument','${esc(i)}')`)).join('')}
+            </div>` : ''}
+          ${sections.length ? `
+            <div class="inst-filter-row" style="padding:0 0 6px">
+              ${filterChip('All sections', !_lbSectionFilter, "filterLb('section','')")}
+              ${sections.map(s => filterChip(s, _lbSectionFilter === s, `filterLb('section','${esc(s)}')`)).join('')}
+            </div>` : ''}
           <div class="card mb-12" style="padding:0;overflow:hidden">
             ${scored.length === 0
-              ? `<div class="lb-stat-row"><div class="lb-stat-label">No data yet.</div></div>`
+              ? `<div class="lb-stat-row"><div class="lb-stat-label">No students match this filter.</div></div>`
               : scored.map(({ docId, name, score }, i) => {
                   const isMe = docId === myDocId;
                   const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
@@ -3536,6 +3564,12 @@ async function _saveInstruments() {
     console.error('Failed to save instruments:', e);
     showToast('Failed to save instruments.');
   }
+}
+
+function filterLb(type, val) {
+  if (type === 'instrument') _lbInstrumentFilter = val;
+  else                       _lbSectionFilter    = val;
+  render();
 }
 
 async function randomizePseudonyms() {
