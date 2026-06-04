@@ -1918,7 +1918,7 @@ function clearActive() {
   _numSearch = '';
   if (!_blockMode) {
     const inp = document.getElementById('num-input');
-    if (inp) { inp.value = ''; inp.focus(); }
+    if (inp) inp.value = '';
   }
   reRender(_params.rid);
 }
@@ -1985,7 +1985,6 @@ function showMarkModal(rid, num, type) {
       <button class="btn btn-primary" onclick="confirmMarkCustom('${esc(rid)}','${esc(num)}','${esc(type)}')">Add Custom</button>
     </div>
   `);
-  setTimeout(() => document.getElementById('mark-note-input')?.focus(), 80);
 }
 
 function confirmMark(rid, num, type, note) {
@@ -2288,12 +2287,11 @@ function showGroupPickerModal(rid) {
       <button class="btn btn-success"   onclick="pickGroupMark('${esc(rid)}','positive')">✓ Positive</button>
     </div>
   `);
-  setTimeout(() => document.getElementById('group-name-input')?.focus(), 80);
 }
 
 function selectGroupChip(name) {
   const inp = document.getElementById('group-name-input');
-  if (inp) { inp.value = name; inp.focus(); }
+  if (inp) inp.value = name;
 }
 
 function pickGroupMark(rid, type) {
@@ -2352,7 +2350,6 @@ function showGroupMarkModal(rid, groupName, type) {
       <button class="btn btn-primary" onclick="confirmGroupMarkCustom('${esc(rid)}','${esc(groupName)}','${esc(type)}')">Add Custom</button>
     </div>
   `);
-  setTimeout(() => document.getElementById('mark-note-input')?.focus(), 80);
 }
 
 function confirmGroupMarkCustom(rid, groupName, type) {
