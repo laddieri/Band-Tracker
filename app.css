@@ -314,6 +314,26 @@ html, body {
 
 /* ── Section title ──────────────────────────────────────────────────────── */
 
+/* ── Collapsible sections ───────────────────────────────────────────────── */
+
+.sec-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  margin-top: 20px;
+  margin-bottom: 8px;
+}
+.sec-chevron {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  transition: transform .2s;
+  flex-shrink: 0;
+}
+.sec-hdr:not(.sec-hdr-open) .sec-chevron { transform: rotate(-90deg); }
+.sec-collapsed { display: none; }
+
 .section-title {
   font-size: 0.75rem;
   font-weight: 700;
