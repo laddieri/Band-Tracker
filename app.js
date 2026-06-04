@@ -137,26 +137,30 @@ function startListeners() {
 
   const listeners = [];
 
-  // Admin + settings listeners — not applicable to anonymous student sessions
+  // Admin listener — directors only
   if (!STATE.user.isAnonymous && STATE.user.email) {
     listeners.push(
       db.collection('admins').doc(STATE.user.email).onSnapshot(doc => {
         const prev = STATE.isAdmin;
         STATE.isAdmin = doc.exists;
         if (prev !== STATE.isAdmin && !STATE.loading) render();
-      }),
-      db.collection('settings').doc('presets').onSnapshot(doc => {
-        const d = doc.exists ? doc.data() : {};
-        STATE.mistakePresets  = d.mistakePresets?.length  ? d.mistakePresets  : [...MISTAKE_PRESETS];
-        STATE.positivePresets = d.positivePresets?.length ? d.positivePresets : [...POSITIVE_PRESETS];
-        STATE.instruments               = d.instruments?.length ? d.instruments : [...INSTRUMENTS];
-        STATE.sections                  = d.sections?.length   ? d.sections   : [...SECTIONS];
-        STATE.marchingLeaderboardEnabled = !!d.marchingLeaderboardEnabled;
-        STATE.pseudonymSalt              = d.pseudonymSalt || '';
-        if (!STATE.loading) render();
       })
     );
   }
+
+  // Settings listener — all signed-in users (students need leaderboard toggle + pseudonym salt)
+  listeners.push(
+    db.collection('settings').doc('presets').onSnapshot(doc => {
+      const d = doc.exists ? doc.data() : {};
+      STATE.mistakePresets             = d.mistakePresets?.length  ? d.mistakePresets  : [...MISTAKE_PRESETS];
+      STATE.positivePresets            = d.positivePresets?.length ? d.positivePresets : [...POSITIVE_PRESETS];
+      STATE.instruments                = d.instruments?.length     ? d.instruments     : [...INSTRUMENTS];
+      STATE.sections                   = d.sections?.length        ? d.sections        : [...SECTIONS];
+      STATE.marchingLeaderboardEnabled = !!d.marchingLeaderboardEnabled;
+      STATE.pseudonymSalt              = d.pseudonymSalt || '';
+      if (!STATE.loading) render();
+    })
+  );
 
   listeners.push(
     db.collection('students').onSnapshot({ includeMetadataChanges: true }, snap => {
