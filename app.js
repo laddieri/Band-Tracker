@@ -1027,7 +1027,7 @@ function _applySongStatus(sid, num, song, status) {
   }
 }
 
-function showConfirmModal(title, body, onConfirm) {
+function showConfirmModal(title, body, onConfirm, confirmLabel = 'Remove', confirmCls = 'btn-danger') {
   _pendingConfirm = onConfirm;
   openModal(`
     <div class="modal-handle"></div>
@@ -1035,7 +1035,7 @@ function showConfirmModal(title, body, onConfirm) {
     ${body ? `<p style="font-size:.9rem;color:var(--text-muted);margin-bottom:8px;line-height:1.5">${body}</p>` : ''}
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-danger" onclick="runPendingConfirm()">Remove</button>
+      <button class="btn ${confirmCls}" onclick="runPendingConfirm()">${confirmLabel}</button>
     </div>
   `);
 }
@@ -1611,19 +1611,20 @@ function viewRehearsal(rid) {
   const attAbsent   = Object.values(allEntries).filter(e => e.attendance === 'absent').length;
   const attLate     = Object.values(allEntries).filter(e => e.attendance === 'late').length;
   const totalRoster = Object.keys(STATE.students).length;
-  const attSummary  = [
+  const attSummary  = (attAbsent || attLate) ? [
     attAbsent ? `${attAbsent} absent` : '',
     attLate   ? `${attLate} late`     : '',
-    totalRoster ? `${totalRoster - attAbsent - attLate} present` : ''
-  ].filter(Boolean).join(' · ');
+    `${totalRoster - attAbsent - attLate} present`
+  ].filter(Boolean).join(' · ') : '';
 
+  const attSubmitted = r?.attendanceSubmitted;
   return `
-    <button class="att-screen-btn" onclick="navigate('attendance',{rid:'${esc(rid)}'})">
+    <button class="att-screen-btn ${attSubmitted ? 'att-screen-btn-done' : ''}" onclick="navigate('attendance',{rid:'${esc(rid)}'})">
       <div class="att-screen-btn-label">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;flex-shrink:0">
           <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
         </svg>
-        Take Attendance
+        ${attSubmitted ? 'Attendance Submitted ✓' : 'Take Attendance'}
       </div>
       ${attSummary ? `<div class="att-screen-btn-summary">${attSummary}</div>` : ''}
     </button>
@@ -1824,15 +1825,17 @@ function confirmMarkCustom(rid, num, type) {
 // ── Attendance Screen ─────────────────────────────────────────────────────────
 
 function viewAttendance(rid) {
+  const r        = STATE.rehearsals.find(r => r.id === rid);
   const students = Object.values(DB.getStudents());
   const entries  = STATE.entries[rid] || {};
   if (!students.length) {
     return `<div class="empty-state"><p>No students in the roster yet.</p></div>`;
   }
 
-  const absent  = students.filter(s => entries[s.number]?.attendance === 'absent').length;
-  const late    = students.filter(s => entries[s.number]?.attendance === 'late').length;
-  const present = students.length - absent - late;
+  const submitted = r?.attendanceSubmitted || false;
+  const absent   = students.filter(s => entries[s.number]?.attendance === 'absent').length;
+  const late     = students.filter(s => entries[s.number]?.attendance === 'late').length;
+  const unmarked = students.length - absent - late; // unmarked = assumed present
 
   // Build sorted / grouped list
   let bodyHtml = '';
@@ -1882,10 +1885,15 @@ function viewAttendance(rid) {
   }
 
   return `
+    ${submitted ? `
+      <div class="att-submitted-banner">
+        ✓ Attendance submitted — changes require confirmation
+      </div>` : ''}
+
     <div class="att-screen-summary-bar">
       <span class="att-summary-chip att-chip-absent">${absent} Absent</span>
       <span class="att-summary-chip att-chip-late">${late} Late</span>
-      <span class="att-summary-chip att-chip-present">${present} Present</span>
+      <span class="att-summary-chip att-chip-present">${unmarked} Present</span>
     </div>
 
     <div class="att-sort-row">
@@ -1898,9 +1906,15 @@ function viewAttendance(rid) {
               onclick="setAttSort('column','${esc(rid)}')">Column</button>
     </div>
 
-    <button class="btn btn-secondary btn-full mb-12" onclick="markAllPresent('${esc(rid)}')">
-      ✓ Mark All Present
-    </button>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="btn btn-secondary" style="flex:1" onclick="markAllPresent('${esc(rid)}')">
+        ✓ Mark All Present
+      </button>
+      ${!submitted ? `
+        <button class="btn btn-primary" style="flex:1" onclick="showSubmitAttendanceModal('${esc(rid)}')">
+          Submit Attendance
+        </button>` : ''}
+    </div>
 
     <div class="att-student-list">
       ${bodyHtml}
@@ -1909,7 +1923,7 @@ function viewAttendance(rid) {
 }
 
 function attStudentRow(rid, s, entries) {
-  const att  = entries[s.number]?.attendance || 'present';
+  const att  = entries[s.number]?.attendance || null; // null = unmarked = present
   const meta = [fmtPos(s.column, s.row), s.instrument, s.name].filter(Boolean).join(' · ');
   return `
     <div class="att-stu-row ${att === 'absent' ? 'att-stu-absent' : att === 'late' ? 'att-stu-late' : ''}">
@@ -1919,12 +1933,10 @@ function attStudentRow(rid, s, entries) {
         ${meta ? `<div class="att-stu-meta">${esc(meta)}</div>` : ''}
       </div>
       <div class="att-stu-btns">
-        <button class="att-btn att-present ${att==='present'?'att-on-present':''}"
-                onclick="setAttendance('${esc(rid)}','${esc(s.number)}','present')">✓</button>
-        <button class="att-btn att-late  ${att==='late'?'att-on-late':''}"
-                onclick="setAttendance('${esc(rid)}','${esc(s.number)}','late')">Late</button>
-        <button class="att-btn att-absent ${att==='absent'?'att-on-absent':''}"
-                onclick="setAttendance('${esc(rid)}','${esc(s.number)}','absent')">Absent</button>
+        <button class="att-btn att-late   ${att==='late'   ?'att-on-late':''}"
+                onclick="setAttendance('${esc(rid)}','${esc(s.number)}','late')">◷ Late</button>
+        <button class="att-btn att-absent ${att==='absent' ?'att-on-absent':''}"
+                onclick="setAttendance('${esc(rid)}','${esc(s.number)}','absent')">✗ Absent</button>
       </div>
     </div>`;
 }
@@ -1955,12 +1967,35 @@ async function markAllPresent(rid) {
 function setAttendance(rid, num, status) {
   const ents = DB.getRehearsalEntries(rid);
   const cur  = ents[num] || { mistakes:0, positives:0, notes:'', events:[] };
-  const prev = cur.attendance || 'present';
-  const next = prev === status ? 'present' : status; // tap active = clear
+  const prev = cur.attendance || null;
+  const next = prev === status ? null : status; // tap active = clear
+
+  const apply = () => _applyAttendance(rid, num, cur, next);
+
+  const r = STATE.rehearsals.find(r => r.id === rid);
+  if (r?.attendanceSubmitted) {
+    const s = STATE.students[String(num)];
+    const name = s?.name ? `${s.name} (#${num})` : `#${num}`;
+    const fromLabel = prev === 'absent' ? 'Absent' : prev === 'late' ? 'Late' : 'Present';
+    const toLabel   = next === 'absent' ? 'Absent' : next === 'late' ? 'Late' : 'Present';
+    showConfirmModal(
+      'Attendance Already Submitted',
+      `Change ${name} from <strong>${fromLabel}</strong> to <strong>${toLabel}</strong>?`,
+      apply,
+      'Change',
+      'btn-primary'
+    );
+    return;
+  }
+
+  apply();
+}
+
+function _applyAttendance(rid, num, cur, next) {
   if (!STATE.entries[rid]) STATE.entries[rid] = {};
   STATE.entries[rid][num] = { ...cur, attendance: next };
   const docId = `${rid}_${String(num)}`;
-  if (next === 'present') {
+  if (!next) {
     db.collection('entries').doc(docId).update({
       attendance: firebase.firestore.FieldValue.delete()
     }).catch(() => {});
@@ -1973,6 +2008,57 @@ function setAttendance(rid, num, status) {
       attendance: next
     });
   }
+  reRender(rid);
+}
+
+function showSubmitAttendanceModal(rid) {
+  const stuMap  = DB.getStudents();
+  const entries = STATE.entries[rid] || {};
+  const nameOf  = num => stuMap[num]?.name ? `${stuMap[num].name} (#${num})` : `#${num}`;
+
+  const absentList = Object.entries(entries)
+    .filter(([, e]) => e.attendance === 'absent')
+    .map(([num]) => nameOf(num));
+  const lateList = Object.entries(entries)
+    .filter(([, e]) => e.attendance === 'late')
+    .map(([num]) => nameOf(num));
+
+  const noMarks = !absentList.length && !lateList.length;
+
+  _pendingConfirm = () => submitAttendance(rid);
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Submit Attendance</div>
+    ${noMarks ? `
+      <p style="font-size:.9rem;color:var(--text-muted);margin-bottom:16px;line-height:1.5">
+        No absences or late arrivals recorded — everyone is marked present.
+      </p>` : ''}
+    ${absentList.length ? `
+      <div class="att-review-section">
+        <div class="att-review-hdr att-chip-absent">✗ Absent (${absentList.length})</div>
+        ${absentList.map(n => `<div class="att-review-name">${esc(n)}</div>`).join('')}
+      </div>` : ''}
+    ${lateList.length ? `
+      <div class="att-review-section">
+        <div class="att-review-hdr att-chip-late">◷ Late (${lateList.length})</div>
+        ${lateList.map(n => `<div class="att-review-name">${esc(n)}</div>`).join('')}
+      </div>` : ''}
+    <p style="font-size:.8rem;color:var(--text-muted);margin-top:12px">
+      After submitting, any changes will require confirmation.
+    </p>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="runPendingConfirm()">Submit</button>
+    </div>
+  `);
+}
+
+function submitAttendance(rid) {
+  const r = STATE.rehearsals.find(r => r.id === rid);
+  if (!r) return;
+  r.attendanceSubmitted = true;
+  db.collection('rehearsals').doc(rid).set({ attendanceSubmitted: true }, { merge: true });
+  showToast('Attendance submitted.');
   reRender(rid);
 }
 

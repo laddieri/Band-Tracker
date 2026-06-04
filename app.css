@@ -1797,3 +1797,41 @@ html, body {
 .att-stu-btns { display: flex; gap: 5px; flex-shrink: 0; }
 .att-present   { background: var(--success-bg); color: var(--success); border-color: #86efac; }
 .att-on-present { background: var(--success); color: white; border-color: var(--success); }
+
+/* ── Attendance submitted state ──────────────────────────────────────────────── */
+
+.att-submitted-banner {
+  background: var(--success-bg);
+  border: 1.5px solid #86efac;
+  border-radius: var(--r-sm);
+  color: var(--success);
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+}
+
+.att-screen-btn-done {
+  border-color: var(--success);
+  background: var(--success-bg);
+}
+.att-screen-btn-done .att-screen-btn-label { color: var(--success); }
+
+/* ── Submit attendance review modal ──────────────────────────────────────────── */
+
+.att-review-section { margin-bottom: 14px; }
+.att-review-hdr {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.att-review-name {
+  font-size: 0.88rem;
+  padding: 3px 0;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+.att-review-name:last-child { border-bottom: none; }
