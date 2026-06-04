@@ -4226,6 +4226,12 @@ const COL_ALIASES = {
   notes:      ['notes','note','comments','comment','director notes']
 };
 
+function normalizeGrade(val) {
+  const num = val.replace(/[^\d]/g, '');
+  const mapped = { '8':'8th','9':'9th','10':'10th','11':'11th','12':'12th' };
+  return mapped[num] || val;
+}
+
 function detectCols(headers) {
   const norm = headers.map(h => h.toLowerCase().trim());
   const map = {};
@@ -4353,7 +4359,7 @@ async function executeImport() {
     if (colMap.row        !== undefined) incoming.row        = csvRow[colMap.row].trim();
     if (colMap.instrument !== undefined) incoming.instrument = csvRow[colMap.instrument].trim();
     if (colMap.section    !== undefined) incoming.section    = csvRow[colMap.section].trim();
-    if (colMap.grade      !== undefined) incoming.grade      = csvRow[colMap.grade].trim();
+    if (colMap.grade      !== undefined) incoming.grade      = normalizeGrade(csvRow[colMap.grade].trim());
     if (colMap.notes      !== undefined) incoming.notes      = csvRow[colMap.notes].trim();
     if (existing[num]) {
       if (strategy === 'overwrite') {
