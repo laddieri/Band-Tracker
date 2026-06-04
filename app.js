@@ -810,7 +810,11 @@ function viewRoster() {
              oninput="filterRoster(this.value)" autocomplete="off">
     </div>
     ${STATE.isAdmin ? `
-    <div style="text-align:right;margin:-4px 0 12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:-4px 0 12px">
+      <button class="btn btn-ghost btn-sm" style="color:var(--danger);font-size:0.8rem;padding:4px 0"
+              onclick="showDeleteRosterModal()">
+        ✕ Delete Roster
+      </button>
       <button class="btn btn-ghost btn-sm" style="color:var(--primary);font-size:0.8rem;padding:4px 0"
               onclick="showImportModal()">
         ↑ Import from CSV
@@ -872,6 +876,53 @@ function filterRosterInstrument(inst) {
   _rosterInstrumentFilter = inst;
   const main = document.getElementById('main-content');
   if (main) main.innerHTML = viewRoster();
+}
+
+function showDeleteRosterModal() {
+  const count = Object.keys(DB.getStudents()).length;
+  if (!count) { showToast('Roster is already empty.'); return; }
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title" style="color:var(--danger)">Delete Entire Roster</div>
+    <p style="font-size:.9rem;line-height:1.6;margin-bottom:8px">
+      This will permanently delete <strong>all ${count} student${count !== 1 ? 's' : ''}</strong> from the roster.
+    </p>
+    <p style="font-size:.85rem;color:var(--text-muted);line-height:1.5;margin-bottom:16px">
+      Rehearsal history and attendance records will remain but will no longer be linked to any student. This cannot be undone.
+    </p>
+    <div class="form-group" style="margin-bottom:16px">
+      <label class="form-label">Type <strong>DELETE</strong> to confirm</label>
+      <input class="form-input" id="delete-roster-confirm" type="text"
+             placeholder="DELETE" autocomplete="off"
+             oninput="document.getElementById('delete-roster-btn').disabled = this.value !== 'DELETE'">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="delete-roster-btn" disabled onclick="deleteRoster()">Delete All Students</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('delete-roster-confirm')?.focus(), 80);
+}
+
+async function deleteRoster() {
+  if (!STATE.isAdmin) return;
+  const nums = Object.keys(STATE.students);
+  if (!nums.length) { closeModal(); return; }
+
+  closeModal();
+
+  const CHUNK = 500;
+  for (let i = 0; i < nums.length; i += CHUNK) {
+    const batch = db.batch();
+    nums.slice(i, i + CHUNK).forEach(num => {
+      batch.delete(db.collection('students').doc(num));
+    });
+    await batch.commit().catch(e => { showToast('Delete failed — ' + (e.message || 'check console')); throw e; });
+  }
+
+  STATE.students = {};
+  showToast('Roster deleted.');
+  render();
 }
 
 function filterTrackerInstrument(rid, inst) {
