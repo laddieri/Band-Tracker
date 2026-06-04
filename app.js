@@ -1698,7 +1698,9 @@ function viewLeaderboard() {
         const scored = Object.entries(STATE.students).map(([docId, s]) => {
           const score = Object.values(STATE.entries).reduce((sum, rehEntries) => {
             const e = rehEntries[String(s.number)];
-            return sum + (e ? (e.positives || 0) - (e.mistakes || 0) : 0);
+            return sum + (e ? (e.positives || 0) - (e.mistakes || 0)
+                              - (e.attendance === 'absent' ? 1 : 0)
+                              - (e.attendance === 'late'   ? 0.5 : 0) : 0);
           }, 0);
           return { docId, s, score, name: fakeAnimalName(docId) };
         }).sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
