@@ -51,8 +51,9 @@ const SECTIONS = ['Woodwinds','Brass','Percussion','Front Ensemble','Color Guard
 const MISTAKE_PRESETS  = ['Out of step','Missed turn','Poor posture','Late to mark','Wrong direction','Dress/cover issue','Instrument angle','Off the line'];
 const POSITIVE_PRESETS = ['Snappy turns','Great marching style','Good posture','Strong presence','Perfect timing','Excellent dress/cover','High energy','Great recovery'];
 
-const COLUMNS = ['A','B','C','D','E','F','G','H','I','J','K','L'];
-const ROWS    = [1,2,3,4,5,6,7,8,9,10,11,12];
+const COLUMNS      = ['A','B','C','D','E','F','G','H','I','J','K','L'];
+const ROWS         = [1,2,3,4,5,6,7,8,9,10,11,12];
+const GRADE_LEVELS = ['8th','9th','10th','11th','12th'];
 
 // ── Firebase init ─────────────────────────────────────────────────────────────
 
@@ -291,6 +292,7 @@ function navigate(view, params = {}) {
     _blockMode  = false;
     _blockPath  = [];
     _trackerInstrumentFilter = '';
+    _trackerGradeFilter      = '';
   }
   if (_view === 'song' && view !== 'song') {
     _songSectionFilter    = '';
@@ -300,6 +302,7 @@ function navigate(view, params = {}) {
   if (_view === 'leaderboard' && view !== 'leaderboard') {
     _lbInstrumentFilter = '';
     _lbSectionFilter    = '';
+    _lbGradeFilter      = '';
   }
   _view   = view;
   _params = params;
@@ -314,12 +317,14 @@ let _numSearch  = '';
 let _rosterSearch = '';
 let _rosterInstrumentFilter  = '';
 let _trackerInstrumentFilter = '';
+let _trackerGradeFilter      = '';
 let _songSectionFilter       = '';
 let _songHidePassedFilter    = false;
 let _lbInstrumentFilter      = '';
 let _lbSectionFilter         = '';
+let _lbGradeFilter           = '';
 let _songSearch              = '';
-let _attFilterField = null; // null | 'instrument' | 'row' | 'column'
+let _attFilterField = null; // null | 'instrument' | 'row' | 'column' | 'grade'
 let _attFilterValue = null;
 let _attSearch               = '';
 let _blockMode  = false;
@@ -860,6 +865,12 @@ function sectionsInRoster() {
   return [...seen].sort();
 }
 
+function gradesInRoster() {
+  const seen = new Set();
+  Object.values(DB.getStudents()).forEach(s => { if (s.grade) seen.add(s.grade); });
+  return GRADE_LEVELS.filter(g => seen.has(g));
+}
+
 function rowsInRoster() {
   const seen = new Set();
   Object.values(DB.getStudents()).forEach(s => { if (s.row != null && s.row !== '') seen.add(String(s.row)); });
@@ -889,11 +900,12 @@ function instrumentFilterChips(activeFilter, fnName, fnFirstArg) {
     </div>`;
 }
 
-function studentSuggestions(query, instrumentFilter) {
+function studentSuggestions(query, instrumentFilter, gradeFilter) {
   const q = query.toLowerCase().trim();
   if (!q) return [];
   return Object.values(DB.getStudents()).filter(s => {
     if (instrumentFilter && normInstrument(s.instrument) !== instrumentFilter) return false;
+    if (gradeFilter && (s.grade || '') !== gradeFilter) return false;
     return (s.name||'').toLowerCase().includes(q) ||
            String(s.number).includes(q) ||
            (s.section||'').toLowerCase().includes(q);
@@ -1137,6 +1149,13 @@ async function deleteRoster() {
 
 function filterTrackerInstrument(rid, inst) {
   _trackerInstrumentFilter = inst;
+  _activeNum = null;
+  _numSearch = '';
+  reRender(rid);
+}
+
+function filterTrackerGrade(rid, grade) {
+  _trackerGradeFilter = grade;
   _activeNum = null;
   _numSearch = '';
   reRender(rid);
@@ -1646,7 +1665,7 @@ function viewStudentPortal() {
   const hist = DB.getStudentHistory(num);
 
   const pos        = fmtPos(s?.column, s?.row);
-  const metaParts  = [s?.instrument, s?.section, pos ? `Position ${pos}` : ''].filter(Boolean);
+  const metaParts  = [s?.instrument, s?.section, s?.grade ? s.grade + ' Grade' : '', pos ? `Position ${pos}` : ''].filter(Boolean);
   const totalErr   = hist.reduce((sum, {entry: e}) => sum + (e.mistakes  || 0), 0);
   const totalPos   = hist.reduce((sum, {entry: e}) => sum + (e.positives || 0), 0);
 
@@ -1983,11 +2002,13 @@ function viewLeaderboard() {
 
         const scored = allScored
           .filter(({ s }) => !_lbInstrumentFilter || normInstrument(s.instrument) === _lbInstrumentFilter)
-          .filter(({ s }) => !_lbSectionFilter    || s.section === _lbSectionFilter);
+          .filter(({ s }) => !_lbSectionFilter    || s.section === _lbSectionFilter)
+          .filter(({ s }) => !_lbGradeFilter      || (s.grade || '') === _lbGradeFilter);
 
         const myDocId    = STATE.studentNum;
         const instruments = instrumentsInRoster();
         const sections    = sectionsInRoster();
+        const lbGrades    = gradesInRoster();
 
         const filterChip = (label, active, onclick) =>
           `<button class="inst-chip ${active ? 'inst-active' : ''}" onclick="${onclick}">${esc(label)}</button>`;
@@ -2014,9 +2035,14 @@ function viewLeaderboard() {
                 ${instruments.map(i => filterChip(i, _lbInstrumentFilter === i, `filterLb('instrument','${esc(i)}')`)).join('')}
               </div>` : ''}
             ${sections.length ? `
-              <div class="inst-filter-row" style="padding:0 0 6px">
+              <div class="inst-filter-row" style="padding:0 0 4px">
                 ${filterChip('All sections', !_lbSectionFilter, "filterLb('section','')")}
                 ${sections.map(s => filterChip(s, _lbSectionFilter === s, `filterLb('section','${esc(s)}')`)).join('')}
+              </div>` : ''}
+            ${lbGrades.length ? `
+              <div class="inst-filter-row" style="padding:0 0 6px">
+                ${filterChip('All grades', !_lbGradeFilter, "filterLb('grade','')")}
+                ${lbGrades.map(g => filterChip(g, _lbGradeFilter === g, `filterLb('grade','${esc(g)}')`)).join('')}
               </div>` : ''}
             <div class="card mb-12" style="padding:0;overflow:hidden">
               ${scored.length === 0
@@ -2436,14 +2462,20 @@ function viewRehearsal(rid) {
       </div>`;
   } else {
     const isNameSearch = _numSearch.trim() && !/^\d+$/.test(_numSearch.trim());
-    const suggestions  = isNameSearch ? studentSuggestions(_numSearch, _trackerInstrumentFilter) : [];
-    // Show scrollable student list whenever search box is empty (all students or filtered by instrument)
+    const suggestions  = isNameSearch ? studentSuggestions(_numSearch, _trackerInstrumentFilter, _trackerGradeFilter) : [];
+    // Show scrollable student list whenever search box is empty (all students or filtered)
     const showAllForFilter = !_numSearch.trim();
+    const trackerGrades = gradesInRoster();
     const allFiltered = showAllForFilter
       ? Object.values(students)
           .filter(s => !_trackerInstrumentFilter || normInstrument(s.instrument) === _trackerInstrumentFilter)
+          .filter(s => !_trackerGradeFilter      || (s.grade || '') === _trackerGradeFilter)
           .sort((a,b) => (a.name||'').localeCompare(b.name||''))
       : [];
+    const activeFilterLabel = [
+      _trackerInstrumentFilter,
+      _trackerGradeFilter ? _trackerGradeFilter + ' Grade' : ''
+    ].filter(Boolean).join(', ');
 
     trackerSection = `
       <div class="tracker-card">
@@ -2458,8 +2490,13 @@ function viewRehearsal(rid) {
               </svg>
             </button>
           </div>
+          ${trackerGrades.length ? `
+          <div class="inst-filter-row" style="padding:0 0 4px">
+            <button class="inst-chip ${!_trackerGradeFilter ? 'inst-active' : ''}" onclick="filterTrackerGrade('${esc(rid)}','')">All Grades</button>
+            ${trackerGrades.map(g => `<button class="inst-chip ${_trackerGradeFilter === g ? 'inst-active' : ''}" onclick="filterTrackerGrade('${esc(rid)}','${esc(g)}')">${esc(g)}</button>`).join('')}
+          </div>` : ''}
           <button class="mark-all-btn" onclick="showMarkAllModal('${esc(rid)}')">
-            Mark All${_trackerInstrumentFilter ? ` (${esc(_trackerInstrumentFilter)})` : ''}
+            Mark All${activeFilterLabel ? ` (${esc(activeFilterLabel)})` : ''}
           </button>
           <input class="num-input" type="text" inputmode="text"
                  id="num-input" placeholder="Search by name…"
@@ -2709,21 +2746,23 @@ function viewAttendance(rid) {
   const unmarked = students.length - absent - late;
 
   const instruments = instrumentsInRoster();
+  const grades      = gradesInRoster();
   const rows        = rowsInRoster();
   const cols        = columnsInRoster();
 
-  const sel = (field, opts, placeholder) => {
+  const sel = (field, opts, placeholder, labelFn) => {
     const active = _attFilterField === field ? _attFilterValue : '';
     return `<select class="att-filter-select ${active ? 'att-filter-active' : ''}"
                     onchange="setAttendanceFilter(this.value?'${field}':null,this.value||null,'${esc(rid)}')">
       <option value="">${placeholder}</option>
-      ${opts.map(o => `<option value="${esc(o)}" ${active===o?'selected':''}>${esc(o)}</option>`).join('')}
+      ${opts.map(o => `<option value="${esc(o)}" ${active===o?'selected':''}>${esc(labelFn ? labelFn(o) : o)}</option>`).join('')}
     </select>`;
   };
 
   const filterRow = `
     <div class="att-filter-row">
       ${instruments.length ? sel('instrument', instruments, 'All Instruments') : ''}
+      ${grades.length      ? sel('grade',      grades,      'All Grades', g => g + ' Grade') : ''}
       ${rows.length        ? sel('row',        rows,        'All Rows')        : ''}
       ${cols.length        ? sel('column',     cols,        'All Columns')     : ''}
     </div>`;
@@ -2779,6 +2818,8 @@ function buildAttBodyHtml(rid, students, entries) {
 
   if (_attFilterField === 'instrument') {
     pool = pool.filter(s => normInstrument(s.instrument).toLowerCase() === (_attFilterValue || '').toLowerCase());
+  } else if (_attFilterField === 'grade') {
+    pool = pool.filter(s => (s.grade || '') === _attFilterValue);
   } else if (_attFilterField === 'row') {
     pool = pool.filter(s => String(s.row ?? '') === _attFilterValue);
   } else if (_attFilterField === 'column') {
@@ -2975,11 +3016,12 @@ function submitAttendance(rid) {
 // ── Group Marks ───────────────────────────────────────────────────────────────
 
 function showMarkAllModal(rid) {
-  const groupName = _trackerInstrumentFilter || '__all__';
-  const filterLabel = _trackerInstrumentFilter || 'entire band';
-  const count = _trackerInstrumentFilter
-    ? Object.values(STATE.students).filter(s => normInstrument(s.instrument) === _trackerInstrumentFilter).length
-    : Object.keys(STATE.students).length;
+  const groupName = [_trackerInstrumentFilter, _trackerGradeFilter].filter(Boolean).join('|') || '__all__';
+  const filterLabel = [_trackerInstrumentFilter, _trackerGradeFilter ? _trackerGradeFilter + ' Grade' : ''].filter(Boolean).join(', ') || 'entire band';
+  const count = Object.values(STATE.students).filter(s =>
+    (!_trackerInstrumentFilter || normInstrument(s.instrument) === _trackerInstrumentFilter) &&
+    (!_trackerGradeFilter      || (s.grade || '') === _trackerGradeFilter)
+  ).length;
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Mark All
@@ -3036,8 +3078,15 @@ function pickGroupMark(rid, type) {
 }
 
 function _groupMatches(s, groupName) {
-  const g = groupName.trim().toLowerCase();
-  return (s.section || '').toLowerCase() === g || normInstrument(s.instrument).toLowerCase() === g;
+  if (groupName === '__all__') return true;
+  // pipe-separated parts mean ALL parts must match (instrument|grade combined filter)
+  const parts = groupName.split('|');
+  return parts.every(part => {
+    const p = part.trim().toLowerCase();
+    return normInstrument(s.instrument).toLowerCase() === p ||
+           (s.section || '').toLowerCase() === p ||
+           (s.grade   || '').toLowerCase() === p;
+  });
 }
 
 function showGroupMarkModal(rid, groupName, type) {
@@ -3382,6 +3431,13 @@ function showAddStudentModal(prefill = '') {
       </select>
     </div>
     <div class="form-group">
+      <label class="form-label">Grade</label>
+      <select class="form-select" id="m-grade">
+        <option value="">— Select grade —</option>
+        ${GRADE_LEVELS.map(g=>`<option value="${g}">${g} Grade</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group">
       <label class="form-label">Director Notes (optional)</label>
       <textarea class="form-textarea" id="m-notes" placeholder="Any notes about this student…"></textarea>
     </div>
@@ -3405,6 +3461,7 @@ function saveNewStudent() {
     row:        document.getElementById('m-row').value,
     instrument: document.getElementById('m-instrument').value,
     section:    document.getElementById('m-section').value,
+    grade:      document.getElementById('m-grade').value,
     notes:      document.getElementById('m-notes').value.trim(),
     songs:      []
   };
@@ -3458,6 +3515,13 @@ function showEditStudentModal(num) {
       </select>
     </div>
     <div class="form-group">
+      <label class="form-label">Grade</label>
+      <select class="form-select" id="m-grade">
+        <option value="">— Select grade —</option>
+        ${GRADE_LEVELS.map(g=>`<option value="${g}" ${s.grade===g?'selected':''}>${g} Grade</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group">
       <label class="form-label">Director Notes</label>
       <textarea class="form-textarea" id="m-notes">${esc(s.notes||'')}</textarea>
     </div>
@@ -3501,6 +3565,7 @@ function saveEditStudent(num) {
     row:          document.getElementById('m-row').value,
     instrument:   document.getElementById('m-instrument').value,
     section:      document.getElementById('m-section').value,
+    grade:        document.getElementById('m-grade').value,
     notes:        document.getElementById('m-notes').value.trim(),
     studentCode:  document.getElementById('m-student-code').value.trim().toUpperCase(),
     studentEmail: document.getElementById('m-student-email').value.trim().toLowerCase(),
@@ -3871,7 +3936,8 @@ async function _saveInstruments() {
 
 function filterLb(type, val) {
   if (type === 'instrument') _lbInstrumentFilter = val;
-  else                       _lbSectionFilter    = val;
+  else if (type === 'section') _lbSectionFilter  = val;
+  else if (type === 'grade')   _lbGradeFilter    = val;
   render();
 }
 
