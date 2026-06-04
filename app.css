@@ -153,6 +153,40 @@ html, body {
 .rh-badge-ended { background: var(--bg); color: var(--text-muted); border: 1px solid var(--border); }
 .rh-badge-att   { background: var(--success-bg); color: var(--success); }
 
+/* ── Attendance Tab ──────────────────────────────────────────────────────── */
+
+.att-tab-report-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 13px 16px;
+  background: var(--surface);
+  border: 2px solid var(--primary);
+  border-radius: var(--r);
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--primary);
+  cursor: pointer;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow);
+  transition: background .15s;
+}
+.att-tab-report-btn:hover { background: #eff6ff; }
+
+.att-tab-row-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.att-tab-row-summary {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
 /* ── Buttons ────────────────────────────────────────────────────────────── */
 
 .btn {

@@ -426,12 +426,15 @@ function render() {
     return;
   }
 
-  const isTop = ['roster','rehearsals','songs'].includes(_view);
+  const isTop = ['roster','rehearsals','songs','attendance-tab'].includes(_view);
   backBtn.classList.toggle('hidden', isTop);
   backBtn.onclick = () => {
     if (_view === 'student')    navigate('roster');
     else if (_view === 'rehearsal')  navigate('rehearsals');
-    else if (_view === 'attendance') navigate('rehearsal', { rid: _params.rid });
+    else if (_view === 'attendance') {
+      if (_params.from === 'attendance-tab') navigate('attendance-tab');
+      else navigate('rehearsal', { rid: _params.rid });
+    }
     else if (_view === 'song')  navigate('songs');
     else navigate('rehearsals');
   };
@@ -442,7 +445,8 @@ function render() {
       match === _view ||
       (_view === 'student'    && match === 'roster') ||
       (_view === 'rehearsal'  && match === 'rehearsals') ||
-      (_view === 'attendance' && match === 'rehearsals') ||
+      (_view === 'attendance' && _params.from === 'attendance-tab' && match === 'attendance-tab') ||
+      (_view === 'attendance' && _params.from !== 'attendance-tab' && match === 'rehearsals') ||
       (_view === 'song'       && match === 'songs')
     );
   });
@@ -472,8 +476,14 @@ function render() {
 
     case 'rehearsals':
       title.textContent = 'Rehearsals';
-      actions.innerHTML = (STATE.isAdmin ? reportBtn('showAttendanceReportModal()') : '') + addBtn('showNewRehearsalModal()') + userBtn();
+      actions.innerHTML = (STATE.isAdmin ? addBtn('showNewRehearsalModal()') : '') + userBtn();
       main.innerHTML = viewRehearsals();
+      break;
+
+    case 'attendance-tab':
+      title.textContent = 'Attendance';
+      actions.innerHTML = userBtn();
+      main.innerHTML = viewAttendanceTab();
       break;
 
     case 'rehearsal': {
@@ -1646,6 +1656,57 @@ function viewRehearsals() {
           </div>`;
       }).join('')}`;
   }).join('');
+}
+
+// ── View: Attendance Tab ──────────────────────────────────────────────────────
+
+function viewAttendanceTab() {
+  const rehearsals = [...DB.getRehearsals()].sort((a,b) => b.date.localeCompare(a.date));
+
+  const reportSection = STATE.isAdmin ? `
+    <button class="att-tab-report-btn" onclick="showAttendanceReportModal()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;flex-shrink:0">
+        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/>
+        <line x1="16" y1="17" x2="8" y2="17"/>
+        <polyline points="10 9 9 9 8 9"/>
+      </svg>
+      Create Attendance Report
+    </button>` : '';
+
+  if (!rehearsals.length) {
+    return reportSection + `<div class="empty-state"><p>No rehearsals yet.</p></div>`;
+  }
+
+  const rows = rehearsals.map(r => {
+    const entries  = STATE.entries[r.id] || {};
+    const total    = Object.keys(STATE.students).length;
+    const absent   = Object.values(entries).filter(e => e.attendance === 'absent').length;
+    const late     = Object.values(entries).filter(e => e.attendance === 'late').length;
+    const present  = total - absent - late;
+    const attDone  = !!r.attendanceSubmitted;
+    const summary  = total
+      ? [absent  ? `${absent} absent`  : '',
+         late    ? `${late} late`      : '',
+         `${present} present`].filter(Boolean).join(' · ')
+      : 'No students in roster';
+    return `
+      <div class="card clickable att-tab-row" onclick="navigate('attendance',{rid:'${esc(r.id)}',from:'attendance-tab'})">
+        <div class="att-tab-row-top">
+          <div>
+            <div class="font-bold">${fmtDate(r.date)}</div>
+            ${r.label ? `<div class="text-muted text-sm mt-4">${esc(r.label)}</div>` : ''}
+          </div>
+          ${attDone
+            ? `<span class="rh-badge rh-badge-att">Submitted ✓</span>`
+            : `<span class="rh-badge rh-badge-open">Not submitted</span>`}
+        </div>
+        <div class="att-tab-row-summary">${summary}</div>
+      </div>`;
+  }).join('');
+
+  return reportSection + rows;
 }
 
 // ── View: Rehearsal Detail ────────────────────────────────────────────────────
