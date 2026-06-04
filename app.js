@@ -1500,7 +1500,7 @@ function viewStudentPortal() {
         <div>
           <div class="portal-name">${esc(s?.name || 'Student #' + num)}</div>
           ${metaParts.length ? `<div class="portal-meta">${metaParts.map(esc).join(' &middot; ')}</div>` : ''}
-          <div class="portal-animal-name">🐾 Leaderboard name: <strong>${esc(fakeAnimalName(num))}</strong></div>
+          ${STATE.marchingLeaderboardEnabled ? `<div class="portal-animal-name">🐾 Leaderboard name: <strong>${esc(fakeAnimalName(num))}</strong></div>` : ''}
         </div>
       </div>
 
