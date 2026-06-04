@@ -874,6 +874,10 @@ html, body {
 /* Tracker instrument chips live inside the card (no horizontal padding needed) */
 .tracker-card .inst-filter-row { padding: 0 0 8px; }
 
+.tracker-chips-row { display: flex; align-items: flex-start; gap: 6px; }
+.tracker-chips-row .inst-filter-row { flex: 1; min-width: 0; }
+.tracker-grid-btn { padding: 5px 8px; margin-bottom: 8px; }
+
 /* ── Student Name Suggestions ────────────────────────────────────────────────── */
 
 .student-suggestions {

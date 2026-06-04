@@ -1749,7 +1749,15 @@ function viewRehearsal(rid) {
     trackerSection = `
       <div class="tracker-card">
         <div class="tracker-label">Track a Student</div>
-        ${instrumentFilterChips(_trackerInstrumentFilter, 'filterTrackerInstrument', rid)}
+        <div class="tracker-chips-row">
+          ${instrumentFilterChips(_trackerInstrumentFilter, 'filterTrackerInstrument', rid)}
+          <button class="inst-chip tracker-grid-btn" title="Open Block Grid" onclick="toggleBlockMode('${esc(rid)}')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;display:block">
+              <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+              <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+            </svg>
+          </button>
+        </div>
         <input class="num-input" type="text" inputmode="text"
                id="num-input" placeholder="Student # or name…"
                value="${esc(_numSearch)}"
@@ -1771,14 +1779,6 @@ function viewRehearsal(rid) {
             </div>`).join('') : ''}
         </div>
         ${activeCard}
-        ${!_activeNum ? `
-          <button class="block-toggle-btn" onclick="toggleBlockMode('${esc(rid)}')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
-              <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
-            </svg>
-            Open Block Grid
-          </button>` : ''}
       </div>`;
   }
 
