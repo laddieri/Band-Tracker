@@ -316,6 +316,7 @@ let _activeNum  = null;
 let _numSearch  = '';
 let _rosterSearch = '';
 let _rosterInstrumentFilter  = '';
+let _rosterGradeFilter       = '';
 let _trackerInstrumentFilter = '';
 let _trackerGradeFilter      = '';
 let _songSectionFilter       = '';
@@ -918,8 +919,14 @@ function viewRoster() {
   const list = Object.values(students)
     .sort((a,b) => (a.name||'').localeCompare(b.name||''));
 
+  const rosterGrades = gradesInRoster();
   return `
     ${instrumentFilterChips(_rosterInstrumentFilter, 'filterRosterInstrument')}
+    ${rosterGrades.length ? `
+    <div class="inst-filter-row" style="padding:0 0 4px">
+      <button class="inst-chip ${!_rosterGradeFilter ? 'inst-active' : ''}" onclick="filterRosterGrade('')">All Grades</button>
+      ${rosterGrades.map(g => `<button class="inst-chip ${_rosterGradeFilter === g ? 'inst-active' : ''}" onclick="filterRosterGrade('${esc(g)}')">${esc(g)}</button>`).join('')}
+    </div>` : ''}
     <div class="search-wrap">
       <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -929,7 +936,7 @@ function viewRoster() {
              value="${esc(_rosterSearch)}"
              oninput="filterRoster(this.value)" autocomplete="off">
     </div>
-    <div id="roster-list">${rosterRows(list, _rosterSearch, _rosterInstrumentFilter)}</div>
+    <div id="roster-list">${rosterRows(list, _rosterSearch, _rosterInstrumentFilter, _rosterGradeFilter)}</div>
     ${list.length === 0 ? `
       <div class="empty-state">
         <div class="empty-icon">👥</div>
@@ -939,10 +946,11 @@ function viewRoster() {
   `;
 }
 
-function rosterRows(list, search, instrumentFilter) {
+function rosterRows(list, search, instrumentFilter, gradeFilter) {
   const q = search.toLowerCase().trim();
   const filtered = list.filter(s => {
     if (instrumentFilter && normInstrument(s.instrument) !== instrumentFilter) return false;
+    if (gradeFilter      && (s.grade || '') !== gradeFilter) return false;
     if (!q) return true;
     return String(s.number).includes(q) ||
            normInstrument(s.instrument).toLowerCase().includes(q) ||
@@ -977,11 +985,17 @@ function filterRoster(val) {
   _rosterSearch = val;
   const list = Object.values(DB.getStudents())
     .sort((a,b) => (a.name||'').localeCompare(b.name||''));
-  document.getElementById('roster-list').innerHTML = rosterRows(list, val, _rosterInstrumentFilter);
+  document.getElementById('roster-list').innerHTML = rosterRows(list, val, _rosterInstrumentFilter, _rosterGradeFilter);
 }
 
 function filterRosterInstrument(inst) {
   _rosterInstrumentFilter = inst;
+  const main = document.getElementById('main-content');
+  if (main) main.innerHTML = viewRoster();
+}
+
+function filterRosterGrade(grade) {
+  _rosterGradeFilter = grade;
   const main = document.getElementById('main-content');
   if (main) main.innerHTML = viewRoster();
 }
