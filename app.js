@@ -1118,7 +1118,7 @@ function songStudentRows(sid, students, statuses) {
     return [s.updatedBy ? dirLabel(s.updatedBy) : '', s.updatedAt ? fmtTime(s.updatedAt) : ''].filter(Boolean).join(' · ');
   };
   const filtered = _songSectionFilter
-    ? students.filter(s => s.section === _songSectionFilter)
+    ? students.filter(s => normInstrument(s.instrument) === _songSectionFilter)
     : students;
 
   if (!filtered.length) return `<div class="empty-state" style="padding:24px"><p>No students in this section.</p></div>`;
