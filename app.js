@@ -1505,42 +1505,48 @@ function viewStudentPortal() {
       </div>
 
       ${hist.length > 0 ? `
-        <div class="portal-stats">
-          <div class="portal-stat">
-            <div class="portal-stat-value">${hist.length}</div>
-            <div class="portal-stat-label">Rehearsals</div>
-          </div>
-          <div class="portal-stat">
-            <div class="portal-stat-value portal-stat-mistake">${totalErr}</div>
-            <div class="portal-stat-label">Mistake Marks</div>
-          </div>
-          <div class="portal-stat">
-            <div class="portal-stat-value portal-stat-positive">${totalPos}</div>
-            <div class="portal-stat-label">Positives</div>
-          </div>
+        <div id="portal-sec-attendance-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('portal-sec-attendance')">
+          <span class="section-title" style="margin:0">Attendance</span>
+          <span class="sec-chevron">▾</span>
         </div>
-        ${(() => {
-          const absences = hist.filter(({entry:e}) => e.attendance === 'absent');
-          const lates    = hist.filter(({entry:e}) => e.attendance === 'late');
-          if (!absences.length && !lates.length) return '';
-          return `
-            <div class="card mb-12" style="padding:12px 16px">
-              <div class="att-summary-row">
-                <span class="att-summary-chip att-chip-absent">${absences.length} Absence${absences.length!==1?'s':''}</span>
-                <span class="att-summary-chip att-chip-late">${lates.length} Late${lates.length!==1?'s':''}</span>
-              </div>
-              ${absences.length ? `
-                <div class="att-date-list">
-                  <span class="att-date-heading">Absent:</span>
-                  ${absences.map(({rehearsal:r}) => `<span class="att-date-chip att-chip-absent">${fmtDate(r.date)}</span>`).join('')}
-                </div>` : ''}
-              ${lates.length ? `
-                <div class="att-date-list">
-                  <span class="att-date-heading">Late:</span>
-                  ${lates.map(({rehearsal:r}) => `<span class="att-date-chip att-chip-late">${fmtDate(r.date)}</span>`).join('')}
-                </div>` : ''}
-            </div>`;
-        })()}
+        <div id="portal-sec-attendance">
+          <div class="portal-stats">
+            <div class="portal-stat">
+              <div class="portal-stat-value">${hist.length}</div>
+              <div class="portal-stat-label">Rehearsals</div>
+            </div>
+            <div class="portal-stat">
+              <div class="portal-stat-value portal-stat-mistake">${totalErr}</div>
+              <div class="portal-stat-label">Mistake Marks</div>
+            </div>
+            <div class="portal-stat">
+              <div class="portal-stat-value portal-stat-positive">${totalPos}</div>
+              <div class="portal-stat-label">Positives</div>
+            </div>
+          </div>
+          ${(() => {
+            const absences = hist.filter(({entry:e}) => e.attendance === 'absent');
+            const lates    = hist.filter(({entry:e}) => e.attendance === 'late');
+            if (!absences.length && !lates.length) return '';
+            return `
+              <div class="card mb-12" style="padding:12px 16px">
+                <div class="att-summary-row">
+                  <span class="att-summary-chip att-chip-absent">${absences.length} Absence${absences.length!==1?'s':''}</span>
+                  <span class="att-summary-chip att-chip-late">${lates.length} Late${lates.length!==1?'s':''}</span>
+                </div>
+                ${absences.length ? `
+                  <div class="att-date-list">
+                    <span class="att-date-heading">Absent:</span>
+                    ${absences.map(({rehearsal:r}) => `<span class="att-date-chip att-chip-absent">${fmtDate(r.date)}</span>`).join('')}
+                  </div>` : ''}
+                ${lates.length ? `
+                  <div class="att-date-list">
+                    <span class="att-date-heading">Late:</span>
+                    ${lates.map(({rehearsal:r}) => `<span class="att-date-chip att-chip-late">${fmtDate(r.date)}</span>`).join('')}
+                  </div>` : ''}
+              </div>`;
+          })()}
+        </div>
       ` : ''}
 
       <button class="leaderboard-link-btn" onclick="navigate('leaderboard')">
@@ -1548,27 +1554,36 @@ function viewStudentPortal() {
       </button>
 
       ${STATE.songs.length > 0 ? `
-        <div class="section-title">Songs to Memorize</div>
-        <div class="portal-songs-list">
-          ${STATE.songs.map(song => {
-            const status = song.statuses?.[String(num)]?.status || 'not_attempted';
-            const overdue = song.dueDate && song.dueDate < today() && status !== 'passed';
-            return `
-            <div class="portal-song-row">
-              <div class="portal-song-info">
-                <div class="portal-song-title">${esc(song.title)}</div>
-                ${song.dueDate ? `<div class="portal-song-due ${overdue ? 'song-overdue' : ''}">Due ${fmtDate(song.dueDate)}</div>` : ''}
-              </div>
-              <span class="portal-song-status ${status === 'passed' ? 'pss-pass' : status === 'failed' ? 'pss-fail' : 'pss-na'}">
-                ${status === 'passed' ? '✓ Passed' : status === 'failed' ? '✗ Failed' : '— Not Attempted'}
-              </span>
-            </div>`;
-          }).join('')}
+        <div id="portal-sec-songs-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('portal-sec-songs')">
+          <span class="section-title" style="margin:0">Songs to Memorize</span>
+          <span class="sec-chevron">▾</span>
+        </div>
+        <div id="portal-sec-songs">
+          <div class="portal-songs-list">
+            ${STATE.songs.map(song => {
+              const status = song.statuses?.[String(num)]?.status || 'not_attempted';
+              const overdue = song.dueDate && song.dueDate < today() && status !== 'passed';
+              return `
+              <div class="portal-song-row">
+                <div class="portal-song-info">
+                  <div class="portal-song-title">${esc(song.title)}</div>
+                  ${song.dueDate ? `<div class="portal-song-due ${overdue ? 'song-overdue' : ''}">Due ${fmtDate(song.dueDate)}</div>` : ''}
+                </div>
+                <span class="portal-song-status ${status === 'passed' ? 'pss-pass' : status === 'failed' ? 'pss-fail' : 'pss-na'}">
+                  ${status === 'passed' ? '✓ Passed' : status === 'failed' ? '✗ Failed' : '— Not Attempted'}
+                </span>
+              </div>`;
+            }).join('')}
+          </div>
         </div>
       ` : ''}
 
       ${hist.length > 0 ? `
-        <div class="section-title">Rehearsal History</div>
+        <div id="portal-sec-history-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('portal-sec-history')">
+          <span class="section-title" style="margin:0">Rehearsal History</span>
+          <span class="sec-chevron">▾</span>
+        </div>
+        <div id="portal-sec-history">
         ${hist.map(({rehearsal: r, entry: e}) => {
           const evts     = e.events || [];
           const noteEvts = evts.filter(ev => ev.note?.trim());
@@ -1601,8 +1616,17 @@ function viewStudentPortal() {
             </div>
           </div>`;
         }).join('')}
+        </div>
       ` : `<p class="empty-state" style="padding:24px 0">No rehearsal history yet.</p>`}
     </div>`;
+}
+
+function toggleCollapse(id) {
+  const content = document.getElementById(id);
+  const hdr     = document.getElementById(id + '-hdr');
+  if (!content) return;
+  const collapsed = content.classList.toggle('sec-collapsed');
+  if (hdr) hdr.classList.toggle('sec-hdr-open', !collapsed);
 }
 
 function togglePortalRehearsal(rid) {
@@ -1649,58 +1673,64 @@ function viewLeaderboard() {
   return `
     <div class="leaderboard-view">
 
-      <div class="section-title">Attendance</div>
-      <div class="card mb-12" style="padding:0;overflow:hidden">
-
-        ${lastRehearsal ? `
-        <div class="lb-stat-row">
-          <div class="lb-stat-label">
-            Most recent rehearsal
-            <div class="lb-stat-sub">${fmtDate(lastRehearsal.date)}${lastRehearsal.label ? ' — ' + esc(lastRehearsal.label) : ''}</div>
+      <div id="lb-sec-attendance-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('lb-sec-attendance')">
+        <span class="section-title" style="margin:0">Attendance</span>
+        <span class="sec-chevron">▾</span>
+      </div>
+      <div id="lb-sec-attendance">
+        <div class="card mb-12" style="padding:0;overflow:hidden">
+          ${lastRehearsal ? `
+          <div class="lb-stat-row">
+            <div class="lb-stat-label">
+              Most recent rehearsal
+              <div class="lb-stat-sub">${fmtDate(lastRehearsal.date)}${lastRehearsal.label ? ' — ' + esc(lastRehearsal.label) : ''}</div>
+            </div>
+            <div class="lb-stat-val ${lastAbsences > 0 ? 'lb-val-warn' : 'lb-val-ok'}">
+              ${lastAbsences} absent
+            </div>
+          </div>` : `
+          <div class="lb-stat-row">
+            <div class="lb-stat-label">No rehearsals yet</div>
+          </div>`}
+          <div class="lb-stat-row lb-stat-row-alt">
+            <div class="lb-stat-label">
+              This week
+              <div class="lb-stat-sub">${fmtDate(mon)} – ${fmtDate(fri)} · ${weekRehearsals.length} rehearsal${weekRehearsals.length !== 1 ? 's' : ''}</div>
+            </div>
+            <div class="lb-stat-val ${weekAbsences > 0 ? 'lb-val-warn' : 'lb-val-ok'}">
+              ${weekRehearsals.length ? `${weekAbsences} absent` : '—'}
+            </div>
           </div>
-          <div class="lb-stat-val ${lastAbsences > 0 ? 'lb-val-warn' : 'lb-val-ok'}">
-            ${lastAbsences} absent
-          </div>
-        </div>` : `
-        <div class="lb-stat-row">
-          <div class="lb-stat-label">No rehearsals yet</div>
-        </div>`}
-
-        <div class="lb-stat-row lb-stat-row-alt">
-          <div class="lb-stat-label">
-            This week
-            <div class="lb-stat-sub">${fmtDate(mon)} – ${fmtDate(fri)} · ${weekRehearsals.length} rehearsal${weekRehearsals.length !== 1 ? 's' : ''}</div>
-          </div>
-          <div class="lb-stat-val ${weekAbsences > 0 ? 'lb-val-warn' : 'lb-val-ok'}">
-            ${weekRehearsals.length ? `${weekAbsences} absent` : '—'}
+          <div class="lb-stat-row">
+            <div class="lb-stat-label">
+              Season average
+              <div class="lb-stat-sub">${rehearsals.length} rehearsal${rehearsals.length !== 1 ? 's' : ''} total</div>
+            </div>
+            <div class="lb-stat-val">${seasonAvg !== '—' ? `${seasonAvg} / rehearsal` : '—'}</div>
           </div>
         </div>
-
-        <div class="lb-stat-row">
-          <div class="lb-stat-label">
-            Season average
-            <div class="lb-stat-sub">${rehearsals.length} rehearsal${rehearsals.length !== 1 ? 's' : ''} total</div>
-          </div>
-          <div class="lb-stat-val">${seasonAvg !== '—' ? `${seasonAvg} / rehearsal` : '—'}</div>
-        </div>
-
       </div>
 
       ${songRows.length ? `
-        <div class="section-title">Songs to Memorize</div>
-        <div class="card mb-12" style="padding:0;overflow:hidden">
-          ${songRows.map(({ song, passed, remaining, pct }, i) => `
-          <div class="lb-song-row ${i % 2 === 1 ? 'lb-stat-row-alt' : ''}">
-            <div class="lb-song-info">
-              <div class="lb-song-title">${esc(song.title)}</div>
-              ${song.dueDate ? `<div class="lb-song-due ${song.dueDate < today() && passed < totalStudents ? 'song-overdue' : ''}">Due ${fmtDate(song.dueDate)}</div>` : ''}
-              <div class="lb-prog-bar"><div class="lb-prog-fill" style="width:${pct}%"></div></div>
-            </div>
-            <div class="lb-song-counts">
-              <span class="lb-count-pass">${passed} passed</span>
-              <span class="lb-count-rem">${remaining} left</span>
-            </div>
-          </div>`).join('')}
+        <div id="lb-sec-songs-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('lb-sec-songs')">
+          <span class="section-title" style="margin:0">Songs to Memorize</span>
+          <span class="sec-chevron">▾</span>
+        </div>
+        <div id="lb-sec-songs">
+          <div class="card mb-12" style="padding:0;overflow:hidden">
+            ${songRows.map(({ song, passed, remaining, pct }, i) => `
+            <div class="lb-song-row ${i % 2 === 1 ? 'lb-stat-row-alt' : ''}">
+              <div class="lb-song-info">
+                <div class="lb-song-title">${esc(song.title)}</div>
+                ${song.dueDate ? `<div class="lb-song-due ${song.dueDate < today() && passed < totalStudents ? 'song-overdue' : ''}">Due ${fmtDate(song.dueDate)}</div>` : ''}
+                <div class="lb-prog-bar"><div class="lb-prog-fill" style="width:${pct}%"></div></div>
+              </div>
+              <div class="lb-song-counts">
+                <span class="lb-count-pass">${passed} passed</span>
+                <span class="lb-count-rem">${remaining} left</span>
+              </div>
+            </div>`).join('')}
+          </div>
         </div>
       ` : ''}
 
@@ -1730,40 +1760,48 @@ function viewLeaderboard() {
           `<button class="inst-chip ${active ? 'inst-active' : ''}" onclick="${onclick}">${esc(label)}</button>`;
 
         return `
-          <div class="lb-marching-hdr">
-            <div class="section-title" style="margin-bottom:0">Marching Leaderboard</div>
-            ${STATE.isAdmin ? `
-              <button class="lb-toggle-btn ${STATE.marchingLeaderboardEnabled ? 'lb-toggle-on' : 'lb-toggle-off'}"
-                      onclick="toggleMarchingLeaderboard()">
-                ${STATE.marchingLeaderboardEnabled ? 'Visible to students' : 'Hidden from students'}
-              </button>` : ''}
+          <div id="lb-sec-ranking-hdr" class="sec-hdr sec-hdr-open lb-marching-hdr" onclick="toggleCollapse('lb-sec-ranking')">
+            <span class="section-title" style="margin:0">Marching Leaderboard</span>
+            <div style="display:flex;align-items:center;gap:8px" onclick="event.stopPropagation()">
+              ${STATE.isAdmin ? `
+                <button class="lb-toggle-btn ${STATE.marchingLeaderboardEnabled ? 'lb-toggle-on' : 'lb-toggle-off'}"
+                        onclick="toggleMarchingLeaderboard()">
+                  ${STATE.marchingLeaderboardEnabled ? 'Visible to students' : 'Hidden from students'}
+                </button>` : ''}
+              <span class="sec-chevron" onclick="toggleCollapse('lb-sec-ranking')">▾</span>
+            </div>
           </div>
-          ${!STATE.marchingLeaderboardEnabled && STATE.isAdmin
-            ? `<p class="lb-hidden-note">Students cannot see this leaderboard. Toggle above to enable it.</p>`
-            : ''}
-          ${instruments.length ? `
-            <div class="inst-filter-row" style="padding:4px 0 4px">
-              ${filterChip('All', !_lbInstrumentFilter, "filterLb('instrument','')")}
-              ${instruments.map(i => filterChip(i, _lbInstrumentFilter === i, `filterLb('instrument','${esc(i)}')`)).join('')}
-            </div>` : ''}
-          ${sections.length ? `
-            <div class="inst-filter-row" style="padding:0 0 6px">
-              ${filterChip('All sections', !_lbSectionFilter, "filterLb('section','')")}
-              ${sections.map(s => filterChip(s, _lbSectionFilter === s, `filterLb('section','${esc(s)}')`)).join('')}
-            </div>` : ''}
-          <div class="card mb-12" style="padding:0;overflow:hidden">
-            ${scored.length === 0
-              ? `<div class="lb-stat-row"><div class="lb-stat-label">No students match this filter.</div></div>`
-              : scored.map(({ docId, name, score }, i) => {
-                  const isMe = docId === myDocId;
-                  const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
-                  return `
-                  <div class="lb-rank-row ${isMe ? 'lb-rank-me' : ''} ${i % 2 === 1 ? 'lb-stat-row-alt' : ''}">
-                    <span class="lb-rank-medal">${medal}</span>
-                    <span class="lb-rank-name">${esc(name)}${isMe ? ' <span class="lb-you-badge">you</span>' : ''}</span>
-                    <span class="lb-rank-score ${score > 0 ? 'lb-val-ok' : score < 0 ? 'lb-val-warn' : ''}">${score > 0 ? '+' : ''}${score}</span>
-                  </div>`;
-                }).join('')}
+          <div id="lb-sec-ranking">
+            ${!STATE.marchingLeaderboardEnabled && STATE.isAdmin
+              ? `<p class="lb-hidden-note">Students cannot see this leaderboard. Toggle above to enable it.</p>`
+              : ''}
+            ${instruments.length ? `
+              <div class="inst-filter-row" style="padding:4px 0 4px">
+                ${filterChip('All', !_lbInstrumentFilter, "filterLb('instrument','')")}
+                ${instruments.map(i => filterChip(i, _lbInstrumentFilter === i, `filterLb('instrument','${esc(i)}')`)).join('')}
+              </div>` : ''}
+            ${sections.length ? `
+              <div class="inst-filter-row" style="padding:0 0 6px">
+                ${filterChip('All sections', !_lbSectionFilter, "filterLb('section','')")}
+                ${sections.map(s => filterChip(s, _lbSectionFilter === s, `filterLb('section','${esc(s)}')`)).join('')}
+              </div>` : ''}
+            <div class="card mb-12" style="padding:0;overflow:hidden">
+              ${scored.length === 0
+                ? `<div class="lb-stat-row"><div class="lb-stat-label">No students match this filter.</div></div>`
+                : scored.map(({ docId, name, score }, i) => {
+                    const isMe = docId === myDocId;
+                    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
+                    return `
+                    <div class="lb-rank-row ${isMe ? 'lb-rank-me' : ''} ${i % 2 === 1 ? 'lb-stat-row-alt' : ''}">
+                      <span class="lb-rank-medal">${medal}</span>
+                      <span class="lb-rank-name">
+                        ${esc(name)}${isMe ? ' <span class="lb-you-badge">you</span>' : ''}
+                        ${STATE.isAdmin ? `<span class="lb-real-name">${esc(s.name || `#${s.number}`)}</span>` : ''}
+                      </span>
+                      <span class="lb-rank-score ${score > 0 ? 'lb-val-ok' : score < 0 ? 'lb-val-warn' : ''}">${score > 0 ? '+' : ''}${score}</span>
+                    </div>`;
+                  }).join('')}
+            </div>
           </div>`;
       })() : ''}
 
