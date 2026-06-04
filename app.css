@@ -1081,6 +1081,103 @@ html, body {
 
 /* ── Student Portal ─────────────────────────────────────────────────────────── */
 
+/* ── Leaderboard ─────────────────────────────────────────────────────────── */
+
+.leaderboard-view {
+  padding: 16px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.lb-stat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.lb-stat-row:last-child { border-bottom: none; }
+.lb-stat-row-alt { background: var(--bg); }
+
+.lb-stat-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+}
+.lb-stat-sub {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.lb-stat-val {
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--text);
+}
+.lb-val-warn { color: var(--danger); }
+.lb-val-ok   { color: var(--success); }
+
+.lb-song-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.lb-song-row:last-child { border-bottom: none; }
+
+.lb-song-info { flex: 1; min-width: 0; }
+.lb-song-title { font-size: 0.9rem; font-weight: 600; color: var(--text); }
+.lb-song-due   { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+
+.lb-prog-bar {
+  height: 5px;
+  background: var(--border);
+  border-radius: 99px;
+  margin-top: 7px;
+  overflow: hidden;
+}
+.lb-prog-fill {
+  height: 100%;
+  background: var(--success);
+  border-radius: 99px;
+  transition: width .3s;
+}
+
+.lb-song-counts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.lb-count-pass { font-size: 0.78rem; font-weight: 700; color: var(--success); }
+.lb-count-rem  { font-size: 0.75rem; color: var(--text-muted); }
+
+.leaderboard-link-btn {
+  display: block;
+  width: 100%;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  border-radius: var(--r);
+  border: 1.5px solid var(--primary);
+  background: transparent;
+  color: var(--primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  transition: background .15s;
+}
+.leaderboard-link-btn:hover  { background: var(--primary-bg, #ede9fe); }
+
+/* ── Portal ───────────────────────────────────────────────────────────────── */
+
 .portal-view {
   padding: 16px;
   max-width: 600px;
