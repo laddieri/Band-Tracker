@@ -1788,7 +1788,7 @@ function viewLeaderboard() {
             <div class="card mb-12" style="padding:0;overflow:hidden">
               ${scored.length === 0
                 ? `<div class="lb-stat-row"><div class="lb-stat-label">No students match this filter.</div></div>`
-                : scored.map(({ docId, name, score }, i) => {
+                : scored.map(({ docId, s, name, score }, i) => {
                     const isMe = docId === myDocId;
                     const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
                     return `
