@@ -322,6 +322,10 @@ function fmtPos(col, row) {
   return `${col || ''}${row || ''}`;
 }
 
+function normInstrument(str) {
+  return (str || '').replace(/^\d+\s*/, '').trim();
+}
+
 function dirLabel(email) {
   return email ? email.split('@')[0] : '';
 }
@@ -749,7 +753,7 @@ function startToday() {
 
 function instrumentsInRoster() {
   const seen = new Set();
-  Object.values(DB.getStudents()).forEach(s => { if (s.instrument) seen.add(s.instrument); });
+  Object.values(DB.getStudents()).forEach(s => { if (s.instrument) seen.add(normInstrument(s.instrument)); });
   return [...seen].sort();
 }
 
@@ -780,7 +784,7 @@ function studentSuggestions(query, instrumentFilter) {
   const q = query.toLowerCase().trim();
   if (!q) return [];
   return Object.values(DB.getStudents()).filter(s => {
-    if (instrumentFilter && s.instrument !== instrumentFilter) return false;
+    if (instrumentFilter && normInstrument(s.instrument) !== instrumentFilter) return false;
     return (s.name||'').toLowerCase().includes(q) ||
            String(s.number).includes(q) ||
            (s.section||'').toLowerCase().includes(q);
@@ -817,10 +821,10 @@ function viewRoster() {
 function rosterRows(list, search, instrumentFilter) {
   const q = search.toLowerCase().trim();
   const filtered = list.filter(s => {
-    if (instrumentFilter && s.instrument !== instrumentFilter) return false;
+    if (instrumentFilter && normInstrument(s.instrument) !== instrumentFilter) return false;
     if (!q) return true;
     return String(s.number).includes(q) ||
-           (s.instrument||'').toLowerCase().includes(q) ||
+           normInstrument(s.instrument).toLowerCase().includes(q) ||
            (s.section||'').toLowerCase().includes(q) ||
            (s.name||'').toLowerCase().includes(q);
   });
@@ -839,7 +843,7 @@ function rosterRows(list, search, instrumentFilter) {
         <div class="student-num">#${esc(s.number)}</div>
         <div class="student-info">
           ${s.name ? `<div class="student-name">${esc(s.name)}</div>` : ''}
-          <div class="student-detail">${esc([fmtPos(s.column,s.row),s.instrument,s.section].filter(Boolean).join(' · ')) || '<em style="color:var(--text-muted)">No details set</em>'}</div>
+          <div class="student-detail">${esc([fmtPos(s.column,s.row),normInstrument(s.instrument),s.section].filter(Boolean).join(' · ')) || '<em style="color:var(--text-muted)">No details set</em>'}</div>
         </div>
         <div class="student-badges">
           ${avg !== null ? `<span class="badge badge-danger">${avg}✗</span>` : ''}
@@ -1414,7 +1418,7 @@ function viewStudent(num) {
       ${s.name ? `<div style="font-size:1.1rem;font-weight:600;margin-bottom:8px">${esc(s.name)}</div>` : ''}
       <div class="flex gap-6" style="justify-content:center;flex-wrap:wrap">
         ${fmtPos(s.column,s.row) ? `<span class="badge badge-primary" style="font-size:0.85rem;font-weight:800">${esc(fmtPos(s.column,s.row))}</span>` : ''}
-        ${s.instrument ? `<span class="badge badge-primary">${esc(s.instrument)}</span>` : ''}
+        ${s.instrument ? `<span class="badge badge-primary">${esc(normInstrument(s.instrument))}</span>` : ''}
         ${s.section    ? `<span class="badge badge-neutral">${esc(s.section)}</span>` : ''}
       </div>
     </div>
@@ -1735,7 +1739,7 @@ function viewRehearsal(rid) {
     const showAllForFilter = _trackerInstrumentFilter && !_numSearch.trim();
     const allFiltered = showAllForFilter
       ? Object.values(students)
-          .filter(s => s.instrument === _trackerInstrumentFilter)
+          .filter(s => normInstrument(s.instrument) === _trackerInstrumentFilter)
           .sort((a,b) => String(a.number).localeCompare(String(b.number),undefined,{numeric:true}))
       : [];
 
@@ -1754,7 +1758,7 @@ function viewRehearsal(rid) {
             <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
               <span class="suggestion-num">#${esc(s.number)}</span>
               <span class="suggestion-name">${esc(s.name || '—')}</span>
-              <span class="suggestion-detail">${esc([fmtPos(s.column,s.row),s.instrument].filter(Boolean).join(' · '))}</span>
+              <span class="suggestion-detail">${esc([fmtPos(s.column,s.row),normInstrument(s.instrument)].filter(Boolean).join(' · '))}</span>
             </div>`).join('') : ''}
           ${showAllForFilter && !_activeNum ? allFiltered.map(s => `
             <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
@@ -1825,7 +1829,7 @@ function viewRehearsal(rid) {
             <div class="entry-header">
               <div class="entry-student">
                 #${esc(num)}
-                ${stu ? `<span class="sub">${esc([fmtPos(stu.column,stu.row),stu.instrument,stu.name].filter(Boolean).join(' · '))}</span>` : '<span class="sub" style="color:var(--warning)">Not in roster</span>'}
+                ${stu ? `<span class="sub">${esc([fmtPos(stu.column,stu.row),normInstrument(stu.instrument),stu.name].filter(Boolean).join(' · '))}</span>` : '<span class="sub" style="color:var(--warning)">Not in roster</span>'}
               </div>
               <div class="entry-badges">
                 ${entry.attendance==='absent' ? `<span class="badge att-badge-absent">Absent</span>` : ''}
@@ -2066,7 +2070,7 @@ function buildAttBodyHtml(rid, students, entries) {
   const pool = q ? students.filter(s =>
     (s.name || '').toLowerCase().includes(q) ||
     String(s.number).includes(q) ||
-    (s.instrument || '').toLowerCase().includes(q)
+    normInstrument(s.instrument).toLowerCase().includes(q)
   ) : students;
 
   if (!pool.length) {
@@ -2087,7 +2091,7 @@ function buildAttBodyHtml(rid, students, entries) {
   if (_attSort === 'instrument') {
     const groups = {};
     for (const s of pool) {
-      const key = s.instrument || '(No instrument)';
+      const key = normInstrument(s.instrument) || '(No instrument)';
       if (!groups[key]) groups[key] = [];
       groups[key].push(s);
     }
@@ -2141,7 +2145,7 @@ function filterAttendanceList(rid, val) {
 
 function attStudentRow(rid, s, entries) {
   const att  = entries[s.number]?.attendance || null; // null = unmarked = present
-  const meta = [fmtPos(s.column, s.row), s.instrument, s.name].filter(Boolean).join(' · ');
+  const meta = [fmtPos(s.column, s.row), normInstrument(s.instrument), s.name].filter(Boolean).join(' · ');
   return `
     <div class="att-stu-row ${att === 'absent' ? 'att-stu-absent' : att === 'late' ? 'att-stu-late' : ''}">
       <div class="att-stu-info">
@@ -2326,7 +2330,7 @@ function pickGroupMark(rid, type) {
 
 function _groupMatches(s, groupName) {
   const g = groupName.trim().toLowerCase();
-  return (s.section || '').toLowerCase() === g || (s.instrument || '').toLowerCase() === g;
+  return (s.section || '').toLowerCase() === g || normInstrument(s.instrument).toLowerCase() === g;
 }
 
 function showGroupMarkModal(rid, groupName, type) {
@@ -2727,7 +2731,7 @@ function showEditStudentModal(num) {
       <label class="form-label">Instrument</label>
       <select class="form-select" id="m-instrument">
         <option value="">— Select instrument —</option>
-        ${INSTRUMENTS.map(i=>`<option value="${esc(i)}" ${s.instrument===i?'selected':''}>${esc(i)}</option>`).join('')}
+        ${INSTRUMENTS.map(i=>`<option value="${esc(i)}" ${normInstrument(s.instrument)===i?'selected':''}>${esc(i)}</option>`).join('')}
       </select>
     </div>
     <div class="form-group">
@@ -3406,7 +3410,7 @@ function buildAttendanceReportHTML(rehearsals, periodLabel) {
     return `<tr>
       <td>${esc(s.name || '—')}</td>
       <td>#${esc(s.number)}</td>
-      <td>${esc(s.instrument || '—')}</td>
+      <td>${esc(normInstrument(s.instrument) || '—')}</td>
       <td class="cell-absent">${t.absences || 0}</td>
       <td class="cell-late">${t.lates || 0}</td>
     </tr>`;
@@ -3418,7 +3422,7 @@ function buildAttendanceReportHTML(rehearsals, periodLabel) {
     const absent = students.filter(s => entries[s.number]?.attendance === 'absent');
     const late   = students.filter(s => entries[s.number]?.attendance === 'late');
     if (!absent.length && !late.length) return '';
-    const nameOf = s => `${s.name || '—'} (#${s.number})${s.instrument ? ', ' + s.instrument : ''}`;
+    const nameOf = s => `${s.name || '—'} (#${s.number})${s.instrument ? ', ' + normInstrument(s.instrument) : ''}`;
     return `
       <div class="detail-block">
         <div class="detail-date">${esc(fmtDate(r.date))}${r.label ? ' — ' + esc(r.label) : ''}</div>
