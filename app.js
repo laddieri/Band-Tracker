@@ -1810,16 +1810,23 @@ function viewRehearsal(rid) {
   ].filter(Boolean).join(' · ') : '';
 
   const attSubmitted = r?.attendanceSubmitted;
+  const showEndBtn   = STATE.isAdmin && !r?.ended;
   return `
-    <button class="att-screen-btn ${attSubmitted ? 'att-screen-btn-done' : ''}" onclick="navigate('attendance',{rid:'${esc(rid)}'})">
-      <div class="att-screen-btn-label">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;flex-shrink:0">
-          <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
-        </svg>
-        ${attSubmitted ? 'Attendance Submitted ✓' : 'Take Attendance'}
-      </div>
-      ${attSummary ? `<div class="att-screen-btn-summary">${attSummary}</div>` : ''}
-    </button>
+    <div class="rehearsal-action-row">
+      <button class="att-screen-btn ${attSubmitted ? 'att-screen-btn-done' : ''}" style="flex:1;margin-bottom:0" onclick="navigate('attendance',{rid:'${esc(rid)}'})">
+        <div class="att-screen-btn-label">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;flex-shrink:0">
+            <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+          </svg>
+          ${attSubmitted ? 'Attendance ✓' : 'Take Attendance'}
+        </div>
+        ${attSummary ? `<div class="att-screen-btn-summary">${attSummary}</div>` : ''}
+      </button>
+      ${showEndBtn ? `
+        <button class="btn btn-success end-rehearsal-btn" onclick="confirmEndRehearsal('${esc(rid)}')">
+          End<br>Rehearsal
+        </button>` : ''}
+    </div>
 
     ${trackerSection}
 
@@ -2866,21 +2873,15 @@ function showRehearsalOptions(rid) {
         <button class="btn btn-primary btn-sm" style="flex-shrink:0" onclick="addSegment('${esc(rid)}')">+ Add</button>
       </div>` : ''}
 
-    ${STATE.isAdmin ? `
-    <div class="section-title" style="margin-top:24px">End Rehearsal</div>
-    ${r.ended ? `
-      <div class="ended-status-badge">✓ Rehearsal has been ended</div>
-      <p style="font-size:0.82rem;color:var(--text-muted);margin:8px 0 12px">
-        Automatic positive marks were applied to students with no mistakes.
-        You can still edit marks, or reopen the rehearsal to run the process again.
-      </p>
-      <button class="btn btn-secondary btn-full" onclick="reopenRehearsal('${esc(rid)}')">Reopen Rehearsal</button>
-    ` : `
-      <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 12px">
-        Students with zero mistakes will automatically receive a positive mark: "No noticeable mistakes."
-      </p>
-      <button class="btn btn-success btn-full" onclick="confirmEndRehearsal('${esc(rid)}')">End Rehearsal</button>
-    `}` : ''}
+    ${STATE.isAdmin && r.ended ? `
+    <div class="section-title" style="margin-top:24px">Rehearsal Status</div>
+    <div class="ended-status-badge">✓ Rehearsal has been ended</div>
+    <p style="font-size:0.82rem;color:var(--text-muted);margin:8px 0 12px">
+      Automatic positive marks were applied to students with no mistakes.
+      You can still edit marks, or reopen the rehearsal to run the process again.
+    </p>
+    <button class="btn btn-secondary btn-full" onclick="reopenRehearsal('${esc(rid)}')">Reopen Rehearsal</button>
+    ` : ''}
 
     <div class="danger-zone">
       <div class="danger-zone-title">Danger Zone</div>
@@ -2950,7 +2951,7 @@ function confirmEndRehearsal(rid) {
       Students who already have that mark from a previous end will not get a duplicate.
     </p>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="showRehearsalOptions('${esc(rid)}')">Cancel</button>
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-success" onclick="endRehearsal('${esc(rid)}')">End Rehearsal</button>
     </div>
   `);
