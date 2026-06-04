@@ -41,6 +41,7 @@ const STATE = {
   songs:        [],
   mistakePresets:  [...MISTAKE_PRESETS],
   positivePresets: [...POSITIVE_PRESETS],
+  instruments:     [...INSTRUMENTS],
   _unsubs:      []
 };
 
@@ -111,6 +112,7 @@ function startListeners() {
         const d = doc.exists ? doc.data() : {};
         STATE.mistakePresets  = d.mistakePresets?.length  ? d.mistakePresets  : [...MISTAKE_PRESETS];
         STATE.positivePresets = d.positivePresets?.length ? d.positivePresets : [...POSITIVE_PRESETS];
+        STATE.instruments     = d.instruments?.length     ? d.instruments     : [...INSTRUMENTS];
         if (!STATE.loading) render();
       })
     );
@@ -926,6 +928,13 @@ function showRosterOptionsModal() {
           <div class="options-menu-sub">Add or update students in bulk</div>
         </div>
       </button>
+      <button class="options-menu-item" onclick="closeModal();showManageInstrumentsModal()">
+        <div class="options-menu-icon">🎺</div>
+        <div>
+          <div class="options-menu-label">Manage Instruments</div>
+          <div class="options-menu-sub">Add, edit, or remove available instruments</div>
+        </div>
+      </button>
       <button class="options-menu-item" onclick="closeModal();showManagePresetsModal()">
         <div class="options-menu-icon">✏️</div>
         <div>
@@ -1147,8 +1156,9 @@ function songStudentRows(sid, students, statuses) {
   const sorted = [...filtered].sort((a,b) => (a.name||'').localeCompare(b.name||''));
 
   return sorted.map(s => {
-    const status = getStatus(s.number);
-    const meta   = getMeta(s.number);
+    const status    = getStatus(s.number);
+    const meta      = getMeta(s.number);
+    const failNote  = status === 'failed' ? (statuses[String(s.number)]?.note || '') : '';
     return `
       <div class="song-stu-row">
         <div class="song-stu-info">
@@ -1157,6 +1167,7 @@ function songStudentRows(sid, students, statuses) {
             ${status === 'passed' ? '✓ Passed' : status === 'failed' ? '✗ Failed' : '— Not Attempted'}
           </span>
           ${meta ? `<span class="song-stu-meta">${esc(meta)}</span>` : ''}
+          ${failNote ? `<span class="song-stu-fail-note">${esc(failNote)}</span>` : ''}
         </div>
         <div class="song-stu-btns">
           <button class="ssb ${status === 'passed' ? 'ssb-on-pass' : 'ssb-pass'}"
@@ -1199,10 +1210,46 @@ function setSongStatus(sid, num, newStatus) {
     return;
   }
 
+  // Offer a comment when marking as failed
+  if (status === 'failed') {
+    showSongFailNoteModal(sid, num, song);
+    return;
+  }
+
   _applySongStatus(sid, num, song, status);
 }
 
-function _applySongStatus(sid, num, song, status) {
+function showSongFailNoteModal(sid, num, song) {
+  const s = STATE.students[String(num)];
+  const name = s?.name || `#${num}`;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">✗ Failed
+      <div style="font-size:0.78rem;font-weight:400;color:var(--text-muted);margin-top:2px">${esc(name)}</div>
+    </div>
+    <div class="form-label" style="margin-bottom:6px">
+      What to work on?
+      <span style="font-weight:400;color:var(--text-muted)"> (optional)</span>
+    </div>
+    <textarea class="form-textarea" id="fail-note-input" rows="3"
+              placeholder="e.g. Bars 12–16, entrance timing…"
+              maxlength="200" style="resize:none"></textarea>
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-mistake"   onclick="confirmSongFail('${esc(sid)}','${esc(String(num))}')">✗ Fail</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('fail-note-input')?.focus(), 60);
+}
+
+function confirmSongFail(sid, num) {
+  const note = document.getElementById('fail-note-input')?.value.trim() || '';
+  const song = STATE.songs.find(s => s.id === sid);
+  closeModal();
+  if (song) _applySongStatus(sid, num, song, 'failed', note);
+}
+
+function _applySongStatus(sid, num, song, status, note = '') {
   if (status === 'not_attempted') {
     delete song.statuses[String(num)];
     db.collection('songs').doc(sid).update({
@@ -1211,7 +1258,7 @@ function _applySongStatus(sid, num, song, status) {
       db.collection('songs').doc(sid).set({ statuses: song.statuses }, { merge: false });
     });
   } else {
-    song.statuses[String(num)] = { status, updatedAt: Date.now(), updatedBy: STATE.user?.email || '' };
+    song.statuses[String(num)] = { status, note: note || '', updatedAt: Date.now(), updatedBy: STATE.user?.email || '' };
     db.collection('songs').doc(sid).set({ statuses: { [String(num)]: song.statuses[String(num)] } }, { merge: true });
   }
 
@@ -1561,7 +1608,8 @@ function viewStudent(num) {
             if (statusData.updatedAt) metaParts.push(fmtDateFromTs(statusData.updatedAt));
             if (statusData.updatedBy) metaParts.push(`by ${dirLabel(statusData.updatedBy)}`);
           }
-          const meta = metaParts.join(' ');
+          const meta     = metaParts.join(' ');
+          const failNote = st === 'failed' ? (statusData?.note || '') : '';
           const overdue = song.dueDate && song.dueDate < today() && st !== 'passed';
           return `
           <div class="stu-song-row">
@@ -1572,6 +1620,7 @@ function viewStudent(num) {
                 ${st === 'passed' ? '✓ Passed' : st === 'failed' ? '✗ Failed' : '— Not Attempted'}
               </span>
               ${meta ? `<span class="song-stu-meta">${esc(meta)}</span>` : ''}
+              ${failNote ? `<span class="song-stu-fail-note">${esc(failNote)}</span>` : ''}
             </div>
             <div class="song-stu-btns">
               <button class="ssb ${st === 'passed' ? 'ssb-on-pass' : 'ssb-pass'}"
@@ -2760,7 +2809,7 @@ function showAddStudentModal(prefill = '') {
       <label class="form-label">Instrument</label>
       <select class="form-select" id="m-instrument">
         <option value="">— Select instrument —</option>
-        ${INSTRUMENTS.map(i=>`<option value="${esc(i)}">${esc(i)}</option>`).join('')}
+        ${STATE.instruments.map(i=>`<option value="${esc(i)}">${esc(i)}</option>`).join('')}
       </select>
     </div>
     <div class="form-group">
@@ -2836,7 +2885,7 @@ function showEditStudentModal(num) {
       <label class="form-label">Instrument</label>
       <select class="form-select" id="m-instrument">
         <option value="">— Select instrument —</option>
-        ${INSTRUMENTS.map(i=>`<option value="${esc(i)}" ${normInstrument(s.instrument)===i?'selected':''}>${esc(i)}</option>`).join('')}
+        ${STATE.instruments.map(i=>`<option value="${esc(i)}" ${(normInstrument(s.instrument)===i||s.instrument===i)?'selected':''}>${esc(i)}</option>`).join('')}
       </select>
     </div>
     <div class="form-group">
@@ -3165,6 +3214,98 @@ function confirmDeleteRehearsal(rid) {
 }
 
 // ── CSV Import ────────────────────────────────────────────────────────────────
+
+// ── Instrument Management ─────────────────────────────────────────────────────
+
+function showManageInstrumentsModal() {
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Instruments</div>
+    <div class="preset-section">
+      <div id="instrument-list">${_renderInstrumentList()}</div>
+      <div class="preset-add-row">
+        <input class="preset-add-input" id="add-instrument-input" type="text"
+               placeholder="New instrument…" maxlength="60"
+               onkeydown="if(event.key==='Enter')addInstrument()">
+        <button class="preset-add-btn preset-add-btn-positive" onclick="addInstrument()">Add</button>
+      </div>
+    </div>
+    <button class="btn btn-secondary" style="width:100%;margin-top:10px;font-size:0.8rem"
+            onclick="resetInstrumentsToDefaults()">Reset to defaults</button>
+    <div class="modal-actions" style="margin-top:10px">
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Done</button>
+    </div>
+  `);
+}
+
+function _renderInstrumentList() {
+  if (!STATE.instruments.length) return `<div class="preset-empty">No instruments — add one below.</div>`;
+  return STATE.instruments.map((inst, i) => `
+    <div class="preset-item">
+      <span class="preset-item-text">${esc(inst)}</span>
+      <div class="preset-item-btns">
+        <button class="preset-btn-edit" onclick="editInstrument(${i})">Edit</button>
+        <button class="preset-btn-del"  onclick="deleteInstrument(${i})">×</button>
+      </div>
+    </div>`).join('');
+}
+
+function addInstrument() {
+  const input = document.getElementById('add-instrument-input');
+  const val = input?.value.trim();
+  if (!val) return;
+  STATE.instruments = [...STATE.instruments, val];
+  _saveInstruments();
+  input.value = '';
+  document.getElementById('instrument-list').innerHTML = _renderInstrumentList();
+}
+
+function deleteInstrument(idx) {
+  STATE.instruments = STATE.instruments.filter((_, i) => i !== idx);
+  _saveInstruments();
+  document.getElementById('instrument-list').innerHTML = _renderInstrumentList();
+}
+
+function editInstrument(idx) {
+  const current = STATE.instruments[idx];
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Edit Instrument</div>
+    <input class="form-input" id="edit-instrument-input" type="text"
+           value="${esc(current)}" maxlength="60"
+           onkeydown="if(event.key==='Enter')saveEditInstrument(${idx})">
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn btn-secondary" onclick="showManageInstrumentsModal()">Cancel</button>
+      <button class="btn btn-primary"   onclick="saveEditInstrument(${idx})">Save</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('edit-instrument-input')?.focus(), 60);
+}
+
+function saveEditInstrument(idx) {
+  const val = document.getElementById('edit-instrument-input')?.value.trim();
+  if (!val) return;
+  STATE.instruments[idx] = val;
+  _saveInstruments();
+  showManageInstrumentsModal();
+}
+
+function resetInstrumentsToDefaults() {
+  STATE.instruments = [...INSTRUMENTS];
+  _saveInstruments();
+  document.getElementById('instrument-list').innerHTML = _renderInstrumentList();
+}
+
+async function _saveInstruments() {
+  try {
+    await db.collection('settings').doc('presets').set(
+      { instruments: STATE.instruments }, { merge: true }
+    );
+  } catch(e) {
+    console.error('Failed to save instruments:', e);
+    showToast('Failed to save instruments.');
+  }
+}
 
 // ── Preset Management ─────────────────────────────────────────────────────────
 

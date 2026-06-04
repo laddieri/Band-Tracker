@@ -1668,6 +1668,14 @@ html, body {
 .sss-fail { background: var(--danger-bg);  color: var(--danger); }
 .sss-na   { background: #f1f5f9; color: var(--text-muted); }
 .song-stu-meta { font-size: 0.72rem; color: var(--text-muted); flex-basis: 100%; margin-top: -2px; }
+.song-stu-fail-note {
+  font-size: 0.75rem;
+  font-style: italic;
+  color: var(--danger);
+  flex-basis: 100%;
+  margin-top: 1px;
+  opacity: 0.85;
+}
 
 .song-stu-btns { display: flex; gap: 6px; flex-shrink: 0; }
 .ssb {
