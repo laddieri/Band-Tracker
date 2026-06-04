@@ -251,6 +251,7 @@ function navigate(view, params = {}) {
   if (_view === 'song' && view !== 'song') {
     _songSectionFilter    = '';
     _songHidePassedFilter = false;
+    _songSearch           = '';
   }
   _view   = view;
   _params = params;
@@ -267,6 +268,7 @@ let _rosterInstrumentFilter  = '';
 let _trackerInstrumentFilter = '';
 let _songSectionFilter       = '';
 let _songHidePassedFilter    = false;
+let _songSearch              = '';
 let _attFilterField = null; // null | 'instrument' | 'row' | 'column'
 let _attFilterValue = null;
 let _attSearch               = '';
@@ -1143,6 +1145,11 @@ function viewSong(sid) {
                 onclick="toggleSongHidePassed('${esc(sid)}')">Not Passed Only</button>
       </div>
 
+      <input class="song-search-input" type="text" placeholder="Search by name…"
+             value="${esc(_songSearch)}"
+             autocomplete="off" autocorrect="off" autocapitalize="off"
+             oninput="onSongSearch('${esc(sid)}',this.value)">
+
       <div id="song-student-list">
         ${songStudentRows(sid, students, statuses)}
       </div>
@@ -1156,9 +1163,11 @@ function songStudentRows(sid, students, statuses) {
     if (!s || s.status === 'not_attempted') return '';
     return [s.updatedBy ? dirLabel(s.updatedBy) : '', s.updatedAt ? fmtTime(s.updatedAt) : ''].filter(Boolean).join(' · ');
   };
+  const q = _songSearch.trim().toLowerCase();
   const filtered = students
     .filter(s => !_songSectionFilter || normInstrument(s.instrument) === _songSectionFilter)
-    .filter(s => !_songHidePassedFilter || getStatus(s.number) !== 'passed');
+    .filter(s => !_songHidePassedFilter || getStatus(s.number) !== 'passed')
+    .filter(s => !q || (s.name || '').toLowerCase().includes(q));
 
   if (!filtered.length) return `<div class="empty-state" style="padding:24px"><p>No students match the current filter.</p></div>`;
 
@@ -1186,6 +1195,15 @@ function songStudentRows(sid, students, statuses) {
         </div>
       </div>`;
   }).join('');
+}
+
+function onSongSearch(sid, val) {
+  _songSearch = val;
+  const song = STATE.songs.find(s => s.id === sid);
+  if (!song) return;
+  const students = Object.values(DB.getStudents()).sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  const listEl = document.getElementById('song-student-list');
+  if (listEl) listEl.innerHTML = songStudentRows(sid, students, song.statuses || {});
 }
 
 function filterSongSection(sid, section) {
