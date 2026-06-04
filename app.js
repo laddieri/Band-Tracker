@@ -459,7 +459,13 @@ function render() {
     case 'student': {
       const s = DB.getStudents()[_params.num];
       title.textContent = s ? (s.name || 'Student') : 'Student';
-      actions.innerHTML = (STATE.isAdmin ? editBtn(`showEditStudentModal('${esc(_params.num)}')`) : '') + userBtn();
+      const previewBtn = `<button class="icon-btn" onclick="showStudentPortalPreview('${esc(_params.num)}')" title="Preview student view" aria-label="Preview student view">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+          <circle cx="12" cy="12" r="3"/>
+        </svg>
+      </button>`;
+      actions.innerHTML = (STATE.isAdmin ? previewBtn + editBtn(`showEditStudentModal('${esc(_params.num)}')`) : '') + userBtn();
       main.innerHTML = viewStudent(_params.num);
       break;
     }
@@ -1283,6 +1289,21 @@ function confirmDeleteSong(sid) {
   closeModal();
   navigate('songs');
   showToast('Song deleted.');
+}
+
+function showStudentPortalPreview(num) {
+  const prev = STATE.studentNum;
+  STATE.studentNum = num;
+  const html = viewStudentPortal();
+  STATE.studentNum = prev;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title" style="font-size:0.85rem;color:var(--text-muted);font-weight:500;margin-bottom:8px">Student View Preview</div>
+    <div style="margin: 0 -4px">${html}</div>
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Close</button>
+    </div>
+  `);
 }
 
 function viewStudentPortal() {
