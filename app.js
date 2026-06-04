@@ -1684,6 +1684,11 @@ function viewRehearsals() {
       </div>`;
   }
 
+  const hasOpen = rehearsals.some(r => !r.ended);
+  const startBtn = STATE.isAdmin && !hasOpen
+    ? `<button class="start-rehearsal-btn" onclick="showNewRehearsalModal()">+ Start a New Rehearsal</button>`
+    : '';
+
   const grouped = {};
   for (const r of rehearsals) {
     const key = r.date.slice(0,7);
@@ -1694,7 +1699,7 @@ function viewRehearsals() {
   const MONTHS = ['January','February','March','April','May','June',
                   'July','August','September','October','November','December'];
 
-  return Object.entries(grouped).map(([key, group]) => {
+  return startBtn + Object.entries(grouped).map(([key, group]) => {
     const [y, m] = key.split('-').map(Number);
     return `
       <div class="section-title">${MONTHS[m-1]} ${y}</div>

@@ -137,6 +137,25 @@ html, body {
 .card.clickable:active { transform: scale(.985); }
 .card.clickable:hover { box-shadow: var(--shadow-md); }
 
+/* ── Start rehearsal prompt ─────────────────────────────────────────────── */
+.start-rehearsal-btn {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  margin-bottom: 16px;
+  border-radius: var(--r);
+  border: 2px dashed var(--primary);
+  background: transparent;
+  color: var(--primary);
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  transition: background .15s;
+}
+.start-rehearsal-btn:hover  { background: var(--primary-bg, #ede9fe); }
+.start-rehearsal-btn:active { transform: scale(.98); }
+
 /* ── Rehearsal list cards ────────────────────────────────────────────────── */
 .rh-card { border-left: 4px solid transparent; padding-left: 12px; }
 .rh-card-open  { border-left-color: var(--primary); }
