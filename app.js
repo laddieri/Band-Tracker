@@ -1834,34 +1834,36 @@ function viewRehearsal(rid) {
 
     trackerSection = `
       <div class="tracker-card">
-        <div class="tracker-label">Track a Student</div>
-        <div class="tracker-chips-row">
-          ${instrumentFilterChips(_trackerInstrumentFilter, 'filterTrackerInstrument', rid)}
-          <button class="inst-chip tracker-grid-btn" title="Open Block Grid" onclick="toggleBlockMode('${esc(rid)}')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;display:block">
-              <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
-              <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
-            </svg>
-          </button>
-        </div>
-        <input class="num-input" type="text" inputmode="text"
-               id="num-input" placeholder="Search by name…"
-               value="${esc(_numSearch)}"
-               autocomplete="off" autocorrect="off" autocapitalize="off"
-               oninput="onNumInput(this.value,'${esc(rid)}')"
-               onkeydown="onNumKey(event,'${esc(rid)}')">
-        <div id="tracker-suggestions" class="student-suggestions">
-          ${isNameSearch ? suggestions.map(s => `
-            <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
-              <span class="suggestion-name">${esc(s.name || `#${s.number}`)}</span>
-              <span class="suggestion-detail">${esc([fmtPos(s.column,s.row),normInstrument(s.instrument)].filter(Boolean).join(' · '))}</span>
-            </div>`).join('') : ''}
-          ${showAllForFilter && !_activeNum ? allFiltered.map(s => `
-            <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
-              <span class="suggestion-name">${esc(s.name || `#${s.number}`)}</span>
-              <span class="suggestion-detail">${esc(fmtPos(s.column,s.row))}</span>
-            </div>`).join('') : ''}
-        </div>
+        ${!_activeNum ? `
+          <div class="tracker-label">Track a Student</div>
+          <div class="tracker-chips-row">
+            ${instrumentFilterChips(_trackerInstrumentFilter, 'filterTrackerInstrument', rid)}
+            <button class="inst-chip tracker-grid-btn" title="Open Block Grid" onclick="toggleBlockMode('${esc(rid)}')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;display:block">
+                <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+                <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+              </svg>
+            </button>
+          </div>
+          <input class="num-input" type="text" inputmode="text"
+                 id="num-input" placeholder="Search by name…"
+                 value="${esc(_numSearch)}"
+                 autocomplete="off" autocorrect="off" autocapitalize="off"
+                 oninput="onNumInput(this.value,'${esc(rid)}')"
+                 onkeydown="onNumKey(event,'${esc(rid)}')">
+          <div id="tracker-suggestions" class="student-suggestions">
+            ${isNameSearch ? suggestions.map(s => `
+              <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
+                <span class="suggestion-name">${esc(s.name || `#${s.number}`)}</span>
+                <span class="suggestion-detail">${esc([fmtPos(s.column,s.row),normInstrument(s.instrument)].filter(Boolean).join(' · '))}</span>
+              </div>`).join('') : ''}
+            ${showAllForFilter ? allFiltered.map(s => `
+              <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
+                <span class="suggestion-name">${esc(s.name || `#${s.number}`)}</span>
+                <span class="suggestion-detail">${esc(fmtPos(s.column,s.row))}</span>
+              </div>`).join('') : ''}
+          </div>
+        ` : ''}
         ${activeCard}
       </div>`;
   }
