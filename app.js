@@ -247,7 +247,8 @@ let _rosterSearch = '';
 let _rosterInstrumentFilter  = '';
 let _trackerInstrumentFilter = '';
 let _songSectionFilter       = '';
-let _attSort                 = 'instrument'; // attendance screen sort: instrument | row | column
+let _attSort                 = 'instrument'; // attendance screen sort: instrument | row | column | lastname
+let _attSearch               = '';
 let _blockMode  = false;
 let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
 let _pendingSegment    = ''; // currently selected rehearsal segment in mark modal
@@ -1998,14 +1999,89 @@ function viewAttendance(rid) {
   const submitted = r?.attendanceSubmitted || false;
   const absent   = students.filter(s => entries[s.number]?.attendance === 'absent').length;
   const late     = students.filter(s => entries[s.number]?.attendance === 'late').length;
-  const unmarked = students.length - absent - late; // unmarked = assumed present
+  const unmarked = students.length - absent - late;
 
-  // Build sorted / grouped list
+  return `
+    ${submitted ? `
+      <div class="att-submitted-banner">
+        ✓ Attendance submitted — changes require confirmation
+      </div>` : ''}
+
+    <div class="att-screen-summary-bar">
+      <span class="att-summary-chip att-chip-absent">${absent} Absent</span>
+      <span class="att-summary-chip att-chip-late">${late} Late</span>
+      <span class="att-summary-chip att-chip-present">${unmarked} Present</span>
+    </div>
+
+    <div class="search-wrap" style="margin-bottom:10px">
+      <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input class="search-input" type="search" id="att-search"
+             placeholder="Search by name or number…"
+             value="${esc(_attSearch)}"
+             oninput="filterAttendanceList('${esc(rid)}', this.value)" autocomplete="off">
+    </div>
+
+    <div class="att-sort-row">
+      <span class="att-sort-label">Sort by</span>
+      <button class="att-sort-chip ${_attSort==='instrument'?'att-sort-active':''}"
+              onclick="setAttSort('instrument','${esc(rid)}')">Instrument</button>
+      <button class="att-sort-chip ${_attSort==='row'?'att-sort-active':''}"
+              onclick="setAttSort('row','${esc(rid)}')">Row</button>
+      <button class="att-sort-chip ${_attSort==='column'?'att-sort-active':''}"
+              onclick="setAttSort('column','${esc(rid)}')">Column</button>
+      <button class="att-sort-chip ${_attSort==='lastname'?'att-sort-active':''}"
+              onclick="setAttSort('lastname','${esc(rid)}')">Last Name</button>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="btn btn-secondary" style="flex:1" onclick="markAllPresent('${esc(rid)}')">
+        ✓ Mark All Present
+      </button>
+      ${!submitted ? `
+        <button class="btn btn-primary" style="flex:1" onclick="showSubmitAttendanceModal('${esc(rid)}')">
+          Submit Attendance
+        </button>` : ''}
+    </div>
+
+    <div class="att-student-list" id="att-student-list">
+      ${buildAttBodyHtml(rid, students, entries)}
+    </div>
+  `;
+}
+
+function _attLastName(s) {
+  const parts = (s.name || '').trim().split(/\s+/);
+  return parts.length > 1 ? parts[parts.length - 1] : parts[0] || '';
+}
+
+function buildAttBodyHtml(rid, students, entries) {
+  const q = _attSearch.toLowerCase().trim();
+  const pool = q ? students.filter(s =>
+    (s.name || '').toLowerCase().includes(q) ||
+    String(s.number).includes(q) ||
+    (s.instrument || '').toLowerCase().includes(q)
+  ) : students;
+
+  if (!pool.length) {
+    return `<div class="empty-state" style="padding:24px"><p>No students match "${esc(_attSearch)}"</p></div>`;
+  }
+
+  // When searching or sort is lastname: flat list sorted by last name
+  if (q || _attSort === 'lastname') {
+    const sorted = [...pool].sort((a, b) => {
+      const la = _attLastName(a), lb = _attLastName(b);
+      return la.localeCompare(lb) || (a.name || '').localeCompare(b.name || '');
+    });
+    return sorted.map(s => attStudentRow(rid, s, entries)).join('');
+  }
+
   let bodyHtml = '';
 
   if (_attSort === 'instrument') {
     const groups = {};
-    for (const s of students) {
+    for (const s of pool) {
       const key = s.instrument || '(No instrument)';
       if (!groups[key]) groups[key] = [];
       groups[key].push(s);
@@ -2017,7 +2093,7 @@ function viewAttendance(rid) {
     }
   } else if (_attSort === 'row') {
     const groups = {};
-    for (const s of students) {
+    for (const s of pool) {
       const key = s.row != null ? String(s.row) : '—';
       if (!groups[key]) groups[key] = [];
       groups[key].push(s);
@@ -2032,7 +2108,7 @@ function viewAttendance(rid) {
     }
   } else { // column
     const groups = {};
-    for (const s of students) {
+    for (const s of pool) {
       const key = s.column || '—';
       if (!groups[key]) groups[key] = [];
       groups[key].push(s);
@@ -2047,42 +2123,15 @@ function viewAttendance(rid) {
     }
   }
 
-  return `
-    ${submitted ? `
-      <div class="att-submitted-banner">
-        ✓ Attendance submitted — changes require confirmation
-      </div>` : ''}
+  return bodyHtml;
+}
 
-    <div class="att-screen-summary-bar">
-      <span class="att-summary-chip att-chip-absent">${absent} Absent</span>
-      <span class="att-summary-chip att-chip-late">${late} Late</span>
-      <span class="att-summary-chip att-chip-present">${unmarked} Present</span>
-    </div>
-
-    <div class="att-sort-row">
-      <span class="att-sort-label">Sort by</span>
-      <button class="att-sort-chip ${_attSort==='instrument'?'att-sort-active':''}"
-              onclick="setAttSort('instrument','${esc(rid)}')">Instrument</button>
-      <button class="att-sort-chip ${_attSort==='row'?'att-sort-active':''}"
-              onclick="setAttSort('row','${esc(rid)}')">Row</button>
-      <button class="att-sort-chip ${_attSort==='column'?'att-sort-active':''}"
-              onclick="setAttSort('column','${esc(rid)}')">Column</button>
-    </div>
-
-    <div style="display:flex;gap:8px;margin-bottom:12px">
-      <button class="btn btn-secondary" style="flex:1" onclick="markAllPresent('${esc(rid)}')">
-        ✓ Mark All Present
-      </button>
-      ${!submitted ? `
-        <button class="btn btn-primary" style="flex:1" onclick="showSubmitAttendanceModal('${esc(rid)}')">
-          Submit Attendance
-        </button>` : ''}
-    </div>
-
-    <div class="att-student-list">
-      ${bodyHtml}
-    </div>
-  `;
+function filterAttendanceList(rid, val) {
+  _attSearch = val;
+  const students = Object.values(DB.getStudents());
+  const entries  = STATE.entries[rid] || {};
+  const el = document.getElementById('att-student-list');
+  if (el) el.innerHTML = buildAttBodyHtml(rid, students, entries);
 }
 
 function attStudentRow(rid, s, entries) {
