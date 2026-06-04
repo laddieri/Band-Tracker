@@ -1834,11 +1834,11 @@ function viewRehearsal(rid) {
   } else {
     const isNameSearch = _numSearch.trim() && !/^\d+$/.test(_numSearch.trim());
     const suggestions  = isNameSearch ? studentSuggestions(_numSearch, _trackerInstrumentFilter) : [];
-    // When instrument filter is active with no text typed, list that section's students
-    const showAllForFilter = _trackerInstrumentFilter && !_numSearch.trim();
+    // Show scrollable student list whenever search box is empty (all students or filtered by instrument)
+    const showAllForFilter = !_numSearch.trim();
     const allFiltered = showAllForFilter
       ? Object.values(students)
-          .filter(s => normInstrument(s.instrument) === _trackerInstrumentFilter)
+          .filter(s => !_trackerInstrumentFilter || normInstrument(s.instrument) === _trackerInstrumentFilter)
           .sort((a,b) => (a.name||'').localeCompare(b.name||''))
       : [];
 
