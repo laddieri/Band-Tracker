@@ -79,6 +79,7 @@ const STATE = {
   sections:                 [...SECTIONS],
   marchingLeaderboardEnabled: false,
   pseudonymSalt:              '',
+  songCategories:             [],
   _unsubs:      []
 };
 
@@ -158,6 +159,7 @@ function startListeners() {
       STATE.sections                   = d.sections?.length        ? d.sections        : [...SECTIONS];
       STATE.marchingLeaderboardEnabled = !!d.marchingLeaderboardEnabled;
       STATE.pseudonymSalt              = d.pseudonymSalt || '';
+      STATE.songCategories             = d.songCategories || [];
       if (!STATE.loading) render();
     })
   );
@@ -576,7 +578,7 @@ function render() {
 
     case 'songs':
       title.textContent = 'Songs';
-      actions.innerHTML = (STATE.isAdmin ? addBtn('showAddSongModal()') : '') + userBtn();
+      actions.innerHTML = (STATE.isAdmin ? optBtn('showSongOptionsModal()') + addBtn('showAddSongModal()') : '') + userBtn();
       main.innerHTML = viewSongs();
       break;
 
@@ -1145,40 +1147,66 @@ function filterTrackerInstrument(rid, inst) {
 // ── View: Songs ───────────────────────────────────────────────────────────────
 
 function viewSongs() {
-  const songs    = STATE.songs;
-  const total    = Object.keys(STATE.students).length;
+  const songs = STATE.songs;
+  const total = Object.keys(STATE.students).length;
+  const cats  = STATE.songCategories;
 
-  return `
-    ${songs.length === 0 ? `
+  if (songs.length === 0) {
+    return `
       <div class="empty-state" style="padding:48px 24px">
         <div class="empty-icon">🎵</div>
         <p>No songs added yet.</p>
         ${STATE.isAdmin ? `<p>Tap <strong>+</strong> to add a song to memorize.</p>` : ''}
-      </div>` : `
-      <div style="padding:8px 0">
-        ${songs.map(song => {
-          const passed  = Object.values(song.statuses || {}).filter(s => s.status === 'passed').length;
-          const failed  = Object.values(song.statuses || {}).filter(s => s.status === 'failed').length;
-          const pct     = total ? Math.round(passed / total * 100) : 0;
-          const overdue = song.dueDate && song.dueDate < today();
-          return `
-          <div class="song-row" onclick="navigate('song',{sid:'${esc(song.id)}'})">
-            <div class="song-row-info">
-              <div class="song-row-title">${esc(song.title)}</div>
-              ${song.dueDate ? `<div class="song-row-due ${overdue ? 'song-overdue' : ''}">
-                Due ${fmtDate(song.dueDate)}${overdue ? ' — overdue' : ''}
-              </div>` : ''}
-            </div>
-            <div class="song-row-right">
-              <div class="song-prog-wrap">
-                <div class="song-prog-bar"><div class="song-prog-fill" style="width:${pct}%"></div></div>
-                <div class="song-prog-lbl">${passed}✓ ${failed > 0 ? `${failed}✗ ` : ''}/ ${total}</div>
-              </div>
-            </div>
-          </div>`;
-        }).join('')}
-      </div>`}
-  `;
+      </div>`;
+  }
+
+  const songRow = song => {
+    const passed  = Object.values(song.statuses || {}).filter(s => s.status === 'passed').length;
+    const failed  = Object.values(song.statuses || {}).filter(s => s.status === 'failed').length;
+    const pct     = total ? Math.round(passed / total * 100) : 0;
+    const overdue = song.dueDate && song.dueDate < today();
+    return `
+    <div class="song-row" onclick="navigate('song',{sid:'${esc(song.id)}'})">
+      <div class="song-row-info">
+        <div class="song-row-title">${esc(song.title)}</div>
+        ${song.dueDate ? `<div class="song-row-due ${overdue ? 'song-overdue' : ''}">
+          Due ${fmtDate(song.dueDate)}${overdue ? ' — overdue' : ''}
+        </div>` : ''}
+      </div>
+      <div class="song-row-right">
+        <div class="song-prog-wrap">
+          <div class="song-prog-bar"><div class="song-prog-fill" style="width:${pct}%"></div></div>
+          <div class="song-prog-lbl">${passed}✓ ${failed > 0 ? `${failed}✗ ` : ''}/ ${total}</div>
+        </div>
+      </div>
+    </div>`;
+  };
+
+  if (!cats.length) {
+    return `<div style="padding:8px 0">${songs.map(songRow).join('')}</div>`;
+  }
+
+  // Group songs by category
+  const grouped = {};
+  const uncategorized = [];
+  cats.forEach(c => { grouped[c] = []; });
+  songs.forEach(song => {
+    if (song.category && grouped[song.category] !== undefined) grouped[song.category].push(song);
+    else uncategorized.push(song);
+  });
+
+  let html = '<div style="padding:8px 0">';
+  cats.forEach(cat => {
+    if (!grouped[cat].length) return;
+    html += `<div class="song-cat-hdr">${esc(cat)}</div>`;
+    html += grouped[cat].map(songRow).join('');
+  });
+  if (uncategorized.length) {
+    if (songs.length > uncategorized.length) html += `<div class="song-cat-hdr">Other</div>`;
+    html += uncategorized.map(songRow).join('');
+  }
+  html += '</div>';
+  return html;
 }
 
 function viewSong(sid) {
@@ -1388,6 +1416,122 @@ function runPendingConfirm() {
   if (fn) fn();
 }
 
+function _songCategorySelect(selected) {
+  return `<select class="form-input" id="m-song-category">
+    <option value="">— No category —</option>
+    ${STATE.songCategories.map(c => `<option value="${esc(c)}" ${selected === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+  </select>`;
+}
+
+function showSongOptionsModal() {
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Song Options</div>
+    <div class="options-menu">
+      <button class="options-menu-item" onclick="closeModal();showManageSongCategoriesModal()">
+        <div class="options-menu-icon">🗂️</div>
+        <div>
+          <div class="options-menu-label">Manage Categories</div>
+          <div class="options-menu-sub">${STATE.songCategories.length ? STATE.songCategories.join(', ') : 'No categories yet'}</div>
+        </div>
+      </button>
+    </div>
+    <div class="modal-actions" style="margin-top:8px">
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Cancel</button>
+    </div>
+  `);
+}
+
+function showManageSongCategoriesModal() {
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Song Categories</div>
+    <div class="preset-section">
+      <div id="song-cat-list">${_renderSongCategoryList()}</div>
+      <div class="preset-add-row">
+        <input class="preset-add-input" id="add-song-cat-input" type="text"
+               placeholder="New category…" maxlength="60"
+               onkeydown="if(event.key==='Enter')addSongCategory()">
+        <button class="preset-add-btn preset-add-btn-positive" onclick="addSongCategory()">Add</button>
+      </div>
+    </div>
+    <div class="modal-actions" style="margin-top:10px">
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Done</button>
+    </div>
+  `);
+}
+
+function _renderSongCategoryList() {
+  if (!STATE.songCategories.length) return `<div class="preset-empty">No categories yet — add one below.</div>`;
+  return STATE.songCategories.map((cat, i) => `
+    <div class="preset-item">
+      <span class="preset-item-text">${esc(cat)}</span>
+      <div class="preset-item-btns">
+        <button class="preset-btn-edit" onclick="editSongCategory(${i})">Edit</button>
+        <button class="preset-btn-del"  onclick="deleteSongCategory(${i})">×</button>
+      </div>
+    </div>`).join('');
+}
+
+function addSongCategory() {
+  const input = document.getElementById('add-song-cat-input');
+  const val = input?.value.trim();
+  if (!val) return;
+  STATE.songCategories = [...STATE.songCategories, val];
+  _saveSongCategories();
+  input.value = '';
+  document.getElementById('song-cat-list').innerHTML = _renderSongCategoryList();
+}
+
+function deleteSongCategory(idx) {
+  STATE.songCategories = STATE.songCategories.filter((_, i) => i !== idx);
+  _saveSongCategories();
+  document.getElementById('song-cat-list').innerHTML = _renderSongCategoryList();
+}
+
+function editSongCategory(idx) {
+  const current = STATE.songCategories[idx];
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Edit Category</div>
+    <input class="form-input" id="edit-song-cat-input" type="text"
+           value="${esc(current)}" maxlength="60"
+           onkeydown="if(event.key==='Enter')saveEditSongCategory(${idx})">
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn btn-secondary" onclick="showManageSongCategoriesModal()">Cancel</button>
+      <button class="btn btn-primary"   onclick="saveEditSongCategory(${idx})">Save</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('edit-song-cat-input')?.focus(), 60);
+}
+
+function saveEditSongCategory(idx) {
+  const val = document.getElementById('edit-song-cat-input')?.value.trim();
+  if (!val) return;
+  const old = STATE.songCategories[idx];
+  STATE.songCategories[idx] = val;
+  _saveSongCategories();
+  // Update any songs using the old category name
+  STATE.songs.forEach(song => {
+    if (song.category === old) {
+      song.category = val;
+      db.collection('songs').doc(song.id).set({ category: val }, { merge: true });
+    }
+  });
+  showManageSongCategoriesModal();
+}
+
+async function _saveSongCategories() {
+  try {
+    await db.collection('settings').doc('presets').set(
+      { songCategories: STATE.songCategories }, { merge: true }
+    );
+  } catch(e) {
+    console.error('Failed to save song categories:', e);
+    showToast('Failed to save categories.');
+  }
+}
+
 function showAddSongModal() {
   openModal(`
     <div class="modal-title">Add Song</div>
@@ -1400,6 +1544,11 @@ function showAddSongModal() {
       <label class="form-label">Memorization Due Date (optional)</label>
       <input class="form-input" id="m-song-due" type="date">
     </div>
+    ${STATE.songCategories.length ? `
+    <div class="form-group">
+      <label class="form-label">Category (optional)</label>
+      ${_songCategorySelect('')}
+    </div>` : ''}
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveSong()">Add Song</button>
@@ -1409,12 +1558,13 @@ function showAddSongModal() {
 }
 
 function saveSong() {
-  const title   = document.getElementById('m-song-title')?.value.trim();
-  const dueDate = document.getElementById('m-song-due')?.value || '';
+  const title    = document.getElementById('m-song-title')?.value.trim();
+  const dueDate  = document.getElementById('m-song-due')?.value || '';
+  const category = document.getElementById('m-song-category')?.value || '';
   if (!title) { showToast('Please enter a song title.'); return; }
   closeModal();
   const ref = db.collection('songs').doc();
-  const doc = { title, dueDate, addedBy: STATE.user?.email || '', addedAt: Date.now(), statuses: {} };
+  const doc = { title, dueDate, category, addedBy: STATE.user?.email || '', addedAt: Date.now(), statuses: {} };
   STATE.songs.push({ ...doc, id: ref.id });
   STATE.songs.sort((a, b) => (a.dueDate || 'z').localeCompare(b.dueDate || 'z'));
   ref.set(doc);
@@ -1435,6 +1585,11 @@ function showEditSongModal(sid) {
       <label class="form-label">Due Date</label>
       <input class="form-input" id="m-song-due" type="date" value="${esc(song.dueDate || '')}">
     </div>
+    ${STATE.songCategories.length ? `
+    <div class="form-group">
+      <label class="form-label">Category</label>
+      ${_songCategorySelect(song.category || '')}
+    </div>` : ''}
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="updateSong('${esc(sid)}')">Save</button>
@@ -1447,14 +1602,16 @@ function showEditSongModal(sid) {
 }
 
 function updateSong(sid) {
-  const title   = document.getElementById('m-song-title')?.value.trim();
-  const dueDate = document.getElementById('m-song-due')?.value || '';
+  const title    = document.getElementById('m-song-title')?.value.trim();
+  const dueDate  = document.getElementById('m-song-due')?.value || '';
+  const category = document.getElementById('m-song-category')?.value || '';
   if (!title) { showToast('Please enter a song title.'); return; }
   const song = STATE.songs.find(s => s.id === sid);
   if (!song) return;
-  song.title   = title;
-  song.dueDate = dueDate;
-  db.collection('songs').doc(sid).set({ title, dueDate }, { merge: true });
+  song.title    = title;
+  song.dueDate  = dueDate;
+  song.category = category;
+  db.collection('songs').doc(sid).set({ title, dueDate, category }, { merge: true });
   closeModal();
   render();
 }
@@ -1505,11 +1662,11 @@ function viewStudentPortal() {
       </div>
 
       ${hist.length > 0 ? `
-        <div id="portal-sec-attendance-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('portal-sec-attendance')">
+        <div id="portal-sec-attendance-hdr" class="sec-hdr" onclick="toggleCollapse('portal-sec-attendance')">
           <span class="section-title" style="margin:0">Attendance</span>
           <span class="sec-chevron">▾</span>
         </div>
-        <div id="portal-sec-attendance">
+        <div id="portal-sec-attendance" class="sec-collapsed">
           <div class="portal-stats">
             <div class="portal-stat">
               <div class="portal-stat-value">${hist.length}</div>
@@ -1549,41 +1706,59 @@ function viewStudentPortal() {
         </div>
       ` : ''}
 
-      <button class="leaderboard-link-btn" onclick="navigate('leaderboard')">
-        📊 View Band Stats &amp; Leaderboard
-      </button>
-
       ${STATE.songs.length > 0 ? `
-        <div id="portal-sec-songs-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('portal-sec-songs')">
+        <div id="portal-sec-songs-hdr" class="sec-hdr" onclick="toggleCollapse('portal-sec-songs')">
           <span class="section-title" style="margin:0">Songs to Memorize</span>
           <span class="sec-chevron">▾</span>
         </div>
-        <div id="portal-sec-songs">
+        <div id="portal-sec-songs" class="sec-collapsed">
           <div class="portal-songs-list">
-            ${STATE.songs.map(song => {
-              const status = song.statuses?.[String(num)]?.status || 'not_attempted';
-              const overdue = song.dueDate && song.dueDate < today() && status !== 'passed';
-              return `
-              <div class="portal-song-row">
-                <div class="portal-song-info">
-                  <div class="portal-song-title">${esc(song.title)}</div>
-                  ${song.dueDate ? `<div class="portal-song-due ${overdue ? 'song-overdue' : ''}">Due ${fmtDate(song.dueDate)}</div>` : ''}
-                </div>
-                <span class="portal-song-status ${status === 'passed' ? 'pss-pass' : status === 'failed' ? 'pss-fail' : 'pss-na'}">
-                  ${status === 'passed' ? '✓ Passed' : status === 'failed' ? '✗ Failed' : '— Not Attempted'}
-                </span>
-              </div>`;
-            }).join('')}
+            ${(() => {
+              const cats = STATE.songCategories;
+              const portalSongRow = song => {
+                const status  = song.statuses?.[String(num)]?.status || 'not_attempted';
+                const overdue = song.dueDate && song.dueDate < today() && status !== 'passed';
+                return `
+                <div class="portal-song-row">
+                  <div class="portal-song-info">
+                    <div class="portal-song-title">${esc(song.title)}</div>
+                    ${song.dueDate ? `<div class="portal-song-due ${overdue ? 'song-overdue' : ''}">Due ${fmtDate(song.dueDate)}</div>` : ''}
+                  </div>
+                  <span class="portal-song-status ${status === 'passed' ? 'pss-pass' : status === 'failed' ? 'pss-fail' : 'pss-na'}">
+                    ${status === 'passed' ? '✓ Passed' : status === 'failed' ? '✗ Failed' : '— Not Attempted'}
+                  </span>
+                </div>`;
+              };
+              if (!cats.length) return STATE.songs.map(portalSongRow).join('');
+              const grouped = {};
+              const uncategorized = [];
+              cats.forEach(c => { grouped[c] = []; });
+              STATE.songs.forEach(song => {
+                if (song.category && grouped[song.category] !== undefined) grouped[song.category].push(song);
+                else uncategorized.push(song);
+              });
+              let html = '';
+              cats.forEach(cat => {
+                if (!grouped[cat].length) return;
+                html += `<div class="song-cat-hdr">${esc(cat)}</div>`;
+                html += grouped[cat].map(portalSongRow).join('');
+              });
+              if (uncategorized.length) {
+                if (STATE.songs.length > uncategorized.length) html += `<div class="song-cat-hdr">Other</div>`;
+                html += uncategorized.map(portalSongRow).join('');
+              }
+              return html;
+            })()}
           </div>
         </div>
       ` : ''}
 
       ${hist.length > 0 ? `
-        <div id="portal-sec-history-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('portal-sec-history')">
+        <div id="portal-sec-history-hdr" class="sec-hdr" onclick="toggleCollapse('portal-sec-history')">
           <span class="section-title" style="margin:0">Rehearsal History</span>
           <span class="sec-chevron">▾</span>
         </div>
-        <div id="portal-sec-history">
+        <div id="portal-sec-history" class="sec-collapsed">
         ${hist.map(({rehearsal: r, entry: e}) => {
           const evts     = e.events || [];
           const noteEvts = evts.filter(ev => ev.note?.trim());
@@ -1618,6 +1793,10 @@ function viewStudentPortal() {
         }).join('')}
         </div>
       ` : `<p class="empty-state" style="padding:24px 0">No rehearsal history yet.</p>`}
+
+      <button class="leaderboard-link-btn" onclick="navigate('leaderboard')">
+        📊 View Band Stats &amp; Leaderboard
+      </button>
     </div>`;
 }
 
@@ -1717,20 +1896,42 @@ function viewLeaderboard() {
           <span class="sec-chevron">▾</span>
         </div>
         <div id="lb-sec-songs">
-          <div class="card mb-12" style="padding:0;overflow:hidden">
-            ${songRows.map(({ song, passed, remaining, pct }, i) => `
-            <div class="lb-song-row ${i % 2 === 1 ? 'lb-stat-row-alt' : ''}">
-              <div class="lb-song-info">
-                <div class="lb-song-title">${esc(song.title)}</div>
-                ${song.dueDate ? `<div class="lb-song-due ${song.dueDate < today() && passed < totalStudents ? 'song-overdue' : ''}">Due ${fmtDate(song.dueDate)}</div>` : ''}
-                <div class="lb-prog-bar"><div class="lb-prog-fill" style="width:${pct}%"></div></div>
-              </div>
-              <div class="lb-song-counts">
-                <span class="lb-count-pass">${passed} passed</span>
-                <span class="lb-count-rem">${remaining} left</span>
-              </div>
-            </div>`).join('')}
-          </div>
+          ${(() => {
+            const cats = STATE.songCategories;
+            const lbSongRow = ({ song, passed, remaining, pct }, i) => `
+              <div class="lb-song-row ${i % 2 === 1 ? 'lb-stat-row-alt' : ''}">
+                <div class="lb-song-info">
+                  <div class="lb-song-title">${esc(song.title)}</div>
+                  ${song.dueDate ? `<div class="lb-song-due ${song.dueDate < today() && passed < totalStudents ? 'song-overdue' : ''}">Due ${fmtDate(song.dueDate)}</div>` : ''}
+                  <div class="lb-prog-bar"><div class="lb-prog-fill" style="width:${pct}%"></div></div>
+                </div>
+                <div class="lb-song-counts">
+                  <span class="lb-count-pass">${passed} passed</span>
+                  <span class="lb-count-rem">${remaining} left</span>
+                </div>
+              </div>`;
+            if (!cats.length) {
+              return `<div class="card mb-12" style="padding:0;overflow:hidden">${songRows.map(lbSongRow).join('')}</div>`;
+            }
+            const grouped = {};
+            const uncategorized = [];
+            cats.forEach(c => { grouped[c] = []; });
+            songRows.forEach(row => {
+              if (row.song.category && grouped[row.song.category] !== undefined) grouped[row.song.category].push(row);
+              else uncategorized.push(row);
+            });
+            let html = '';
+            cats.forEach(cat => {
+              if (!grouped[cat].length) return;
+              html += `<div class="song-cat-hdr">${esc(cat)}</div>`;
+              html += `<div class="card mb-12" style="padding:0;overflow:hidden">${grouped[cat].map(lbSongRow).join('')}</div>`;
+            });
+            if (uncategorized.length) {
+              if (songRows.length > uncategorized.length) html += `<div class="song-cat-hdr">Other</div>`;
+              html += `<div class="card mb-12" style="padding:0;overflow:hidden">${uncategorized.map(lbSongRow).join('')}</div>`;
+            }
+            return html;
+          })()}
         </div>
       ` : ''}
 

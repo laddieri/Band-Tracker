@@ -1744,6 +1744,14 @@ html, body {
 
 /* ── Songs list view ─────────────────────────────────────────────────────────── */
 
+.song-cat-hdr {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  padding: 14px 4px 4px;
+}
 .song-row {
   display: flex;
   align-items: center;
