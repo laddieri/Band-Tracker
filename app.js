@@ -2027,17 +2027,20 @@ function viewAttendance(rid) {
   const rows        = rowsInRoster();
   const cols        = columnsInRoster();
 
-  const chip = (field, val, label) =>
-    `<button class="inst-chip ${_attFilterField===field&&_attFilterValue===val?'inst-active':''}"
-             onclick="setAttendanceFilter('${field}','${esc(val)}','${esc(rid)}')">${esc(label)}</button>`;
+  const sel = (field, opts, placeholder) => {
+    const active = _attFilterField === field ? _attFilterValue : '';
+    return `<select class="att-filter-select ${active ? 'att-filter-active' : ''}"
+                    onchange="setAttendanceFilter(this.value?'${field}':null,this.value||null,'${esc(rid)}')">
+      <option value="">${placeholder}</option>
+      ${opts.map(o => `<option value="${esc(o)}" ${active===o?'selected':''}>${esc(o)}</option>`).join('')}
+    </select>`;
+  };
 
   const filterRow = `
     <div class="att-filter-row">
-      <button class="inst-chip ${!_attFilterField?'inst-active':''}"
-              onclick="setAttendanceFilter(null,null,'${esc(rid)}')">All</button>
-      ${instruments.map(i => chip('instrument', i, i)).join('')}
-      ${rows.length ? `<span class="att-filter-sep">·</span>${rows.map(r => chip('row', r, `R${r}`)).join('')}` : ''}
-      ${cols.length ? `<span class="att-filter-sep">·</span>${cols.map(c => chip('column', c, c)).join('')}` : ''}
+      ${instruments.length ? sel('instrument', instruments, 'All Instruments') : ''}
+      ${rows.length        ? sel('row',        rows,        'All Rows')        : ''}
+      ${cols.length        ? sel('column',     cols,        'All Columns')     : ''}
     </div>`;
 
   return `
