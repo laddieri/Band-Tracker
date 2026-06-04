@@ -1784,15 +1784,25 @@ html, body {
 
 .att-filter-row {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-  margin-bottom: 10px;
+  gap: 8px;
+  margin-bottom: 12px;
 }
-.att-filter-sep {
-  color: var(--text-muted);
+.att-filter-select {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
   font-size: 0.85rem;
-  user-select: none;
+  cursor: pointer;
+  appearance: auto;
+}
+.att-filter-select.att-filter-active {
+  border-color: var(--primary);
+  color: var(--primary);
+  font-weight: 600;
 }
 
 .att-stu-row {
