@@ -1711,7 +1711,7 @@ function viewRehearsal(rid) {
         </button>` : ''}
 
       <button class="next-btn" onclick="clearActive()">
-        ${_blockMode ? '← Back to Block Grid' : 'Next Student →'}
+        ${_blockMode ? '← Back to Block Grid' : 'Submit Feedback'}
       </button>
     </div>` : '';
 
