@@ -1794,20 +1794,20 @@ function viewRehearsal(rid) {
 
     ${trackerSection}
 
-    ${(() => {
-      const sections = sectionsInRoster();
-      if (!sections.length) return '';
-      return `
-      <div class="section-marks-card">
-        <div class="section-marks-hdr">Mark a Section</div>
-        ${sections.map(sec => `
-          <div class="section-mark-row">
-            <span class="section-mark-name">${esc(sec)}</span>
-            <button class="sm-btn sm-positive" onclick="showSectionMarkModal('${esc(rid)}','${esc(sec)}','positive')">✓ Positive</button>
-            <button class="sm-btn sm-mistake"  onclick="showSectionMarkModal('${esc(rid)}','${esc(sec)}','mistake')">✗ Mark</button>
-          </div>`).join('')}
-      </div>`;
-    })()}
+    <button class="group-mark-btn" onclick="showGroupPickerModal('${esc(rid)}')">
+      <div class="group-mark-btn-label">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;flex-shrink:0">
+          <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 00-3-3.87"/>
+          <path d="M16 3.13a4 4 0 010 7.75"/>
+        </svg>
+        Mark a Group
+      </div>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px;opacity:.35;flex-shrink:0">
+        <polyline points="9 18 15 12 9 6"/>
+      </svg>
+    </button>
 
     ${entryList.length ? `
       <div class="section-title">Tracked This Rehearsal (${entryList.length})</div>
@@ -2225,15 +2225,60 @@ function submitAttendance(rid) {
   reRender(rid);
 }
 
-// ── Section Marks ──────────────────────────────────────────────────────────────
+// ── Group Marks ───────────────────────────────────────────────────────────────
 
-function showSectionMarkModal(rid, sectionName, type) {
+function showGroupPickerModal(rid) {
+  const instruments = instrumentsInRoster();
+  const sections    = sectionsInRoster();
+
+  const chipRow = (items) => items.map(name =>
+    `<button class="seg-chip" onclick="selectGroupChip('${esc(name)}')">${esc(name)}</button>`
+  ).join('');
+
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Mark a Group</div>
+    <div class="form-group" style="margin-bottom:14px">
+      <label class="form-label">Group name</label>
+      <input class="form-input" id="group-name-input" type="text"
+             placeholder="e.g. Flute, Woodwinds…"
+             autocomplete="off" autocapitalize="words">
+    </div>
+    ${instruments.length ? `
+      <div class="form-label" style="margin-bottom:6px">By Instrument</div>
+      <div class="seg-chip-row" style="flex-wrap:wrap;margin-bottom:${sections.length ? '14px' : '4px'}">${chipRow(instruments)}</div>` : ''}
+    ${sections.length ? `
+      <div class="form-label" style="margin-bottom:6px">By Section</div>
+      <div class="seg-chip-row" style="flex-wrap:wrap;margin-bottom:4px">${chipRow(sections)}</div>` : ''}
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-mistake"   onclick="pickGroupMark('${esc(rid)}','mistake')">✗ Mark</button>
+      <button class="btn btn-success"   onclick="pickGroupMark('${esc(rid)}','positive')">✓ Positive</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('group-name-input')?.focus(), 80);
+}
+
+function selectGroupChip(name) {
+  const inp = document.getElementById('group-name-input');
+  if (inp) { inp.value = name; inp.focus(); }
+}
+
+function pickGroupMark(rid, type) {
+  const groupName = document.getElementById('group-name-input')?.value.trim();
+  if (!groupName) { showToast('Enter or select a group name.'); return; }
+  showGroupMarkModal(rid, groupName, type);
+}
+
+function showGroupMarkModal(rid, groupName, type) {
   const isMistake = type === 'mistake';
   const presets   = isMistake ? MISTAKE_PRESETS : POSITIVE_PRESETS;
   const btnCls    = isMistake ? 'is-mistake' : 'is-positive';
   const r         = DB.getRehearsals().find(r => r.id === rid);
   const segments  = r?.segments || [];
-  const students  = Object.values(DB.getStudents()).filter(s => s.section === sectionName);
+  const students  = Object.values(DB.getStudents()).filter(s =>
+    s.section === groupName || s.instrument === groupName
+  );
 
   const segHtml = segments.length ? `
     <div class="form-label" style="margin-bottom:7px">Which part of rehearsal?</div>
@@ -2249,14 +2294,15 @@ function showSectionMarkModal(rid, sectionName, type) {
   ` : '';
 
   openModal(`
-    <div class="modal-title">${isMistake ? '✗' : '✓'} ${esc(sectionName)} Section
+    <div class="modal-handle"></div>
+    <div class="modal-title">${isMistake ? '✗' : '✓'} ${esc(groupName)}
       <div style="font-size:0.78rem;font-weight:400;color:var(--text-muted);margin-top:2px">${students.length} student${students.length!==1?'s':''}</div>
     </div>
     ${segHtml}
     <div class="quick-note-grid">
       ${presets.map(p => `
         <button class="quick-note-btn ${btnCls}"
-          onclick="confirmSectionMark('${esc(rid)}','${esc(sectionName)}','${esc(type)}','${esc(p)}')">
+          onclick="confirmGroupMark('${esc(rid)}','${esc(groupName)}','${esc(type)}','${esc(p)}')">
           ${esc(p)}
         </button>`).join('')}
     </div>
@@ -2264,29 +2310,31 @@ function showSectionMarkModal(rid, sectionName, type) {
       <label class="form-label">Custom note</label>
       <input class="form-input" id="mark-note-input" type="text"
              placeholder="or type your own…" autocomplete="off"
-             onkeydown="if(event.key==='Enter')confirmSectionMarkCustom('${esc(rid)}','${esc(sectionName)}','${esc(type)}')">
+             onkeydown="if(event.key==='Enter')confirmGroupMarkCustom('${esc(rid)}','${esc(groupName)}','${esc(type)}')">
     </div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="confirmSectionMark('${esc(rid)}','${esc(sectionName)}','${esc(type)}','')">No Note</button>
-      <button class="btn btn-primary" onclick="confirmSectionMarkCustom('${esc(rid)}','${esc(sectionName)}','${esc(type)}')">Add Custom</button>
+      <button class="btn btn-secondary" onclick="confirmGroupMark('${esc(rid)}','${esc(groupName)}','${esc(type)}','')">No Note</button>
+      <button class="btn btn-primary" onclick="confirmGroupMarkCustom('${esc(rid)}','${esc(groupName)}','${esc(type)}')">Add Custom</button>
     </div>
   `);
   setTimeout(() => document.getElementById('mark-note-input')?.focus(), 80);
 }
 
-function confirmSectionMarkCustom(rid, sectionName, type) {
+function confirmGroupMarkCustom(rid, groupName, type) {
   const note = document.getElementById('mark-note-input')?.value.trim() || '';
-  confirmSectionMark(rid, sectionName, type, note);
+  confirmGroupMark(rid, groupName, type, note);
 }
 
-async function confirmSectionMark(rid, sectionName, type, note) {
+async function confirmGroupMark(rid, groupName, type, note) {
   const segment = _pendingSegment;
   closeModal();
-  const stuList = Object.values(STATE.students).filter(s => s.section === sectionName);
-  if (!stuList.length) { showToast('No students found in that section.'); return; }
+  const stuList = Object.values(STATE.students).filter(s =>
+    s.section === groupName || s.instrument === groupName
+  );
+  if (!stuList.length) { showToast(`No students found in "${groupName}".`); return; }
   const field   = type === 'mistake' ? 'mistakes' : 'positives';
   const batch   = db.batch();
-  const evt     = { type, note: note || '', segment, ts: Date.now(), by: STATE.user?.email || '', sectionMark: true, section: sectionName };
+  const evt     = { type, note: note || '', segment, ts: Date.now(), by: STATE.user?.email || '', sectionMark: true, section: groupName };
 
   for (const stu of stuList) {
     const num   = String(stu.number || stu._id);
@@ -2306,7 +2354,7 @@ async function confirmSectionMark(rid, sectionName, type, note) {
   }
 
   await batch.commit();
-  showToast(`${type === 'positive' ? 'Positive' : 'Mark'} applied to ${stuList.length} ${sectionName} student${stuList.length!==1?'s':''}.`);
+  showToast(`${type === 'positive' ? 'Positive' : 'Mark'} applied to ${stuList.length} ${esc(groupName)} student${stuList.length!==1?'s':''}.`);
   reRender(rid);
 }
 

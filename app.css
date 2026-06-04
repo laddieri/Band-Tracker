@@ -780,50 +780,34 @@ html, body {
   flex-shrink: 0;
 }
 
-/* ── Section Marks ───────────────────────────────────────────────────────────── */
+/* ── Group Mark button (rehearsal page) ──────────────────────────────────────── */
 
-.section-marks-card {
-  background: var(--card-bg);
-  border: 1.5px solid #ddd6fe;
-  border-radius: var(--r);
+.group-mark-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
   padding: 14px 16px;
+  border-radius: var(--r);
+  border: 1.5px solid #ddd6fe;
+  background: var(--card-bg);
+  cursor: pointer;
   margin-bottom: 16px;
+  transition: background .15s, box-shadow .15s;
+  box-shadow: var(--shadow);
 }
-.section-marks-hdr {
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  color: #7c3aed;
-  margin-bottom: 10px;
-}
-.section-mark-row {
+.group-mark-btn:hover  { background: #faf5ff; box-shadow: var(--shadow-md); }
+.group-mark-btn:active { transform: scale(.985); }
+.group-mark-btn-label {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 0;
-  border-top: 1px solid #ede9fe;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #7c3aed;
 }
-.section-mark-row:first-of-type { border-top: none; padding-top: 0; }
-.section-mark-name {
-  flex: 1;
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: var(--text);
-}
-.sm-btn {
-  border: none;
-  border-radius: var(--r-sm);
-  padding: 5px 12px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: filter .12s;
-}
-.sm-btn:active { filter: brightness(.88); }
-.sm-positive { background: var(--success-bg); color: var(--success); }
-.sm-mistake  { background: var(--danger-bg);  color: var(--danger); }
+
+.btn-mistake { background: var(--danger-bg); color: var(--danger); border: none; }
 
 .section-mark-badge {
   display: inline-flex;
