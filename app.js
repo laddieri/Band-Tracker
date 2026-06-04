@@ -219,7 +219,7 @@ auth.onAuthStateChanged(user => {
 
 // ── Router ────────────────────────────────────────────────────────────────────
 
-let _view   = 'home';
+let _view   = 'rehearsals';
 let _params = {};
 
 function navigate(view, params = {}) {
@@ -421,14 +421,14 @@ function render() {
     return;
   }
 
-  const isTop = ['home','roster','rehearsals','songs'].includes(_view);
+  const isTop = ['roster','rehearsals','songs'].includes(_view);
   backBtn.classList.toggle('hidden', isTop);
   backBtn.onclick = () => {
     if (_view === 'student')    navigate('roster');
     else if (_view === 'rehearsal')  navigate('rehearsals');
     else if (_view === 'attendance') navigate('rehearsal', { rid: _params.rid });
     else if (_view === 'song')  navigate('songs');
-    else navigate('home');
+    else navigate('rehearsals');
   };
 
   tabs.forEach(t => {
@@ -445,12 +445,6 @@ function render() {
   actions.innerHTML = '';
 
   switch (_view) {
-    case 'home':
-      title.textContent = 'Band Tracker';
-      actions.innerHTML = userBtn();
-      main.innerHTML = viewHome();
-      break;
-
     case 'roster':
       title.textContent = 'Student Roster';
       actions.innerHTML = (STATE.isAdmin ? optBtn('showRosterOptionsModal()') + addBtn('showAddStudentModal()') : '') + userBtn();
