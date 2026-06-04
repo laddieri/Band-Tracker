@@ -1700,7 +1700,10 @@ function viewLeaderboard() {
 
       ${(STATE.marchingLeaderboardEnabled || STATE.isAdmin) ? (() => {
         const scored = Object.entries(STATE.students).map(([docId, s]) => {
-          const score = Object.values(STATE.entries).reduce((sum, rehEntries) => {
+          const songPoints = STATE.songs.reduce((sum, song) => {
+            return sum + (song.statuses?.[String(s.number)]?.status === 'passed' ? 1 : 0);
+          }, 0);
+          const score = songPoints + Object.values(STATE.entries).reduce((sum, rehEntries) => {
             const e = rehEntries[String(s.number)];
             return sum + (e ? (e.positives || 0) - (e.mistakes || 0)
                               - (e.attendance === 'absent' ? 1 : 0)
