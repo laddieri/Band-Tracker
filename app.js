@@ -2451,6 +2451,7 @@ function confirmMark(rid, num, type, note) {
   if (!STATE.entries[rid]) STATE.entries[rid] = {};
   STATE.entries[rid][num] = { ...cur, [field]: newVal, events };
   fsUpsertEntry(rid, num, { mistakes: STATE.entries[rid][num].mistakes, positives: STATE.entries[rid][num].positives, notes: STATE.entries[rid][num].notes || '', events });
+  _recalcAutoBonuses(rid, num);
   reRender(rid);
 }
 
@@ -2637,6 +2638,35 @@ function setAttendance(rid, num, status) {
   apply();
 }
 
+function _recalcAutoBonuses(rid, num) {
+  const r = STATE.rehearsals.find(r => r.id === rid);
+  if (!r?.ended) return;
+  const entry = STATE.entries[rid]?.[num];
+  if (!entry) return;
+
+  const att = entry.attendance || 'present';
+  const baseEvents = (entry.events || []).filter(e =>
+    e.note !== 'On time to rehearsal' && e.note !== 'No noticeable mistakes'
+  );
+
+  const isOnTime   = att !== 'late' && att !== 'absent';
+  const noMistakes = att !== 'absent' && baseEvents.filter(e => e.type === 'mistake').length === 0;
+
+  const events = [...baseEvents];
+  if (isOnTime)   events.push({ type: 'positive', note: 'On time to rehearsal',   ts: Date.now(), by: 'system', auto: true });
+  if (noMistakes) events.push({ type: 'positive', note: 'No noticeable mistakes', ts: Date.now(), by: 'system', auto: true });
+
+  const positives = events.filter(e => e.type === 'positive').length;
+  STATE.entries[rid][num] = { ...entry, events, positives };
+  fsUpsertEntry(rid, num, {
+    mistakes:  entry.mistakes || 0,
+    positives,
+    notes:     entry.notes   || '',
+    events,
+    ...(entry.attendance ? { attendance: entry.attendance } : {})
+  });
+}
+
 function _applyAttendance(rid, num, cur, next) {
   if (!STATE.entries[rid]) STATE.entries[rid] = {};
   STATE.entries[rid][num] = { ...cur, attendance: next };
@@ -2654,6 +2684,7 @@ function _applyAttendance(rid, num, cur, next) {
       attendance: next
     });
   }
+  _recalcAutoBonuses(rid, num);
   reRender(rid);
 }
 
@@ -2902,6 +2933,7 @@ function deleteEvent(rid, num, idx) {
   const positives = events.filter(e => e.type === 'positive').length;
   STATE.entries[rid][num] = { ...cur, events, mistakes, positives };
   fsUpsertEntry(rid, num, { events, mistakes, positives, notes: cur.notes || '' });
+  _recalcAutoBonuses(rid, num);
   reRender(rid);
 }
 
