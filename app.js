@@ -458,7 +458,7 @@ function render() {
 
     case 'student': {
       const s = DB.getStudents()[_params.num];
-      title.textContent = s ? `Student #${esc(s.number)}` : 'Student';
+      title.textContent = s ? (s.name || 'Student') : 'Student';
       actions.innerHTML = (STATE.isAdmin ? editBtn(`showEditStudentModal('${esc(_params.num)}')`) : '') + userBtn();
       main.innerHTML = viewStudent(_params.num);
       break;
@@ -853,9 +853,8 @@ function rosterRows(list, search, instrumentFilter) {
     const avg  = hist.length ? (errs/hist.length).toFixed(1) : null;
     return `
       <div class="roster-row" onclick="navigate('student',{num:'${esc(s.number)}'})">
-        <div class="student-num">#${esc(s.number)}</div>
         <div class="student-info">
-          ${s.name ? `<div class="student-name">${esc(s.name)}</div>` : ''}
+          ${s.name ? `<div class="student-name">${esc(s.name)}</div>` : `<div class="student-name text-muted">#${esc(s.number)}</div>`}
           <div class="student-detail">${esc([fmtPos(s.column,s.row),normInstrument(s.instrument),s.section].filter(Boolean).join(' · ')) || '<em style="color:var(--text-muted)">No details set</em>'}</div>
         </div>
         <div class="student-badges">
@@ -1115,8 +1114,7 @@ function songStudentRows(sid, students, statuses) {
     return `
       <div class="song-stu-row">
         <div class="song-stu-info">
-          <span class="song-stu-num">#${esc(s.number)}</span>
-          ${s.name ? `<span class="song-stu-name">${esc(s.name)}</span>` : ''}
+          <span class="song-stu-name">${esc(s.name || `#${s.number}`)}</span>
           <span class="song-stu-status ${status === 'passed' ? 'sss-pass' : status === 'failed' ? 'sss-fail' : 'sss-na'}">
             ${status === 'passed' ? '✓ Passed' : status === 'failed' ? '✗ Failed' : '— Not Attempted'}
           </span>
@@ -1151,7 +1149,7 @@ function setSongStatus(sid, num, newStatus) {
   // Require confirmation before removing a passing mark
   if (curStatus === 'passed' && status === 'not_attempted') {
     const s = STATE.students[String(num)];
-    const name = s?.name ? `${s.name} (#${num})` : `#${num}`;
+    const name = s?.name || `#${num}`;
     showConfirmModal(
       `Remove passing mark for ${name}?`,
       `This will unmark "${esc(song.title)}" as passed and reset it to Not Attempted.`,
@@ -1427,8 +1425,7 @@ function viewStudent(num) {
 
   return `
     <div class="card mb-12" style="text-align:center">
-      <div style="font-size:2.6rem;font-weight:800;color:var(--primary);line-height:1;margin-bottom:6px">#${esc(s.number)}</div>
-      ${s.name ? `<div style="font-size:1.1rem;font-weight:600;margin-bottom:8px">${esc(s.name)}</div>` : ''}
+      <div style="font-size:1.4rem;font-weight:800;color:var(--primary);line-height:1;margin-bottom:8px">${esc(s.name || `#${s.number}`)}</div>
       <div class="flex gap-6" style="justify-content:center;flex-wrap:wrap">
         ${fmtPos(s.column,s.row) ? `<span class="badge badge-primary" style="font-size:0.85rem;font-weight:800">${esc(fmtPos(s.column,s.row))}</span>` : ''}
         ${s.instrument ? `<span class="badge badge-primary">${esc(normInstrument(s.instrument))}</span>` : ''}
@@ -1777,14 +1774,12 @@ function viewRehearsal(rid) {
         <div id="tracker-suggestions" class="student-suggestions">
           ${isNameSearch ? suggestions.map(s => `
             <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
-              <span class="suggestion-num">#${esc(s.number)}</span>
-              <span class="suggestion-name">${esc(s.name || '—')}</span>
+              <span class="suggestion-name">${esc(s.name || `#${s.number}`)}</span>
               <span class="suggestion-detail">${esc([fmtPos(s.column,s.row),normInstrument(s.instrument)].filter(Boolean).join(' · '))}</span>
             </div>`).join('') : ''}
           ${showAllForFilter && !_activeNum ? allFiltered.map(s => `
             <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
-              <span class="suggestion-num">#${esc(s.number)}</span>
-              <span class="suggestion-name">${esc(s.name || '—')}</span>
+              <span class="suggestion-name">${esc(s.name || `#${s.number}`)}</span>
               <span class="suggestion-detail">${esc(fmtPos(s.column,s.row))}</span>
             </div>`).join('') : ''}
         </div>
@@ -2169,7 +2164,7 @@ function setAttendance(rid, num, status) {
   const r = STATE.rehearsals.find(r => r.id === rid);
   if (r?.attendanceSubmitted) {
     const s = STATE.students[String(num)];
-    const name = s?.name ? `${s.name} (#${num})` : `#${num}`;
+    const name = s?.name || `#${num}`;
     const fromLabel = prev === 'absent' ? 'Absent' : prev === 'late' ? 'Late' : 'Present';
     const toLabel   = next === 'absent' ? 'Absent' : next === 'late' ? 'Late' : 'Present';
     showConfirmModal(
@@ -2208,7 +2203,7 @@ function _applyAttendance(rid, num, cur, next) {
 function showSubmitAttendanceModal(rid) {
   const stuMap  = DB.getStudents();
   const entries = STATE.entries[rid] || {};
-  const nameOf  = num => stuMap[num]?.name ? `${stuMap[num].name} (#${num})` : `#${num}`;
+  const nameOf  = num => stuMap[num]?.name || `#${num}`;
 
   const absentList = Object.entries(entries)
     .filter(([, e]) => e.attendance === 'absent')
@@ -2543,10 +2538,11 @@ function renderBlockNav(rid) {
         const fn   = num
           ? `blockSelect('${esc(num)}','${esc(rid)}')`
           : `blockSelectEmpty('${esc(pos)}')`;
+        const bcName = num ? (students[num]?.name || `#${num}`) : '';
         gridHtml += `
           <div class="block-cell ${cls}" onclick="${fn}">
             <div class="bc-pos">${esc(pos)}</div>
-            ${num ? `<div class="bc-num">#${esc(num)}</div>` : ''}
+            ${bcName ? `<div class="bc-num">${esc(bcName)}</div>` : ''}
             ${(entry?.mistakes||0)+(entry?.positives||0) > 0 ? `
               <div class="bc-marks">
                 ${entry.mistakes  > 0 ? `<span class="bc-m">${entry.mistakes}✗</span>`  : ''}
@@ -2667,7 +2663,7 @@ function saveNewStudent() {
   STATE.students[num] = student;
   db.collection('students').doc(num).set(student);
   closeModal();
-  showToast(`Student #${num} added`);
+  showToast(`${student.name || `#${num}`} added`);
   if (_view === 'roster' || _view === 'student') render();
   else navigate('roster');
 }
@@ -2677,7 +2673,7 @@ function showEditStudentModal(num) {
   const s = DB.getStudents()[num];
   if (!s) return;
   openModal(`
-    <div class="modal-title">Edit Student #${esc(s.number)}</div>
+    <div class="modal-title">Edit ${esc(s.name || `#${s.number}`)}</div>
     <div class="form-group">
       <label class="form-label">Name (optional)</label>
       <input class="form-input" id="m-name" type="text" value="${esc(s.name||'')}" autocomplete="off">
@@ -2742,7 +2738,7 @@ function showEditStudentModal(num) {
     <div class="danger-zone">
       <div class="danger-zone-title">Danger Zone</div>
       <button class="btn btn-danger btn-full" onclick="confirmDeleteStudent('${esc(num)}')">
-        Delete Student #${esc(num)}
+        Delete Student
       </button>
     </div>
   `);
@@ -2768,7 +2764,8 @@ function saveEditStudent(num) {
 }
 
 function confirmDeleteStudent(num) {
-  if (!confirm(`Delete student #${num} and all their rehearsal data?\n\nThis cannot be undone.`)) return;
+  const sName = STATE.students[num]?.name || `#${num}`;
+  if (!confirm(`Delete ${sName} and all their rehearsal data?\n\nThis cannot be undone.`)) return;
   delete STATE.students[num];
   db.collection('students').doc(num).delete();
   // Delete all entries for this student
@@ -2778,7 +2775,7 @@ function confirmDeleteStudent(num) {
     batch.commit();
   });
   closeModal();
-  showToast(`Student #${num} deleted`);
+  showToast(`${sName} deleted`);
   navigate('roster');
 }
 
@@ -3380,7 +3377,6 @@ function buildAttendanceReportHTML(rehearsals, periodLabel) {
     const t = tally[s.number];
     return `<tr>
       <td>${esc(s.name || '—')}</td>
-      <td>#${esc(s.number)}</td>
       <td>${esc(normInstrument(s.instrument) || '—')}</td>
       <td class="cell-absent">${t.absences || 0}</td>
       <td class="cell-late">${t.lates || 0}</td>
@@ -3449,7 +3445,7 @@ function buildAttendanceReportHTML(rehearsals, periodLabel) {
   ${flagged.length ? `
   <table>
     <thead><tr>
-      <th>Name</th><th>#</th><th>Instrument</th>
+      <th>Name</th><th>Instrument</th>
       <th style="text-align:center">Absences</th>
       <th style="text-align:center">Late</th>
     </tr></thead>
