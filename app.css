@@ -1159,6 +1159,67 @@ html, body {
 .lb-count-pass { font-size: 0.78rem; font-weight: 700; color: var(--success); }
 .lb-count-rem  { font-size: 0.75rem; color: var(--text-muted); }
 
+/* Marching leaderboard */
+.lb-marching-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.lb-hidden-note {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-style: italic;
+  margin: 0 0 8px;
+}
+.lb-toggle-btn {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 50px;
+  border: 1.5px solid currentColor;
+  cursor: pointer;
+  background: transparent;
+  transition: opacity .15s;
+}
+.lb-toggle-on  { color: var(--success); }
+.lb-toggle-off { color: var(--text-muted); }
+.lb-toggle-btn:hover { opacity: .75; }
+
+.lb-rank-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.lb-rank-row:last-child { border-bottom: none; }
+.lb-rank-me { background: #fef9c3; }
+
+.lb-rank-medal { font-size: 1rem; width: 28px; flex-shrink: 0; text-align: center; }
+.lb-rank-name  { flex: 1; font-size: 0.88rem; font-weight: 600; color: var(--text); }
+.lb-rank-score { font-size: 0.9rem; font-weight: 700; flex-shrink: 0; }
+
+.lb-you-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 50px;
+  background: var(--primary);
+  color: white;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
+/* Portal animal name */
+.portal-animal-name {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.portal-animal-name strong { color: var(--text); }
+
 .leaderboard-link-btn {
   display: block;
   width: 100%;
