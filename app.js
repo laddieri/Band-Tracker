@@ -1830,7 +1830,7 @@ function viewRehearsal(rid) {
         ${attSummary ? `<div class="att-screen-btn-summary">${attSummary}</div>` : ''}
       </button>
       ${showEndBtn ? `
-        <button class="btn btn-success end-rehearsal-btn" onclick="confirmEndRehearsal('${esc(rid)}')">
+        <button class="btn btn-danger end-rehearsal-btn" onclick="confirmEndRehearsal('${esc(rid)}')">
           End<br>Rehearsal
         </button>` : ''}
     </div>
