@@ -109,11 +109,18 @@ function startListeners() {
   }
 
   listeners.push(
-    db.collection('students').onSnapshot(snap => {
+    db.collection('students').onSnapshot({ includeMetadataChanges: true }, snap => {
       snap.docChanges().forEach(ch => {
         if (ch.type === 'removed') delete STATE.students[ch.doc.id];
         else STATE.students[ch.doc.id] = { ...ch.doc.data(), _id: ch.doc.id };
       });
+
+      // Skip cache-only snapshots during anonymous code lookup — the first snapshot
+      // may fire before Firestore receives the auth token and will have 0 documents.
+      // Wait for the server-confirmed snapshot (fromCache: false) to arrive.
+      if (STATE.user?.isAnonymous && _pendingStudentCode && snap.metadata.fromCache) {
+        return;
+      }
 
       if (STATE.user?.isAnonymous) {
         // Keep previously-resolved student num, or look up by stored num
@@ -122,10 +129,6 @@ function startListeners() {
           STATE.studentNum = storedNum;
         } else if (_pendingStudentCode) {
           STATE.studentNum = null;
-          const allCodes = Object.values(STATE.students).map(s => s.studentCode).filter(Boolean);
-          console.log('[BandTracker] Looking for code:', _pendingStudentCode);
-          console.log('[BandTracker] Students loaded:', Object.keys(STATE.students).length);
-          console.log('[BandTracker] Codes in DB:', allCodes);
           for (const [num, s] of Object.entries(STATE.students)) {
             if (s.studentCode && s.studentCode.toUpperCase() === _pendingStudentCode.toUpperCase()) {
               STATE.studentNum = num;
@@ -134,7 +137,6 @@ function startListeners() {
               break;
             }
           }
-          console.log('[BandTracker] Match found:', STATE.studentNum);
         }
       } else {
         // Regular (email) users: look up by studentEmail field
