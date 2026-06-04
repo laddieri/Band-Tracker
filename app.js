@@ -1737,11 +1737,20 @@ function viewRehearsal(rid) {
             ? `<span class="sub">${esc([fmtPos(activeStu.column,activeStu.row),normInstrument(activeStu.instrument)].filter(Boolean).join(' · '))}</span>`
             : '<span class="sub" style="color:var(--warning)"> Not in roster</span>'}
         </div>
-        <button class="active-card-close" onclick="clearActive()" aria-label="Dismiss">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px">
-            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-        </button>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          ${activeStu ? `
+          <button class="active-card-close" onclick="navigate('student',{num:'${esc(_activeNum)}'})" aria-label="View student profile" title="View student profile">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px">
+              <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+          </button>` : ''}
+          <button class="active-card-close" onclick="clearActive()" aria-label="Dismiss">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
       <div class="active-counters">
