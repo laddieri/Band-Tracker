@@ -2319,15 +2319,18 @@ function pickGroupMark(rid, type) {
   showGroupMarkModal(rid, groupName, type);
 }
 
+function _groupMatches(s, groupName) {
+  const g = groupName.trim().toLowerCase();
+  return (s.section || '').toLowerCase() === g || (s.instrument || '').toLowerCase() === g;
+}
+
 function showGroupMarkModal(rid, groupName, type) {
   const isMistake = type === 'mistake';
   const presets   = isMistake ? MISTAKE_PRESETS : POSITIVE_PRESETS;
   const btnCls    = isMistake ? 'is-mistake' : 'is-positive';
   const r         = DB.getRehearsals().find(r => r.id === rid);
   const segments  = r?.segments || [];
-  const students  = Object.values(DB.getStudents()).filter(s =>
-    s.section === groupName || s.instrument === groupName
-  );
+  const students  = Object.values(DB.getStudents()).filter(s => _groupMatches(s, groupName));
 
   const segHtml = segments.length ? `
     <div class="form-label" style="margin-bottom:7px">Which part of rehearsal?</div>
@@ -2377,32 +2380,37 @@ function confirmGroupMarkCustom(rid, groupName, type) {
 async function confirmGroupMark(rid, groupName, type, note) {
   const segment = _pendingSegment;
   closeModal();
-  const stuList = Object.values(STATE.students).filter(s =>
-    s.section === groupName || s.instrument === groupName
-  );
-  if (!stuList.length) { showToast(`No students found in "${groupName}".`); return; }
+  const stuList = Object.values(STATE.students).filter(s => _groupMatches(s, groupName));
+  if (!stuList.length) { showToast(`No students found matching "${groupName}".`); return; }
   const field   = type === 'mistake' ? 'mistakes' : 'positives';
   const batch   = db.batch();
   const evt     = { type, note: note || '', segment, ts: Date.now(), by: STATE.user?.email || '', sectionMark: true, section: groupName };
 
   for (const stu of stuList) {
-    const num   = String(stu.number || stu._id);
-    const cur   = STATE.entries[rid]?.[num] || { mistakes: 0, positives: 0, notes: '', events: [] };
+    const num    = String(stu.number || stu._id);
+    const cur    = STATE.entries[rid]?.[num] || { mistakes: 0, positives: 0, notes: '', events: [] };
     const events = [...(cur.events || []), evt];
     const newVal = (cur[field] || 0) + 1;
     if (!STATE.entries[rid]) STATE.entries[rid] = {};
     STATE.entries[rid][num] = { ...cur, [field]: newVal, events };
+    const att = cur.attendance || null;
     batch.set(db.collection('entries').doc(`${rid}_${num}`), {
       rehearsalId: rid, studentNumber: num,
-      mistakes: STATE.entries[rid][num].mistakes,
+      mistakes:  STATE.entries[rid][num].mistakes,
       positives: STATE.entries[rid][num].positives,
       notes: cur.notes || '', events,
+      ...(att ? { attendance: att } : {}),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       updatedBy: STATE.user?.email || ''
-    });
+    }, { merge: true });
   }
 
-  await batch.commit();
+  try {
+    await batch.commit();
+  } catch (e) {
+    showToast('Write failed — check your connection.');
+    return;
+  }
   showToast(`${type === 'positive' ? 'Positive' : 'Mark'} applied to ${stuList.length} ${esc(groupName)} student${stuList.length!==1?'s':''}.`);
   reRender(rid);
 }
