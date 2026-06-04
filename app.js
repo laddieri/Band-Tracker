@@ -1756,7 +1756,7 @@ function viewRehearsal(rid) {
           </button>
         </div>
         <input class="num-input" type="text" inputmode="text"
-               id="num-input" placeholder="Student # or name…"
+               id="num-input" placeholder="Search by name…"
                value="${esc(_numSearch)}"
                autocomplete="off" autocorrect="off" autocapitalize="off"
                oninput="onNumInput(this.value,'${esc(rid)}')"
@@ -1886,6 +1886,7 @@ function onNumKey(e, rid) {
     const num = _numSearch.trim();
     if (num) {
       _activeNum = num;
+      _numSearch = STATE.students[num]?.name || _numSearch;
       reRender(rid);
     }
   }
@@ -1893,7 +1894,7 @@ function onNumKey(e, rid) {
 
 function pickStudent(num, rid) {
   _activeNum = num;
-  _numSearch = num;
+  _numSearch = STATE.students[num]?.name || '';
   document.getElementById('main-content').scrollTop = 0;
   reRender(rid);
 }
