@@ -247,7 +247,8 @@ let _rosterSearch = '';
 let _rosterInstrumentFilter  = '';
 let _trackerInstrumentFilter = '';
 let _songSectionFilter       = '';
-let _attSort                 = 'lastname'; // attendance screen sort: instrument | row | column | lastname
+let _attFilterField = null; // null | 'instrument' | 'row' | 'column'
+let _attFilterValue = null;
 let _attSearch               = '';
 let _blockMode  = false;
 let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
@@ -760,6 +761,18 @@ function instrumentsInRoster() {
 function sectionsInRoster() {
   const seen = new Set();
   Object.values(DB.getStudents()).forEach(s => { if (s.section) seen.add(s.section); });
+  return [...seen].sort();
+}
+
+function rowsInRoster() {
+  const seen = new Set();
+  Object.values(DB.getStudents()).forEach(s => { if (s.row != null && s.row !== '') seen.add(String(s.row)); });
+  return [...seen].sort((a, b) => Number(a) - Number(b));
+}
+
+function columnsInRoster() {
+  const seen = new Set();
+  Object.values(DB.getStudents()).forEach(s => { if (s.column) seen.add(s.column); });
   return [...seen].sort();
 }
 
@@ -2013,6 +2026,23 @@ function viewAttendance(rid) {
   const late     = students.filter(s => entries[s.number]?.attendance === 'late').length;
   const unmarked = students.length - absent - late;
 
+  const instruments = instrumentsInRoster();
+  const rows        = rowsInRoster();
+  const cols        = columnsInRoster();
+
+  const chip = (field, val, label) =>
+    `<button class="inst-chip ${_attFilterField===field&&_attFilterValue===val?'inst-active':''}"
+             onclick="setAttendanceFilter('${field}','${esc(val)}','${esc(rid)}')">${esc(label)}</button>`;
+
+  const filterRow = `
+    <div class="att-filter-row">
+      <button class="inst-chip ${!_attFilterField?'inst-active':''}"
+              onclick="setAttendanceFilter(null,null,'${esc(rid)}')">All</button>
+      ${instruments.map(i => chip('instrument', i, i)).join('')}
+      ${rows.length ? `<span class="att-filter-sep">·</span>${rows.map(r => chip('row', r, `R${r}`)).join('')}` : ''}
+      ${cols.length ? `<span class="att-filter-sep">·</span>${cols.map(c => chip('column', c, c)).join('')}` : ''}
+    </div>`;
+
   return `
     ${submitted ? `
       <div class="att-submitted-banner">
@@ -2035,17 +2065,7 @@ function viewAttendance(rid) {
              oninput="filterAttendanceList('${esc(rid)}', this.value)" autocomplete="off">
     </div>
 
-    <div class="att-sort-row">
-      <span class="att-sort-label">Sort by</span>
-      <button class="att-sort-chip ${_attSort==='instrument'?'att-sort-active':''}"
-              onclick="setAttSort('instrument','${esc(rid)}')">Instrument</button>
-      <button class="att-sort-chip ${_attSort==='row'?'att-sort-active':''}"
-              onclick="setAttSort('row','${esc(rid)}')">Row</button>
-      <button class="att-sort-chip ${_attSort==='column'?'att-sort-active':''}"
-              onclick="setAttSort('column','${esc(rid)}')">Column</button>
-      <button class="att-sort-chip ${_attSort==='lastname'?'att-sort-active':''}"
-              onclick="setAttSort('lastname','${esc(rid)}')">Last Name</button>
-    </div>
+    ${filterRow}
 
     <div style="display:flex;gap:8px;margin-bottom:12px">
       <button class="btn btn-secondary" style="flex:1" onclick="markAllPresent('${esc(rid)}')">
@@ -2070,72 +2090,30 @@ function _attLastName(s) {
 
 function buildAttBodyHtml(rid, students, entries) {
   const q = _attSearch.toLowerCase().trim();
-  const pool = q ? students.filter(s =>
+  let pool = q ? students.filter(s =>
     (s.name || '').toLowerCase().includes(q) ||
     String(s.number).includes(q) ||
     normInstrument(s.instrument).toLowerCase().includes(q)
   ) : students;
 
+  if (_attFilterField === 'instrument') {
+    pool = pool.filter(s => normInstrument(s.instrument).toLowerCase() === (_attFilterValue || '').toLowerCase());
+  } else if (_attFilterField === 'row') {
+    pool = pool.filter(s => String(s.row ?? '') === _attFilterValue);
+  } else if (_attFilterField === 'column') {
+    pool = pool.filter(s => (s.column || '') === _attFilterValue);
+  }
+
   if (!pool.length) {
-    return `<div class="empty-state" style="padding:24px"><p>No students match "${esc(_attSearch)}"</p></div>`;
+    const msg = q ? `No students match "${esc(_attSearch)}"` : 'No students in this group.';
+    return `<div class="empty-state" style="padding:24px"><p>${msg}</p></div>`;
   }
 
-  // When searching or sort is lastname: flat list sorted by last name
-  if (q || _attSort === 'lastname') {
-    const sorted = [...pool].sort((a, b) => {
-      const la = _attLastName(a), lb = _attLastName(b);
-      return la.localeCompare(lb) || (a.name || '').localeCompare(b.name || '');
-    });
-    return sorted.map(s => attStudentRow(rid, s, entries)).join('');
-  }
-
-  let bodyHtml = '';
-
-  if (_attSort === 'instrument') {
-    const groups = {};
-    for (const s of pool) {
-      const key = normInstrument(s.instrument) || '(No instrument)';
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(s);
-    }
-    for (const [inst, list] of Object.entries(groups).sort(([a],[b]) => a.localeCompare(b))) {
-      list.sort((a,b) => String(a.number).localeCompare(String(b.number),undefined,{numeric:true}));
-      bodyHtml += `<div class="att-group-hdr">${esc(inst)}</div>`;
-      bodyHtml += list.map(s => attStudentRow(rid, s, entries)).join('');
-    }
-  } else if (_attSort === 'row') {
-    const groups = {};
-    for (const s of pool) {
-      const key = s.row != null ? String(s.row) : '—';
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(s);
-    }
-    const sorted = Object.entries(groups).sort(([a],[b]) =>
-      a === '—' ? 1 : b === '—' ? -1 : Number(a) - Number(b)
-    );
-    for (const [row, list] of sorted) {
-      list.sort((a,b) => String(a.column||'').localeCompare(String(b.column||'')));
-      bodyHtml += `<div class="att-group-hdr">Row ${esc(row)}</div>`;
-      bodyHtml += list.map(s => attStudentRow(rid, s, entries)).join('');
-    }
-  } else { // column
-    const groups = {};
-    for (const s of pool) {
-      const key = s.column || '—';
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(s);
-    }
-    const sorted = Object.entries(groups).sort(([a],[b]) =>
-      a === '—' ? 1 : b === '—' ? -1 : a.localeCompare(b)
-    );
-    for (const [col, list] of sorted) {
-      list.sort((a,b) => Number(a.row||0) - Number(b.row||0));
-      bodyHtml += `<div class="att-group-hdr">Column ${esc(col)}</div>`;
-      bodyHtml += list.map(s => attStudentRow(rid, s, entries)).join('');
-    }
-  }
-
-  return bodyHtml;
+  const sorted = [...pool].sort((a, b) => {
+    const la = _attLastName(a), lb = _attLastName(b);
+    return la.localeCompare(lb) || (a.name || '').localeCompare(b.name || '');
+  });
+  return sorted.map(s => attStudentRow(rid, s, entries)).join('');
 }
 
 function filterAttendanceList(rid, val) {
@@ -2164,8 +2142,9 @@ function attStudentRow(rid, s, entries) {
     </div>`;
 }
 
-function setAttSort(sort, rid) {
-  _attSort = sort;
+function setAttendanceFilter(field, value, rid) {
+  _attFilterField = field;
+  _attFilterValue = value;
   const mc = document.getElementById('main-content');
   if (mc) { const st = mc.scrollTop; mc.innerHTML = viewAttendance(rid); mc.scrollTop = st; }
 }
