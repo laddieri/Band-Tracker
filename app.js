@@ -1147,8 +1147,9 @@ function songStudentRows(sid, students, statuses) {
   const sorted = [...filtered].sort((a,b) => (a.name||'').localeCompare(b.name||''));
 
   return sorted.map(s => {
-    const status = getStatus(s.number);
-    const meta   = getMeta(s.number);
+    const status    = getStatus(s.number);
+    const meta      = getMeta(s.number);
+    const failNote  = status === 'failed' ? (statuses[String(s.number)]?.note || '') : '';
     return `
       <div class="song-stu-row">
         <div class="song-stu-info">
@@ -1157,6 +1158,7 @@ function songStudentRows(sid, students, statuses) {
             ${status === 'passed' ? '✓ Passed' : status === 'failed' ? '✗ Failed' : '— Not Attempted'}
           </span>
           ${meta ? `<span class="song-stu-meta">${esc(meta)}</span>` : ''}
+          ${failNote ? `<span class="song-stu-fail-note">${esc(failNote)}</span>` : ''}
         </div>
         <div class="song-stu-btns">
           <button class="ssb ${status === 'passed' ? 'ssb-on-pass' : 'ssb-pass'}"
@@ -1199,10 +1201,46 @@ function setSongStatus(sid, num, newStatus) {
     return;
   }
 
+  // Offer a comment when marking as failed
+  if (status === 'failed') {
+    showSongFailNoteModal(sid, num, song);
+    return;
+  }
+
   _applySongStatus(sid, num, song, status);
 }
 
-function _applySongStatus(sid, num, song, status) {
+function showSongFailNoteModal(sid, num, song) {
+  const s = STATE.students[String(num)];
+  const name = s?.name || `#${num}`;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">✗ Failed
+      <div style="font-size:0.78rem;font-weight:400;color:var(--text-muted);margin-top:2px">${esc(name)}</div>
+    </div>
+    <div class="form-label" style="margin-bottom:6px">
+      What to work on?
+      <span style="font-weight:400;color:var(--text-muted)"> (optional)</span>
+    </div>
+    <textarea class="form-textarea" id="fail-note-input" rows="3"
+              placeholder="e.g. Bars 12–16, entrance timing…"
+              maxlength="200" style="resize:none"></textarea>
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-mistake"   onclick="confirmSongFail('${esc(sid)}','${esc(String(num))}')">✗ Fail</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('fail-note-input')?.focus(), 60);
+}
+
+function confirmSongFail(sid, num) {
+  const note = document.getElementById('fail-note-input')?.value.trim() || '';
+  const song = STATE.songs.find(s => s.id === sid);
+  closeModal();
+  if (song) _applySongStatus(sid, num, song, 'failed', note);
+}
+
+function _applySongStatus(sid, num, song, status, note = '') {
   if (status === 'not_attempted') {
     delete song.statuses[String(num)];
     db.collection('songs').doc(sid).update({
@@ -1211,7 +1249,7 @@ function _applySongStatus(sid, num, song, status) {
       db.collection('songs').doc(sid).set({ statuses: song.statuses }, { merge: false });
     });
   } else {
-    song.statuses[String(num)] = { status, updatedAt: Date.now(), updatedBy: STATE.user?.email || '' };
+    song.statuses[String(num)] = { status, note: note || '', updatedAt: Date.now(), updatedBy: STATE.user?.email || '' };
     db.collection('songs').doc(sid).set({ statuses: { [String(num)]: song.statuses[String(num)] } }, { merge: true });
   }
 
@@ -1561,7 +1599,8 @@ function viewStudent(num) {
             if (statusData.updatedAt) metaParts.push(fmtDateFromTs(statusData.updatedAt));
             if (statusData.updatedBy) metaParts.push(`by ${dirLabel(statusData.updatedBy)}`);
           }
-          const meta = metaParts.join(' ');
+          const meta     = metaParts.join(' ');
+          const failNote = st === 'failed' ? (statusData?.note || '') : '';
           const overdue = song.dueDate && song.dueDate < today() && st !== 'passed';
           return `
           <div class="stu-song-row">
@@ -1572,6 +1611,7 @@ function viewStudent(num) {
                 ${st === 'passed' ? '✓ Passed' : st === 'failed' ? '✗ Failed' : '— Not Attempted'}
               </span>
               ${meta ? `<span class="song-stu-meta">${esc(meta)}</span>` : ''}
+              ${failNote ? `<span class="song-stu-fail-note">${esc(failNote)}</span>` : ''}
             </div>
             <div class="song-stu-btns">
               <button class="ssb ${st === 'passed' ? 'ssb-on-pass' : 'ssb-pass'}"
