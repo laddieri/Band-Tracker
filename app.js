@@ -298,6 +298,17 @@ function fmtDateFromTs(ts) {
   return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 }
 
+function currentWeekRange() {
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun … 6=Sat
+  const daysToMon = day === 0 ? -6 : 1 - day;
+  const mon = new Date(now); mon.setDate(now.getDate() + daysToMon);
+  const fri = new Date(mon); fri.setDate(mon.getDate() + 4);
+  const fmt = d =>
+    `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  return { mon: fmt(mon), fri: fmt(fri) };
+}
+
 function fmtShort(d) {
   if (!d) return '';
   const [, m, day] = d.split('-').map(Number);
@@ -1301,23 +1312,38 @@ function viewStudent(num) {
       const absences = hist.filter(({entry:e}) => e.attendance === 'absent');
       const lates    = hist.filter(({entry:e}) => e.attendance === 'late');
       if (!absences.length && !lates.length) return '';
+      const { mon, fri } = currentWeekRange();
+      const wkAbs  = absences.filter(({rehearsal:r}) => r.date >= mon && r.date <= fri);
+      const wkLate = lates.filter(({rehearsal:r}) => r.date >= mon && r.date <= fri);
       return `
-        <div class="section-title">Attendance</div>
-        <div class="card mb-12" style="padding:12px 16px">
-          <div class="att-summary-row">
-            <span class="att-summary-chip att-chip-absent">${absences.length} Absence${absences.length!==1?'s':''}</span>
-            <span class="att-summary-chip att-chip-late">${lates.length} Late${lates.length!==1?'s':''}</span>
+        <div class="card mb-12" style="padding:0;overflow:hidden">
+          <div class="att-card-title">Attendance Record</div>
+
+          <div class="att-card-section">
+            <div class="att-card-period">This Week</div>
+            <div class="att-summary-row" style="margin-bottom:0">
+              <span class="att-summary-chip att-chip-absent">${wkAbs.length} Absence${wkAbs.length!==1?'s':''}</span>
+              <span class="att-summary-chip att-chip-late">${wkLate.length} Late${wkLate.length!==1?'s':''}</span>
+            </div>
           </div>
-          ${absences.length ? `
-            <div class="att-date-list">
-              <span class="att-date-heading">Absent:</span>
-              ${absences.map(({rehearsal:r}) => `<span class="att-date-chip att-chip-absent">${fmtDate(r.date)}</span>`).join('')}
-            </div>` : ''}
-          ${lates.length ? `
-            <div class="att-date-list">
-              <span class="att-date-heading">Late:</span>
-              ${lates.map(({rehearsal:r}) => `<span class="att-date-chip att-chip-late">${fmtDate(r.date)}</span>`).join('')}
-            </div>` : ''}
+
+          <div class="att-card-section" style="border-top:1px solid var(--border)">
+            <div class="att-card-period">All Time</div>
+            <div class="att-summary-row">
+              <span class="att-summary-chip att-chip-absent">${absences.length} Absence${absences.length!==1?'s':''}</span>
+              <span class="att-summary-chip att-chip-late">${lates.length} Late${lates.length!==1?'s':''}</span>
+            </div>
+            ${absences.length ? `
+              <div class="att-date-list">
+                <span class="att-date-heading">Absent:</span>
+                ${absences.map(({rehearsal:r}) => `<span class="att-date-chip att-chip-absent">${fmtDate(r.date)}</span>`).join('')}
+              </div>` : ''}
+            ${lates.length ? `
+              <div class="att-date-list">
+                <span class="att-date-heading">Late:</span>
+                ${lates.map(({rehearsal:r}) => `<span class="att-date-chip att-chip-late">${fmtDate(r.date)}</span>`).join('')}
+              </div>` : ''}
+          </div>
         </div>
       `;
     })()}
