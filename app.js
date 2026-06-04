@@ -247,7 +247,7 @@ let _rosterSearch = '';
 let _rosterInstrumentFilter  = '';
 let _trackerInstrumentFilter = '';
 let _songSectionFilter       = '';
-let _attSort                 = 'instrument'; // attendance screen sort: instrument | row | column | lastname
+let _attSort                 = 'lastname'; // attendance screen sort: instrument | row | column | lastname
 let _attSearch               = '';
 let _blockMode  = false;
 let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
@@ -1633,15 +1633,18 @@ function viewRehearsal(rid) {
   const activeAtt = activeEntry?.attendance || 'present';
 
   const entryList = Object.entries(entries)
-    .sort(([a],[b]) => String(a).localeCompare(String(b), undefined, {numeric:true}));
+    .sort(([a],[b]) => {
+      const la = _attLastName(students[a] || {}), lb = _attLastName(students[b] || {});
+      return la.localeCompare(lb) || (students[a]?.name || '').localeCompare(students[b]?.name || '');
+    });
 
   // Active student card — shared across block and normal modes
   const activeCard = _activeNum ? `
     <div class="active-card">
       <div class="active-card-name">
-        #${esc(_activeNum)}
+        ${activeStu ? esc(activeStu.name || `#${_activeNum}`) : `#${esc(_activeNum)}`}
         ${activeStu
-          ? `<span class="sub">${esc([fmtPos(activeStu.column,activeStu.row),activeStu.instrument,activeStu.name].filter(Boolean).join(' · '))}</span>`
+          ? `<span class="sub">${esc([fmtPos(activeStu.column,activeStu.row),normInstrument(activeStu.instrument)].filter(Boolean).join(' · '))}</span>`
           : '<span class="sub" style="color:var(--warning)"> Not in roster</span>'}
       </div>
 
@@ -1828,8 +1831,8 @@ function viewRehearsal(rid) {
                onclick="pickStudent('${esc(num)}','${esc(rid)}')">
             <div class="entry-header">
               <div class="entry-student">
-                #${esc(num)}
-                ${stu ? `<span class="sub">${esc([fmtPos(stu.column,stu.row),normInstrument(stu.instrument),stu.name].filter(Boolean).join(' · '))}</span>` : '<span class="sub" style="color:var(--warning)">Not in roster</span>'}
+                ${stu ? esc(stu.name || `#${num}`) : `#${esc(num)}`}
+                ${stu ? `<span class="sub">${esc([fmtPos(stu.column,stu.row),normInstrument(stu.instrument)].filter(Boolean).join(' · '))}</span>` : '<span class="sub" style="color:var(--warning)">Not in roster</span>'}
               </div>
               <div class="entry-badges">
                 ${entry.attendance==='absent' ? `<span class="badge att-badge-absent">Absent</span>` : ''}
@@ -2145,12 +2148,11 @@ function filterAttendanceList(rid, val) {
 
 function attStudentRow(rid, s, entries) {
   const att  = entries[s.number]?.attendance || null; // null = unmarked = present
-  const meta = [fmtPos(s.column, s.row), normInstrument(s.instrument), s.name].filter(Boolean).join(' · ');
+  const meta = [fmtPos(s.column, s.row), normInstrument(s.instrument)].filter(Boolean).join(' · ');
   return `
     <div class="att-stu-row ${att === 'absent' ? 'att-stu-absent' : att === 'late' ? 'att-stu-late' : ''}">
       <div class="att-stu-info">
-        <span class="att-stu-num">#${esc(s.number)}</span>
-        ${s.name ? `<span class="att-stu-name">${esc(s.name)}</span>` : ''}
+        <span class="att-stu-name">${esc(s.name || `#${s.number}`)}</span>
         ${meta ? `<div class="att-stu-meta">${esc(meta)}</div>` : ''}
       </div>
       <div class="att-stu-btns">
