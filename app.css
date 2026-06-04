@@ -313,6 +313,19 @@ html, body {
 .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
 .modal-actions .btn { flex: 1; }
 
+.options-menu { display: flex; flex-direction: column; gap: 2px; margin: 0 -4px; }
+.options-menu-item {
+  display: flex; align-items: center; gap: 14px;
+  width: 100%; padding: 12px 10px; border-radius: var(--r-sm);
+  border: none; background: none; text-align: left; cursor: pointer;
+  color: var(--text); transition: background .15s;
+}
+.options-menu-item:hover { background: var(--bg); }
+.options-menu-icon { font-size: 1.3rem; flex-shrink: 0; width: 28px; text-align: center; }
+.options-menu-label { font-size: 0.93rem; font-weight: 600; margin-bottom: 1px; }
+.options-menu-sub { font-size: 0.78rem; color: var(--text-muted); }
+.options-menu-item-danger .options-menu-label { color: var(--danger); }
+
 .quick-note-grid {
   display: flex;
   flex-wrap: wrap;

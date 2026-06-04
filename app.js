@@ -452,7 +452,7 @@ function render() {
 
     case 'roster':
       title.textContent = 'Student Roster';
-      actions.innerHTML = (STATE.isAdmin ? addBtn('showAddStudentModal()') : '') + userBtn();
+      actions.innerHTML = (STATE.isAdmin ? optBtn('showRosterOptionsModal()') + addBtn('showAddStudentModal()') : '') + userBtn();
       main.innerHTML = viewRoster();
       break;
 
@@ -809,17 +809,6 @@ function viewRoster() {
              value="${esc(_rosterSearch)}"
              oninput="filterRoster(this.value)" autocomplete="off">
     </div>
-    ${STATE.isAdmin ? `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin:-4px 0 12px">
-      <button class="btn btn-ghost btn-sm" style="color:var(--danger);font-size:0.8rem;padding:4px 0"
-              onclick="showDeleteRosterModal()">
-        ✕ Delete Roster
-      </button>
-      <button class="btn btn-ghost btn-sm" style="color:var(--primary);font-size:0.8rem;padding:4px 0"
-              onclick="showImportModal()">
-        ↑ Import from CSV
-      </button>
-    </div>` : ''}
     <div id="roster-list">${rosterRows(list, _rosterSearch, _rosterInstrumentFilter)}</div>
     ${list.length === 0 ? `
       <div class="empty-state">
@@ -876,6 +865,92 @@ function filterRosterInstrument(inst) {
   _rosterInstrumentFilter = inst;
   const main = document.getElementById('main-content');
   if (main) main.innerHTML = viewRoster();
+}
+
+function showRosterOptionsModal() {
+  const students = Object.values(DB.getStudents());
+  const missingCodes = students.filter(s => !s.studentCode).length;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Roster Options</div>
+    <div class="options-menu">
+      <button class="options-menu-item" onclick="closeModal();showAutoGenerateCodesModal()">
+        <div class="options-menu-icon">🔑</div>
+        <div>
+          <div class="options-menu-label">Auto-generate Student Codes</div>
+          <div class="options-menu-sub">${missingCodes === 0 ? 'All students have codes' : `${missingCodes} student${missingCodes !== 1 ? 's' : ''} missing a code`}</div>
+        </div>
+      </button>
+      <button class="options-menu-item" onclick="closeModal();showImportModal()">
+        <div class="options-menu-icon">📥</div>
+        <div>
+          <div class="options-menu-label">Import from CSV</div>
+          <div class="options-menu-sub">Add or update students in bulk</div>
+        </div>
+      </button>
+      <button class="options-menu-item options-menu-item-danger" onclick="closeModal();showDeleteRosterModal()">
+        <div class="options-menu-icon">🗑</div>
+        <div>
+          <div class="options-menu-label">Delete Entire Roster</div>
+          <div class="options-menu-sub">Permanently remove all students</div>
+        </div>
+      </button>
+    </div>
+    <div class="modal-actions" style="margin-top:8px">
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Cancel</button>
+    </div>
+  `);
+}
+
+function showAutoGenerateCodesModal() {
+  const students = Object.values(DB.getStudents());
+  const missing = students.filter(s => !s.studentCode);
+  if (!missing.length) {
+    showToast('All students already have a code.');
+    return;
+  }
+  showConfirmModal(
+    'Auto-generate Student Codes',
+    `Generate codes for <strong>${missing.length} student${missing.length !== 1 ? 's' : ''}</strong> who ${missing.length !== 1 ? 'are' : 'is'} missing one.<br><br>Existing codes will not be changed.`,
+    autoGenerateStudentCodes,
+    'Generate',
+    'btn-primary'
+  );
+}
+
+function genStudentCode(existing) {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code;
+  do {
+    code = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  } while (existing.has(code));
+  existing.add(code);
+  return code;
+}
+
+async function autoGenerateStudentCodes() {
+  if (!STATE.isAdmin) return;
+  const students = Object.values(STATE.students);
+  const usedCodes = new Set(students.map(s => s.studentCode).filter(Boolean).map(c => c.toUpperCase()));
+  const toUpdate = students.filter(s => !s.studentCode);
+  if (!toUpdate.length) { showToast('All students already have a code.'); return; }
+
+  const CHUNK = 500;
+  const updates = toUpdate.map(s => ({ s, code: genStudentCode(usedCodes) }));
+
+  for (let i = 0; i < updates.length; i += CHUNK) {
+    const batch = db.batch();
+    updates.slice(i, i + CHUNK).forEach(({ s, code }) => {
+      batch.update(db.collection('students').doc(s.number), { studentCode: code });
+    });
+    await batch.commit().catch(e => { showToast('Failed — ' + (e.message || 'check console')); throw e; });
+  }
+
+  for (const { s, code } of updates) {
+    STATE.students[s.number] = { ...STATE.students[s.number], studentCode: code };
+  }
+  showToast(`${updates.length} code${updates.length !== 1 ? 's' : ''} generated.`);
+  render();
 }
 
 function showDeleteRosterModal() {
