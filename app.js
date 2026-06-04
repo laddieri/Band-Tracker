@@ -1712,44 +1712,60 @@ function viewStudentPortal() {
           <span class="sec-chevron">▾</span>
         </div>
         <div id="portal-sec-songs" class="sec-collapsed">
-          <div class="portal-songs-list">
-            ${(() => {
-              const cats = STATE.songCategories;
-              const portalSongRow = song => {
-                const status  = song.statuses?.[String(num)]?.status || 'not_attempted';
-                const overdue = song.dueDate && song.dueDate < today() && status !== 'passed';
-                return `
-                <div class="portal-song-row">
-                  <div class="portal-song-info">
-                    <div class="portal-song-title">${esc(song.title)}</div>
-                    ${song.dueDate ? `<div class="portal-song-due ${overdue ? 'song-overdue' : ''}">Due ${fmtDate(song.dueDate)}</div>` : ''}
-                  </div>
-                  <span class="portal-song-status ${status === 'passed' ? 'pss-pass' : status === 'failed' ? 'pss-fail' : 'pss-na'}">
-                    ${status === 'passed' ? '✓ Passed' : status === 'failed' ? '✗ Failed' : '— Not Attempted'}
-                  </span>
+          ${(() => {
+            const cats = STATE.songCategories;
+            const portalSongRow = song => {
+              const status  = song.statuses?.[String(num)]?.status || 'not_attempted';
+              const overdue = song.dueDate && song.dueDate < today() && status !== 'passed';
+              return `
+              <div class="portal-song-row">
+                <div class="portal-song-info">
+                  <div class="portal-song-title">${esc(song.title)}</div>
+                  ${song.dueDate ? `<div class="portal-song-due ${overdue ? 'song-overdue' : ''}">Due ${fmtDate(song.dueDate)}</div>` : ''}
+                </div>
+                <span class="portal-song-status ${status === 'passed' ? 'pss-pass' : status === 'failed' ? 'pss-fail' : 'pss-na'}">
+                  ${status === 'passed' ? '✓ Passed' : status === 'failed' ? '✗ Failed' : '— Not Attempted'}
+                </span>
+              </div>`;
+            };
+            if (!cats.length) {
+              return `<div class="portal-songs-list">${STATE.songs.map(portalSongRow).join('')}</div>`;
+            }
+            const grouped = {};
+            const uncategorized = [];
+            cats.forEach(c => { grouped[c] = []; });
+            STATE.songs.forEach(song => {
+              if (song.category && grouped[song.category] !== undefined) grouped[song.category].push(song);
+              else uncategorized.push(song);
+            });
+            let catIdx = 0;
+            let html = '';
+            cats.forEach(cat => {
+              if (!grouped[cat].length) return;
+              const id = `portal-song-cat-${catIdx++}`;
+              html += `
+                <div id="${id}-hdr" class="sec-hdr sec-hdr-open song-cat-sec-hdr" onclick="toggleCollapse('${id}')">
+                  <span>${esc(cat)}</span>
+                  <span class="sec-chevron">▾</span>
+                </div>
+                <div id="${id}">
+                  <div class="portal-songs-list">${grouped[cat].map(portalSongRow).join('')}</div>
                 </div>`;
-              };
-              if (!cats.length) return STATE.songs.map(portalSongRow).join('');
-              const grouped = {};
-              const uncategorized = [];
-              cats.forEach(c => { grouped[c] = []; });
-              STATE.songs.forEach(song => {
-                if (song.category && grouped[song.category] !== undefined) grouped[song.category].push(song);
-                else uncategorized.push(song);
-              });
-              let html = '';
-              cats.forEach(cat => {
-                if (!grouped[cat].length) return;
-                html += `<div class="song-cat-hdr">${esc(cat)}</div>`;
-                html += grouped[cat].map(portalSongRow).join('');
-              });
-              if (uncategorized.length) {
-                if (STATE.songs.length > uncategorized.length) html += `<div class="song-cat-hdr">Other</div>`;
-                html += uncategorized.map(portalSongRow).join('');
-              }
-              return html;
-            })()}
-          </div>
+            });
+            if (uncategorized.length) {
+              const id = `portal-song-cat-${catIdx}`;
+              const label = STATE.songs.length > uncategorized.length ? 'Other' : 'Songs';
+              html += `
+                <div id="${id}-hdr" class="sec-hdr sec-hdr-open song-cat-sec-hdr" onclick="toggleCollapse('${id}')">
+                  <span>${label}</span>
+                  <span class="sec-chevron">▾</span>
+                </div>
+                <div id="${id}">
+                  <div class="portal-songs-list">${uncategorized.map(portalSongRow).join('')}</div>
+                </div>`;
+            }
+            return html;
+          })()}
         </div>
       ` : ''}
 
@@ -1853,7 +1869,7 @@ function viewLeaderboard() {
     <div class="leaderboard-view">
 
       <div id="lb-sec-attendance-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('lb-sec-attendance')">
-        <span class="section-title" style="margin:0">Attendance</span>
+        <span class="section-title" style="margin:0">Band Attendance Data</span>
         <span class="sec-chevron">▾</span>
       </div>
       <div id="lb-sec-attendance">
@@ -1920,15 +1936,31 @@ function viewLeaderboard() {
               if (row.song.category && grouped[row.song.category] !== undefined) grouped[row.song.category].push(row);
               else uncategorized.push(row);
             });
+            let catIdx = 0;
             let html = '';
             cats.forEach(cat => {
               if (!grouped[cat].length) return;
-              html += `<div class="song-cat-hdr">${esc(cat)}</div>`;
-              html += `<div class="card mb-12" style="padding:0;overflow:hidden">${grouped[cat].map(lbSongRow).join('')}</div>`;
+              const id = `lb-song-cat-${catIdx++}`;
+              html += `
+                <div id="${id}-hdr" class="sec-hdr sec-hdr-open song-cat-sec-hdr" onclick="toggleCollapse('${id}')">
+                  <span>${esc(cat)}</span>
+                  <span class="sec-chevron">▾</span>
+                </div>
+                <div id="${id}">
+                  <div class="card mb-12" style="padding:0;overflow:hidden">${grouped[cat].map(lbSongRow).join('')}</div>
+                </div>`;
             });
             if (uncategorized.length) {
-              if (songRows.length > uncategorized.length) html += `<div class="song-cat-hdr">Other</div>`;
-              html += `<div class="card mb-12" style="padding:0;overflow:hidden">${uncategorized.map(lbSongRow).join('')}</div>`;
+              const id = `lb-song-cat-${catIdx}`;
+              const label = songRows.length > uncategorized.length ? 'Other' : 'Songs';
+              html += `
+                <div id="${id}-hdr" class="sec-hdr sec-hdr-open song-cat-sec-hdr" onclick="toggleCollapse('${id}')">
+                  <span>${label}</span>
+                  <span class="sec-chevron">▾</span>
+                </div>
+                <div id="${id}">
+                  <div class="card mb-12" style="padding:0;overflow:hidden">${uncategorized.map(lbSongRow).join('')}</div>
+                </div>`;
             }
             return html;
           })()}
