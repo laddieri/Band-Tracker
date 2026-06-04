@@ -434,7 +434,7 @@ function render() {
   }
 
   // Student portal — non-admin user with a linked student account
-  if (STATE.studentNum && !STATE.isAdmin) {
+  if (STATE.studentNum && !STATE.isAdmin && _view !== 'leaderboard') {
     backBtn.classList.add('hidden');
     title.textContent = 'My Band Profile';
     actions.innerHTML = userBtn();
@@ -442,8 +442,12 @@ function render() {
     main.innerHTML = viewStudentPortal();
     return;
   }
+  if (STATE.studentNum && !STATE.isAdmin) {
+    nav.style.display = 'none'; // keep nav hidden for students on leaderboard too
+  }
 
-  const isTop = ['roster','rehearsals','songs','attendance-tab'].includes(_view);
+  const studentOnLeaderboard = _view === 'leaderboard' && STATE.studentNum && !STATE.isAdmin;
+  const isTop = ['roster','rehearsals','songs','attendance-tab','leaderboard'].includes(_view) && !studentOnLeaderboard;
   backBtn.classList.toggle('hidden', isTop);
   backBtn.onclick = () => {
     if (_view === 'student')    navigate('roster');
@@ -453,6 +457,7 @@ function render() {
       else navigate('rehearsal', { rid: _params.rid });
     }
     else if (_view === 'song')  navigate('songs');
+    else if (studentOnLeaderboard) navigate(''); // back to student portal
     else navigate('rehearsals');
   };
 
@@ -466,6 +471,8 @@ function render() {
       (_view === 'attendance' && _params.from !== 'attendance-tab' && match === 'rehearsals') ||
       (_view === 'song'       && match === 'songs')
     );
+    // Hide leaderboard tab for non-admin directors (anonymous students navigate via portal button)
+    if (match === 'leaderboard') t.style.display = STATE.isAdmin ? '' : 'none';
   });
 
   actions.innerHTML = '';
@@ -532,6 +539,12 @@ function render() {
       main.innerHTML = viewSong(_params.sid);
       break;
     }
+
+    case 'leaderboard':
+      title.textContent = 'Band Stats';
+      actions.innerHTML = (STATE.isAdmin ? userBtn() : '');
+      main.innerHTML = viewLeaderboard();
+      break;
   }
 }
 
@@ -1474,6 +1487,10 @@ function viewStudentPortal() {
         })()}
       ` : ''}
 
+      <button class="leaderboard-link-btn" onclick="navigate('leaderboard')">
+        📊 View Band Stats &amp; Leaderboard
+      </button>
+
       ${STATE.songs.length > 0 ? `
         <div class="section-title">Songs to Memorize</div>
         <div class="portal-songs-list">
@@ -1541,6 +1558,97 @@ function togglePortalRehearsal(rid) {
   card.classList.toggle('prc-open', opening);
   if (detail)  detail.style.maxHeight = opening ? detail.scrollHeight + 'px' : '0';
   if (chevron) chevron.style.transform = opening ? 'rotate(90deg)' : '';
+}
+
+function viewLeaderboard() {
+  const rehearsals    = [...STATE.rehearsals].sort((a,b) => b.date.localeCompare(a.date));
+  const totalStudents = Object.keys(STATE.students).length;
+
+  // ── Attendance stats ──────────────────────────────────────────────────────
+
+  const absencesFor = rid =>
+    Object.values(STATE.entries[rid] || {}).filter(e => e.attendance === 'absent').length;
+
+  const lastRehearsal    = rehearsals[0] || null;
+  const lastAbsences     = lastRehearsal ? absencesFor(lastRehearsal.id) : null;
+
+  const { mon, fri }     = currentWeekRange();
+  const weekRehearsals   = rehearsals.filter(r => r.date >= mon && r.date <= fri);
+  const weekAbsences     = weekRehearsals.reduce((s, r) => s + absencesFor(r.id), 0);
+
+  const seasonTotal      = rehearsals.reduce((s, r) => s + absencesFor(r.id), 0);
+  const seasonAvg        = rehearsals.length ? (seasonTotal / rehearsals.length).toFixed(1) : '—';
+
+  // ── Songs ─────────────────────────────────────────────────────────────────
+
+  const songRows = STATE.songs.map(song => {
+    const passed    = Object.values(song.statuses || {}).filter(s => s.status === 'passed').length;
+    const remaining = Math.max(0, totalStudents - passed);
+    const pct       = totalStudents ? Math.round(passed / totalStudents * 100) : 0;
+    return { song, passed, remaining, pct };
+  });
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  return `
+    <div class="leaderboard-view">
+
+      <div class="section-title">Attendance</div>
+      <div class="card mb-12" style="padding:0;overflow:hidden">
+
+        ${lastRehearsal ? `
+        <div class="lb-stat-row">
+          <div class="lb-stat-label">
+            Most recent rehearsal
+            <div class="lb-stat-sub">${fmtDate(lastRehearsal.date)}${lastRehearsal.label ? ' — ' + esc(lastRehearsal.label) : ''}</div>
+          </div>
+          <div class="lb-stat-val ${lastAbsences > 0 ? 'lb-val-warn' : 'lb-val-ok'}">
+            ${lastAbsences} absent
+          </div>
+        </div>` : `
+        <div class="lb-stat-row">
+          <div class="lb-stat-label">No rehearsals yet</div>
+        </div>`}
+
+        <div class="lb-stat-row lb-stat-row-alt">
+          <div class="lb-stat-label">
+            This week
+            <div class="lb-stat-sub">${fmtDate(mon)} – ${fmtDate(fri)} · ${weekRehearsals.length} rehearsal${weekRehearsals.length !== 1 ? 's' : ''}</div>
+          </div>
+          <div class="lb-stat-val ${weekAbsences > 0 ? 'lb-val-warn' : 'lb-val-ok'}">
+            ${weekRehearsals.length ? `${weekAbsences} absent` : '—'}
+          </div>
+        </div>
+
+        <div class="lb-stat-row">
+          <div class="lb-stat-label">
+            Season average
+            <div class="lb-stat-sub">${rehearsals.length} rehearsal${rehearsals.length !== 1 ? 's' : ''} total</div>
+          </div>
+          <div class="lb-stat-val">${seasonAvg !== '—' ? `${seasonAvg} / rehearsal` : '—'}</div>
+        </div>
+
+      </div>
+
+      ${songRows.length ? `
+        <div class="section-title">Songs to Memorize</div>
+        <div class="card mb-12" style="padding:0;overflow:hidden">
+          ${songRows.map(({ song, passed, remaining, pct }, i) => `
+          <div class="lb-song-row ${i % 2 === 1 ? 'lb-stat-row-alt' : ''}">
+            <div class="lb-song-info">
+              <div class="lb-song-title">${esc(song.title)}</div>
+              ${song.dueDate ? `<div class="lb-song-due ${song.dueDate < today() && passed < totalStudents ? 'song-overdue' : ''}">Due ${fmtDate(song.dueDate)}</div>` : ''}
+              <div class="lb-prog-bar"><div class="lb-prog-fill" style="width:${pct}%"></div></div>
+            </div>
+            <div class="lb-song-counts">
+              <span class="lb-count-pass">${passed} passed</span>
+              <span class="lb-count-rem">${remaining} left</span>
+            </div>
+          </div>`).join('')}
+        </div>
+      ` : ''}
+
+    </div>`;
 }
 
 function viewStudent(num) {
