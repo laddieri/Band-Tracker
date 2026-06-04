@@ -30,7 +30,7 @@ function _strHash(str) {
 }
 
 function fakeAnimalName(id) {
-  const h   = _strHash(String(id));
+  const h   = _strHash(String(id) + STATE.pseudonymSalt);
   const adj = FAKE_ADJECTIVES[h % FAKE_ADJECTIVES.length];
   const ani = FAKE_ANIMALS[Math.floor(h / FAKE_ADJECTIVES.length) % FAKE_ANIMALS.length];
   return `${adj} ${ani}`;
@@ -78,6 +78,7 @@ const STATE = {
   instruments:              [...INSTRUMENTS],
   sections:                 [...SECTIONS],
   marchingLeaderboardEnabled: false,
+  pseudonymSalt:              '',
   _unsubs:      []
 };
 
@@ -151,6 +152,7 @@ function startListeners() {
         STATE.instruments               = d.instruments?.length ? d.instruments : [...INSTRUMENTS];
         STATE.sections                  = d.sections?.length   ? d.sections   : [...SECTIONS];
         STATE.marchingLeaderboardEnabled = !!d.marchingLeaderboardEnabled;
+        STATE.pseudonymSalt              = d.pseudonymSalt || '';
         if (!STATE.loading) render();
       })
     );
@@ -993,6 +995,13 @@ function showRosterOptionsModal() {
         <div>
           <div class="options-menu-label">Manage Sections</div>
           <div class="options-menu-sub">Add, edit, or remove band sections</div>
+        </div>
+      </button>
+      <button class="options-menu-item" onclick="closeModal();randomizePseudonyms()">
+        <div class="options-menu-icon">🎲</div>
+        <div>
+          <div class="options-menu-label">Randomize Leaderboard Names</div>
+          <div class="options-menu-sub">Reassign all animal pseudonyms</div>
         </div>
       </button>
       <button class="options-menu-item" onclick="closeModal();showManagePresetsModal()">
@@ -3520,6 +3529,17 @@ async function _saveInstruments() {
   } catch(e) {
     console.error('Failed to save instruments:', e);
     showToast('Failed to save instruments.');
+  }
+}
+
+async function randomizePseudonyms() {
+  const salt = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+  try {
+    await db.collection('settings').doc('presets').set({ pseudonymSalt: salt }, { merge: true });
+    showToast('Leaderboard names reassigned.');
+  } catch(e) {
+    console.error('Failed to randomize pseudonyms:', e);
+    showToast('Failed to randomize names.');
   }
 }
 
