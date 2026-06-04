@@ -4222,6 +4222,7 @@ const COL_ALIASES = {
   row:        ['row','rank','row number','set'],
   instrument: ['instrument','instruments','inst'],
   section:    ['section','part','group','ensemble'],
+  grade:      ['grade','grade level','year','class year'],
   notes:      ['notes','note','comments','comment','director notes']
 };
 
@@ -4274,7 +4275,7 @@ function renderImportPreview() {
   const newCount  = rows.filter(r => !existing[r[colMap.number]?.trim()]).length;
   const dupCount  = rows.length - newCount;
   const preview   = rows.slice(0, 8);
-  const LABELS    = { number:'Number', name:'Name', column:'Column', row:'Row', instrument:'Instrument', section:'Section', notes:'Notes' };
+  const LABELS    = { number:'Number', name:'Name', column:'Column', row:'Row', instrument:'Instrument', section:'Section', grade:'Grade', notes:'Notes' };
   const fields    = Object.keys(colMap);
 
   document.getElementById('import-preview').innerHTML = `
@@ -4346,16 +4347,14 @@ async function executeImport() {
   for (const csvRow of rows) {
     const num = csvRow[colMap.number]?.trim();
     if (!num) continue;
-    const incoming = {
-      number:     num,
-      name:       (colMap.name       !== undefined ? csvRow[colMap.name]       : '').trim(),
-      column:     (colMap.column     !== undefined ? csvRow[colMap.column]     : '').trim().toUpperCase(),
-      row:        (colMap.row        !== undefined ? csvRow[colMap.row]        : '').trim(),
-      instrument: (colMap.instrument !== undefined ? csvRow[colMap.instrument] : '').trim(),
-      section:    (colMap.section    !== undefined ? csvRow[colMap.section]    : '').trim(),
-      notes:      (colMap.notes      !== undefined ? csvRow[colMap.notes]      : '').trim(),
-      songs:      []
-    };
+    const incoming = { number: num };
+    if (colMap.name       !== undefined) incoming.name       = csvRow[colMap.name].trim();
+    if (colMap.column     !== undefined) incoming.column     = csvRow[colMap.column].trim().toUpperCase();
+    if (colMap.row        !== undefined) incoming.row        = csvRow[colMap.row].trim();
+    if (colMap.instrument !== undefined) incoming.instrument = csvRow[colMap.instrument].trim();
+    if (colMap.section    !== undefined) incoming.section    = csvRow[colMap.section].trim();
+    if (colMap.grade      !== undefined) incoming.grade      = csvRow[colMap.grade].trim();
+    if (colMap.notes      !== undefined) incoming.notes      = csvRow[colMap.notes].trim();
     if (existing[num]) {
       if (strategy === 'overwrite') {
         STATE.students[num] = { ...STATE.students[num], ...incoming };
