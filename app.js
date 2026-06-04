@@ -1505,11 +1505,11 @@ function viewStudentPortal() {
       </div>
 
       ${hist.length > 0 ? `
-        <div id="portal-sec-attendance-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('portal-sec-attendance')">
+        <div id="portal-sec-attendance-hdr" class="sec-hdr" onclick="toggleCollapse('portal-sec-attendance')">
           <span class="section-title" style="margin:0">Attendance</span>
           <span class="sec-chevron">▾</span>
         </div>
-        <div id="portal-sec-attendance">
+        <div id="portal-sec-attendance" class="sec-collapsed">
           <div class="portal-stats">
             <div class="portal-stat">
               <div class="portal-stat-value">${hist.length}</div>
@@ -1549,16 +1549,12 @@ function viewStudentPortal() {
         </div>
       ` : ''}
 
-      <button class="leaderboard-link-btn" onclick="navigate('leaderboard')">
-        📊 View Band Stats &amp; Leaderboard
-      </button>
-
       ${STATE.songs.length > 0 ? `
-        <div id="portal-sec-songs-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('portal-sec-songs')">
+        <div id="portal-sec-songs-hdr" class="sec-hdr" onclick="toggleCollapse('portal-sec-songs')">
           <span class="section-title" style="margin:0">Songs to Memorize</span>
           <span class="sec-chevron">▾</span>
         </div>
-        <div id="portal-sec-songs">
+        <div id="portal-sec-songs" class="sec-collapsed">
           <div class="portal-songs-list">
             ${STATE.songs.map(song => {
               const status = song.statuses?.[String(num)]?.status || 'not_attempted';
@@ -1579,11 +1575,11 @@ function viewStudentPortal() {
       ` : ''}
 
       ${hist.length > 0 ? `
-        <div id="portal-sec-history-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('portal-sec-history')">
+        <div id="portal-sec-history-hdr" class="sec-hdr" onclick="toggleCollapse('portal-sec-history')">
           <span class="section-title" style="margin:0">Rehearsal History</span>
           <span class="sec-chevron">▾</span>
         </div>
-        <div id="portal-sec-history">
+        <div id="portal-sec-history" class="sec-collapsed">
         ${hist.map(({rehearsal: r, entry: e}) => {
           const evts     = e.events || [];
           const noteEvts = evts.filter(ev => ev.note?.trim());
@@ -1618,6 +1614,10 @@ function viewStudentPortal() {
         }).join('')}
         </div>
       ` : `<p class="empty-state" style="padding:24px 0">No rehearsal history yet.</p>`}
+
+      <button class="leaderboard-link-btn" onclick="navigate('leaderboard')">
+        📊 View Band Stats &amp; Leaderboard
+      </button>
     </div>`;
 }
 
