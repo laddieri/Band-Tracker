@@ -411,7 +411,6 @@ html, body {
 .roster-row:active { transform: scale(.985); }
 .roster-row:hover { box-shadow: var(--shadow-md); }
 
-.student-num { font-size: 1.1rem; font-weight: 800; color: var(--primary); min-width: 52px; }
 .student-info { flex: 1; min-width: 0; }
 .student-name { font-weight: 600; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .student-detail { font-size: 0.8rem; color: var(--text-muted); margin-top: 1px; }
@@ -901,12 +900,9 @@ html, body {
 }
 .suggestion-row:last-child { border-bottom: none; }
 .suggestion-row:hover, .suggestion-row:active { background: var(--hover-bg, #f1f5f9); }
-.suggestion-num {
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--text-muted);
-  flex-shrink: 0;
-  min-width: 36px;
+.suggestion-num-hidden {
+  display: none;
+  min-width: 0;
 }
 .suggestion-name {
   font-size: 0.9rem;
@@ -1521,7 +1517,6 @@ html, body {
 .song-stu-row:last-child { border-bottom: none; }
 
 .song-stu-info { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.song-stu-num  { font-size: 0.78rem; font-weight: 700; color: var(--primary); }
 .song-stu-name { font-size: 0.9rem; font-weight: 600; }
 .song-stu-status {
   font-size: 0.72rem;
