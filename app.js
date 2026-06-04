@@ -801,14 +801,14 @@ function studentSuggestions(query, instrumentFilter) {
     return (s.name||'').toLowerCase().includes(q) ||
            String(s.number).includes(q) ||
            (s.section||'').toLowerCase().includes(q);
-  }).sort((a,b) => String(a.number).localeCompare(String(b.number),undefined,{numeric:true}))
+  }).sort((a,b) => _lastName(a).localeCompare(_lastName(b)) || (a.name||'').localeCompare(b.name||''))
     .slice(0, 10);
 }
 
 function viewRoster() {
   const students = DB.getStudents();
   const list = Object.values(students)
-    .sort((a,b) => String(a.number).localeCompare(String(b.number), undefined, {numeric:true}));
+    .sort((a,b) => _lastName(a).localeCompare(_lastName(b)) || (a.name||'').localeCompare(b.name||''));
 
   return `
     ${instrumentFilterChips(_rosterInstrumentFilter, 'filterRosterInstrument')}
@@ -869,7 +869,7 @@ function rosterRows(list, search, instrumentFilter) {
 function filterRoster(val) {
   _rosterSearch = val;
   const list = Object.values(DB.getStudents())
-    .sort((a,b) => String(a.number).localeCompare(String(b.number), undefined, {numeric:true}));
+    .sort((a,b) => _lastName(a).localeCompare(_lastName(b)) || (a.name||'').localeCompare(b.name||''));
   document.getElementById('roster-list').innerHTML = rosterRows(list, val, _rosterInstrumentFilter);
 }
 
@@ -1065,7 +1065,7 @@ function viewSong(sid) {
   if (!song) return `<div class="empty-state"><p>Song not found.</p></div>`;
 
   const students = Object.values(DB.getStudents())
-    .sort((a, b) => String(a.number).localeCompare(String(b.number), undefined, {numeric:true}));
+    .sort((a,b) => _lastName(a).localeCompare(_lastName(b)) || (a.name||'').localeCompare(b.name||''));
   const statuses  = song.statuses || {};
   const getStatus = num => statuses[String(num)]?.status || 'not_attempted';
 
@@ -1107,7 +1107,9 @@ function songStudentRows(sid, students, statuses) {
 
   if (!filtered.length) return `<div class="empty-state" style="padding:24px"><p>No students in this section.</p></div>`;
 
-  return filtered.map(s => {
+  const sorted = [...filtered].sort((a,b) => _lastName(a).localeCompare(_lastName(b)) || (a.name||'').localeCompare(b.name||''));
+
+  return sorted.map(s => {
     const status = getStatus(s.number);
     const meta   = getMeta(s.number);
     return `
@@ -1133,8 +1135,6 @@ function songStudentRows(sid, students, statuses) {
 function filterSongSection(sid, section) {
   _songSectionFilter = section;
   const song     = STATE.songs.find(s => s.id === sid);
-  const students = Object.values(DB.getStudents())
-    .sort((a, b) => String(a.number).localeCompare(String(b.number), undefined, {numeric:true}));
   // Re-render the full song view so filter chips update active state
   document.getElementById('main-content').innerHTML = viewSong(sid);
 }
@@ -1179,7 +1179,7 @@ function _applySongStatus(sid, num, song, status) {
   const listEl = document.getElementById('song-student-list');
   if (listEl) {
     const students = Object.values(DB.getStudents())
-      .sort((a, b) => String(a.number).localeCompare(String(b.number), undefined, {numeric:true}));
+      .sort((a,b) => _lastName(a).localeCompare(_lastName(b)) || (a.name||'').localeCompare(b.name||''));
     listEl.innerHTML = songStudentRows(sid, students, song.statuses || {});
   } else if (_view === 'student') {
     const mc = document.getElementById('main-content');
@@ -1647,7 +1647,7 @@ function viewRehearsal(rid) {
 
   const entryList = Object.entries(entries)
     .sort(([a],[b]) => {
-      const la = _attLastName(students[a] || {}), lb = _attLastName(students[b] || {});
+      const la = _lastName(students[a] || {}), lb = _lastName(students[b] || {});
       return la.localeCompare(lb) || (students[a]?.name || '').localeCompare(students[b]?.name || '');
     });
 
@@ -1756,7 +1756,7 @@ function viewRehearsal(rid) {
     const allFiltered = showAllForFilter
       ? Object.values(students)
           .filter(s => normInstrument(s.instrument) === _trackerInstrumentFilter)
-          .sort((a,b) => String(a.number).localeCompare(String(b.number),undefined,{numeric:true}))
+          .sort((a,b) => _lastName(a).localeCompare(_lastName(b)) || (a.name||'').localeCompare(b.name||''))
       : [];
 
     trackerSection = `
@@ -2083,7 +2083,7 @@ function viewAttendance(rid) {
   `;
 }
 
-function _attLastName(s) {
+function _lastName(s) {
   const parts = (s.name || '').trim().split(/\s+/);
   return parts.length > 1 ? parts[parts.length - 1] : parts[0] || '';
 }
@@ -2110,7 +2110,7 @@ function buildAttBodyHtml(rid, students, entries) {
   }
 
   const sorted = [...pool].sort((a, b) => {
-    const la = _attLastName(a), lb = _attLastName(b);
+    const la = _lastName(a), lb = _lastName(b);
     return la.localeCompare(lb) || (a.name || '').localeCompare(b.name || '');
   });
   return sorted.map(s => attStudentRow(rid, s, entries)).join('');
