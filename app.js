@@ -1854,6 +1854,9 @@ function viewRehearsal(rid) {
               </svg>
             </button>
           </div>
+          <button class="mark-all-btn" onclick="showMarkAllModal('${esc(rid)}')">
+            Mark All${_trackerInstrumentFilter ? ` (${esc(_trackerInstrumentFilter)})` : ''}
+          </button>
           <input class="num-input" type="text" inputmode="text"
                  id="num-input" placeholder="Search by name…"
                  value="${esc(_numSearch)}"
@@ -1908,21 +1911,6 @@ function viewRehearsal(rid) {
     </div>
 
     ${trackerSection}
-
-    <button class="group-mark-btn" onclick="showGroupPickerModal('${esc(rid)}')">
-      <div class="group-mark-btn-label">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;flex-shrink:0">
-          <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
-          <circle cx="9" cy="7" r="4"/>
-          <path d="M23 21v-2a4 4 0 00-3-3.87"/>
-          <path d="M16 3.13a4 4 0 010 7.75"/>
-        </svg>
-        Mark a Group
-      </div>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px;opacity:.35;flex-shrink:0">
-        <polyline points="9 18 15 12 9 6"/>
-      </svg>
-    </button>
 
     ${entryList.length ? `
       <div class="section-title">Tracked This Rehearsal (${entryList.length})</div>
@@ -2351,6 +2339,25 @@ function submitAttendance(rid) {
 
 // ── Group Marks ───────────────────────────────────────────────────────────────
 
+function showMarkAllModal(rid) {
+  const groupName = _trackerInstrumentFilter || '__all__';
+  const filterLabel = _trackerInstrumentFilter || 'entire band';
+  const count = _trackerInstrumentFilter
+    ? Object.values(STATE.students).filter(s => normInstrument(s.instrument) === _trackerInstrumentFilter).length
+    : Object.keys(STATE.students).length;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Mark All
+      <div style="font-size:0.78rem;font-weight:400;color:var(--text-muted);margin-top:2px">${esc(filterLabel)} · ${count} student${count!==1?'s':''}</div>
+    </div>
+    <div class="modal-actions" style="margin-top:8px">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-mistake" onclick="closeModal();showGroupMarkModal('${esc(rid)}','${esc(groupName)}','mistake')">✗ Mistake</button>
+      <button class="btn btn-success" onclick="closeModal();showGroupMarkModal('${esc(rid)}','${esc(groupName)}','positive')">✓ Positive</button>
+    </div>
+  `);
+}
+
 function showGroupPickerModal(rid) {
   const instruments = instrumentsInRoster();
   const sections    = sectionsInRoster();
@@ -2399,12 +2406,16 @@ function _groupMatches(s, groupName) {
 }
 
 function showGroupMarkModal(rid, groupName, type) {
-  const isMistake = type === 'mistake';
-  const presets   = isMistake ? MISTAKE_PRESETS : POSITIVE_PRESETS;
-  const btnCls    = isMistake ? 'is-mistake' : 'is-positive';
-  const r         = DB.getRehearsals().find(r => r.id === rid);
-  const segments  = r?.segments || [];
-  const students  = Object.values(DB.getStudents()).filter(s => _groupMatches(s, groupName));
+  const isMistake   = type === 'mistake';
+  const presets     = isMistake ? MISTAKE_PRESETS : POSITIVE_PRESETS;
+  const btnCls      = isMistake ? 'is-mistake' : 'is-positive';
+  const r           = DB.getRehearsals().find(r => r.id === rid);
+  const segments    = r?.segments || [];
+  const isAll       = groupName === '__all__';
+  const displayName = isAll ? 'All Students' : groupName;
+  const students    = isAll
+    ? Object.values(DB.getStudents())
+    : Object.values(DB.getStudents()).filter(s => _groupMatches(s, groupName));
 
   const segHtml = segments.length ? `
     <div class="form-label" style="margin-bottom:7px">Which part of rehearsal?</div>
@@ -2421,7 +2432,7 @@ function showGroupMarkModal(rid, groupName, type) {
 
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">${isMistake ? '✗' : '✓'} ${esc(groupName)}
+    <div class="modal-title">${isMistake ? '✗' : '✓'} ${esc(displayName)}
       <div style="font-size:0.78rem;font-weight:400;color:var(--text-muted);margin-top:2px">${students.length} student${students.length!==1?'s':''}</div>
     </div>
     ${segHtml}
@@ -2453,11 +2464,15 @@ function confirmGroupMarkCustom(rid, groupName, type) {
 async function confirmGroupMark(rid, groupName, type, note) {
   const segment = _pendingSegment;
   closeModal();
-  const stuList = Object.values(STATE.students).filter(s => _groupMatches(s, groupName));
-  if (!stuList.length) { showToast(`No students found matching "${groupName}".`); return; }
+  const isAll   = groupName === '__all__';
+  const stuList = isAll
+    ? Object.values(STATE.students)
+    : Object.values(STATE.students).filter(s => _groupMatches(s, groupName));
+  if (!stuList.length) { showToast('No students found.'); return; }
   const field   = type === 'mistake' ? 'mistakes' : 'positives';
   const batch   = db.batch();
-  const evt     = { type, note: note || '', segment, ts: Date.now(), by: STATE.user?.email || '', sectionMark: true, section: groupName };
+  const sectionLabel = isAll ? 'All Students' : groupName;
+  const evt     = { type, note: note || '', segment, ts: Date.now(), by: STATE.user?.email || '', sectionMark: true, section: sectionLabel };
 
   for (const stu of stuList) {
     const num    = String(stu.number || stu._id);
@@ -2484,7 +2499,7 @@ async function confirmGroupMark(rid, groupName, type, note) {
     showToast('Write failed — check your connection.');
     return;
   }
-  showToast(`${type === 'positive' ? 'Positive' : 'Mark'} applied to ${stuList.length} ${esc(groupName)} student${stuList.length!==1?'s':''}.`);
+  showToast(`${type === 'positive' ? 'Positive' : 'Mark'} applied to ${stuList.length} ${esc(sectionLabel)} student${stuList.length!==1?'s':''}.`);
   reRender(rid);
 }
 

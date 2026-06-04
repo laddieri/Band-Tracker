@@ -872,6 +872,23 @@ html, body {
   color: #7c3aed;
 }
 
+.mark-all-btn {
+  width: 100%;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid #ddd6fe;
+  background: #faf5ff;
+  color: #7c3aed;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  transition: background .15s;
+}
+.mark-all-btn:hover  { background: #f3e8ff; }
+.mark-all-btn:active { transform: scale(.98); }
+
 .btn-mistake { background: var(--danger-bg); color: var(--danger); border: none; }
 
 .section-mark-badge {
