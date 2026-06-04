@@ -1669,11 +1669,18 @@ function viewRehearsal(rid) {
   // Active student card — shared across block and normal modes
   const activeCard = _activeNum ? `
     <div class="active-card">
-      <div class="active-card-name">
-        ${activeStu ? esc(activeStu.name || `#${_activeNum}`) : `#${esc(_activeNum)}`}
-        ${activeStu
-          ? `<span class="sub">${esc([fmtPos(activeStu.column,activeStu.row),normInstrument(activeStu.instrument)].filter(Boolean).join(' · '))}</span>`
-          : '<span class="sub" style="color:var(--warning)"> Not in roster</span>'}
+      <div class="active-card-header">
+        <div class="active-card-name">
+          ${activeStu ? esc(activeStu.name || `#${_activeNum}`) : `#${esc(_activeNum)}`}
+          ${activeStu
+            ? `<span class="sub">${esc([fmtPos(activeStu.column,activeStu.row),normInstrument(activeStu.instrument)].filter(Boolean).join(' · '))}</span>`
+            : '<span class="sub" style="color:var(--warning)"> Not in roster</span>'}
+        </div>
+        <button class="active-card-close" onclick="clearActive()" aria-label="Dismiss">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
       </div>
 
       <div class="active-counters">
