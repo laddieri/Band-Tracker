@@ -237,7 +237,8 @@ function navigate(view, params = {}) {
     _trackerInstrumentFilter = '';
   }
   if (_view === 'song' && view !== 'song') {
-    _songSectionFilter = '';
+    _songSectionFilter    = '';
+    _songHidePassedFilter = false;
   }
   _view   = view;
   _params = params;
@@ -253,6 +254,7 @@ let _rosterSearch = '';
 let _rosterInstrumentFilter  = '';
 let _trackerInstrumentFilter = '';
 let _songSectionFilter       = '';
+let _songHidePassedFilter    = false;
 let _attFilterField = null; // null | 'instrument' | 'row' | 'column'
 let _attFilterValue = null;
 let _attSearch               = '';
@@ -1103,6 +1105,10 @@ function viewSong(sid) {
       </div>
 
       ${sections.length ? instrumentFilterChips(_songSectionFilter, 'filterSongSection', sid) : ''}
+      <div class="inst-filter-row" style="padding-top:4px">
+        <button class="inst-chip ${_songHidePassedFilter ? 'inst-active' : ''}"
+                onclick="toggleSongHidePassed('${esc(sid)}')">Not Passed Only</button>
+      </div>
 
       <div id="song-student-list">
         ${songStudentRows(sid, students, statuses)}
@@ -1117,11 +1123,11 @@ function songStudentRows(sid, students, statuses) {
     if (!s || s.status === 'not_attempted') return '';
     return [s.updatedBy ? dirLabel(s.updatedBy) : '', s.updatedAt ? fmtTime(s.updatedAt) : ''].filter(Boolean).join(' · ');
   };
-  const filtered = _songSectionFilter
-    ? students.filter(s => normInstrument(s.instrument) === _songSectionFilter)
-    : students;
+  const filtered = students
+    .filter(s => !_songSectionFilter || normInstrument(s.instrument) === _songSectionFilter)
+    .filter(s => !_songHidePassedFilter || getStatus(s.number) !== 'passed');
 
-  if (!filtered.length) return `<div class="empty-state" style="padding:24px"><p>No students in this section.</p></div>`;
+  if (!filtered.length) return `<div class="empty-state" style="padding:24px"><p>No students match the current filter.</p></div>`;
 
   const sorted = [...filtered].sort((a,b) => (a.name||'').localeCompare(b.name||''));
 
@@ -1149,8 +1155,11 @@ function songStudentRows(sid, students, statuses) {
 
 function filterSongSection(sid, section) {
   _songSectionFilter = section;
-  const song     = STATE.songs.find(s => s.id === sid);
-  // Re-render the full song view so filter chips update active state
+  document.getElementById('main-content').innerHTML = viewSong(sid);
+}
+
+function toggleSongHidePassed(sid) {
+  _songHidePassedFilter = !_songHidePassedFilter;
   document.getElementById('main-content').innerHTML = viewSong(sid);
 }
 
