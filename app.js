@@ -337,11 +337,6 @@ function esc(str) {
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
-function genStudentCode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous I/O/0/1
-  return Array.from({length: 6}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-}
-
 function showToast(msg) {
   const c = document.getElementById('toast-container');
   const t = document.createElement('div');
@@ -945,7 +940,7 @@ function showAutoGenerateCodesModal() {
   );
 }
 
-function genStudentCode(existing) {
+function genStudentCode(existing = new Set()) {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code;
   do {
