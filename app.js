@@ -982,7 +982,10 @@ function showUserMenu() {
       <span style="font-size:0.8rem">${STATE.isAdmin ? '⭐ Admin' : 'Director'}</span>
     </div>
     <div class="modal-actions">
-      ${STATE.isAdmin ? `<button class="btn btn-secondary btn-full" onclick="closeModal();showBrandSettingsModal()">Band Settings</button>` : ''}
+      ${STATE.isAdmin ? `
+        <button class="btn btn-secondary btn-full" onclick="closeModal();navigate('roster')">Manage Roster</button>
+        <button class="btn btn-secondary btn-full" onclick="closeModal();showBrandSettingsModal()">Band Settings</button>
+      ` : ''}
       <button class="btn btn-secondary btn-full" onclick="closeModal()">Close</button>
       <button class="btn btn-danger btn-full" onclick="doLogout()">Sign Out</button>
     </div>
@@ -2853,22 +2856,27 @@ function viewAttendanceTab() {
     <div class="att-summary-section-hdr ${cls}">${label} — ${list.length} student${list.length !== 1 ? 's' : ''}</div>
     <div class="att-summary-list">${list.map(stuMiniRow).join('')}</div>` : '';
 
+  const latestSubmitted = !!latest.attendanceSubmitted;
   const recentSection = `
     <div id="att-tab-recent-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('att-tab-recent')">
       <span class="section-title" style="margin:0">Most Recent — ${esc(fmtDate(latest.date))}${latest.label ? ' · ' + esc(latest.label) : ''}</span>
       <span class="sec-chevron">▾</span>
     </div>
     <div id="att-tab-recent">
-      <div class="att-screen-summary-bar" style="padding:8px 0 10px">
-        <span class="att-summary-chip att-chip-absent">${latestAbsent.length} Absent</span>
-        <span class="att-summary-chip att-chip-late">${latestLate.length} Late</span>
-        <span class="att-summary-chip att-chip-present">${latestPresent} Present</span>
-      </div>
-      ${stuGroup('Absent', latestAbsent, 'att-summary-hdr-absent')}
-      ${stuGroup('Late',   latestLate,   'att-summary-hdr-late')}
-      ${!latestAbsent.length && !latestLate.length
-        ? `<div class="empty-state" style="padding:12px 0 4px"><p>${_attTabFilter.search || _attTabFilter.instruments.length || _attTabFilter.grades.length || _attTabFilter.sections.length ? 'No matches for current filter.' : 'Everyone was present!'}</p></div>`
-        : ''}
+      ${latestSubmitted ? `
+        <div class="att-screen-summary-bar" style="padding:8px 0 10px">
+          <span class="att-summary-chip att-chip-absent">${latestAbsent.length} Absent</span>
+          <span class="att-summary-chip att-chip-late">${latestLate.length} Late</span>
+          <span class="att-summary-chip att-chip-present">${latestPresent} Present</span>
+        </div>
+        ${stuGroup('Absent', latestAbsent, 'att-summary-hdr-absent')}
+        ${stuGroup('Late',   latestLate,   'att-summary-hdr-late')}
+        ${!latestAbsent.length && !latestLate.length
+          ? `<div class="empty-state" style="padding:12px 0 4px"><p>${_attTabFilter.search || _attTabFilter.instruments.length || _attTabFilter.grades.length || _attTabFilter.sections.length ? 'No matches for current filter.' : 'Everyone was present!'}</p></div>`
+          : ''}
+      ` : `
+        <div class="empty-state" style="padding:12px 0 4px"><p>Attendance not submitted yet.</p></div>
+      `}
       <button class="btn btn-secondary" style="width:100%;margin:12px 0 4px"
               onclick="navigate('attendance',{rid:'${esc(latest.id)}',from:'attendance-tab'})">
         View Full Attendance
