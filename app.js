@@ -58,6 +58,17 @@ const GRADE_LEVELS = ['8th','9th','10th','11th','12th'];
 // ── Firebase init ─────────────────────────────────────────────────────────────
 
 firebase.initializeApp(FIREBASE_CONFIG);
+
+// Activate App Check before any Auth/Firestore calls so tokens attach to
+// requests. Dormant until RECAPTCHA_V3_SITE_KEY is set (see firebase-config.js).
+if (typeof RECAPTCHA_V3_SITE_KEY !== 'undefined' && RECAPTCHA_V3_SITE_KEY && firebase.appCheck) {
+  try {
+    firebase.appCheck().activate(RECAPTCHA_V3_SITE_KEY, /* autoRefresh */ true);
+  } catch (e) {
+    console.error('App Check activation failed:', e);
+  }
+}
+
 const auth = firebase.auth();
 const db   = firebase.firestore();
 db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
