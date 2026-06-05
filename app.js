@@ -308,7 +308,7 @@ function navigate(view, params = {}) {
   if (_view === 'dashboard' && view !== 'dashboard') {
     _activeNum = null; _numSearch = ''; _blockMode = false; _blockPath = [];
     _trackerFilter = _mkFilter('name', 'asc');
-    _dashRid = null;
+    _dashRid = null; _dashForceHistory = false;
   }
   if (_view === 'attendance' && view !== 'attendance') {
     _attModifyMode = false;
@@ -335,6 +335,7 @@ let _songHidePassedFilter    = false;
 let _songSearch              = '';
 let _dashRid        = null; // null = all rehearsals
 let _activeRid      = null; // which open rehearsal is currently being marked
+let _dashForceHistory = false; // force dashboard into historical view even when rehearsal is open
 let _attModifyMode           = false; // true = show edit UI even when attendance is submitted
 let _blockMode  = false;
 let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
@@ -796,7 +797,7 @@ function render() {
       break;
 
     case 'dashboard': {
-      const openR = getActiveRehearsal();
+      const openR = !_dashForceHistory ? getActiveRehearsal() : null;
       if (STATE.isAdmin && openR) {
         _activeRid = openR.id;
         _params = { ..._params, rid: openR.id };
@@ -2711,6 +2712,7 @@ function getActiveRehearsal() {
 
 function switchToFeedback(rid) {
   _activeRid = rid;
+  _dashForceHistory = false;
   navigate('dashboard', { rid });
 }
 
@@ -2802,7 +2804,7 @@ function viewRehearsals() {
             </div>`;
         }
         return `
-          <div class="card rh-card ${stateCls}">
+          <div class="card clickable rh-card ${stateCls}" onclick="showEndedRehearsalOptions('${esc(r.id)}')">
             <div class="flex items-center justify-between">
               <div>
                 <div class="font-bold">${fmtDate(r.date)}</div>
@@ -4328,6 +4330,33 @@ function saveNewRehearsal() {
   closeModal();
   _activeRid = id;
   navigate('dashboard', { rid: id });
+}
+
+function showEndedRehearsalOptions(rid) {
+  const r = DB.getRehearsals().find(r => r.id === rid);
+  if (!r) return;
+  const label = fmtDate(r.date) + (r.label ? ` — ${esc(r.label)}` : '');
+  openModal(`
+    <div class="modal-title">${label}</div>
+    <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:20px">What would you like to view?</p>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button class="btn btn-primary btn-full" onclick="closeModal();navigate('attendance',{rid:'${esc(rid)}',from:'rehearsals'})">
+        📋 View Attendance
+      </button>
+      <button class="btn btn-secondary btn-full" onclick="closeModal();viewHistoricalMarks('${esc(rid)}')">
+        ✏️ View Marks
+      </button>
+    </div>
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn btn-ghost btn-full" onclick="closeModal()">Cancel</button>
+    </div>
+  `);
+}
+
+function viewHistoricalMarks(rid) {
+  _dashRid = rid;
+  _dashForceHistory = true;
+  navigate('dashboard');
 }
 
 function showRehearsalEditModal(rid) {
