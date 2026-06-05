@@ -1101,6 +1101,102 @@ html, body {
 
 /* ── Student Portal ─────────────────────────────────────────────────────────── */
 
+/* ── Dashboard ───────────────────────────────────────────────────────────── */
+
+.dash-view {
+  padding: 16px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+.dash-select-wrap { margin-bottom: 16px; }
+.dash-select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-family: inherit;
+  cursor: pointer;
+}
+.dash-stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.dash-stat {
+  background: var(--surface);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow);
+  padding: 14px 12px;
+  text-align: center;
+}
+.dash-stat-val {
+  font-size: 1.7rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.dash-val-pos  { color: var(--success); }
+.dash-val-mis  { color: var(--danger);  }
+.dash-stat-lbl { font-size: 0.72rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.dash-stat-sub { font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
+
+.dash-notes-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.dash-notes-col {
+  background: var(--surface);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.dash-notes-hdr {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  padding: 8px 10px;
+}
+.dash-notes-hdr-pos { background: color-mix(in srgb, var(--success) 12%, transparent); color: var(--success); }
+.dash-notes-hdr-mis { background: color-mix(in srgb, var(--danger)  12%, transparent); color: var(--danger);  }
+.dash-note-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+  font-size: 0.78rem;
+}
+.dash-note-text  { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-note-count {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 20px;
+  flex-shrink: 0;
+}
+.dash-count-pos { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success); }
+.dash-count-mis { background: color-mix(in srgb, var(--danger)  15%, transparent); color: var(--danger);  }
+.dash-notes-empty { padding: 10px; font-size: 0.78rem; color: var(--text-muted); }
+
+.dash-stu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.88rem;
+}
+.dash-stu-row:last-child { border-bottom: none; }
+.dash-stu-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-stu-val  { font-weight: 700; font-size: 0.95rem; flex-shrink: 0; }
+
 /* ── Leaderboard ─────────────────────────────────────────────────────────── */
 
 .leaderboard-view {
