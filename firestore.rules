@@ -43,11 +43,13 @@ service cloud.firestore {
 
     match /orgs/{orgId} {
 
-      // Org metadata. Anyone may create an org they own (create-a-band flow);
-      // only its directors may read/update it. No client deletes.
+      // Org metadata. During the controlled rollout, creating a band requires a
+      // valid access code (a doc in /accessCodes managed by the operator). Only
+      // its directors may read/update it. No client deletes.
       allow read:   if belongsTo(orgId);
       allow create: if isSignedIn() && !isAnonymous()
-                    && request.resource.data.createdBy == request.auth.uid;
+                    && request.resource.data.createdBy == request.auth.uid
+                    && exists(/databases/$(database)/documents/accessCodes/$(request.resource.data.accessCode));
       allow update: if isDirectorOf(orgId);
       allow delete: if false;
 
@@ -142,6 +144,17 @@ service cloud.firestore {
       allow update: if isDirectorOf(resource.data.orgId)
                     && isDirectorOf(request.resource.data.orgId);
       allow delete: if isDirectorOf(resource.data.orgId);
+    }
+
+    // ── Access codes (controlled rollout gate) ────────────────────────────────
+    // Gates creating a brand-new band. The org-create rule above checks that
+    // /accessCodes/{code} exists. These docs are never read or written by
+    // clients — rule get()/exists() can read them regardless, so they stay
+    // secret. Manage them in the Firebase Console (add/remove to open or close
+    // signups). Remove this collection's use from the org-create rule when you
+    // want fully open self-serve signup.
+    match /accessCodes/{code} {
+      allow read, write: if false;
     }
   }
 }

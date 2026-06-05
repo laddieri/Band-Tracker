@@ -1083,6 +1083,13 @@ function viewOnboarding() {
                placeholder="e.g. Lincoln High School Band"
                onkeydown="if(event.key==='Enter')createBand()">
       </div>
+      <div class="form-group">
+        <input class="form-input" id="onboard-access-code" type="text"
+               placeholder="Access code"
+               autocomplete="off" autocapitalize="characters" spellcheck="false"
+               style="text-transform:uppercase;letter-spacing:.1em;text-align:center"
+               onkeydown="if(event.key==='Enter')createBand()">
+      </div>
       <button class="btn btn-primary btn-full btn-lg" onclick="createBand()">Create Band</button>
 
       <div class="login-divider"><span>or</span></div>
@@ -1114,15 +1121,17 @@ function onboardErr(id, msg) {
 }
 
 async function createBand() {
-  const name = document.getElementById('onboard-band-name')?.value.trim();
-  if (!name) { onboardErr('onboard-create-error', 'Please enter a band name.'); return; }
+  const name       = document.getElementById('onboard-band-name')?.value.trim();
+  const accessCode = document.getElementById('onboard-access-code')?.value.trim().toUpperCase();
+  if (!name)       { onboardErr('onboard-create-error', 'Please enter a band name.'); return; }
+  if (!accessCode) { onboardErr('onboard-create-error', 'An access code is required to create a band.'); return; }
   try {
     const orgRef = db.collection('orgs').doc();
     const orgId  = orgRef.id;
-    // Order matters for the security rules: create the org (createdBy = me),
-    // then my director membership, then seed settings (needs membership).
+    // Order matters for the security rules: create the org (createdBy = me, with
+    // a valid access code), then my director membership, then seed settings.
     await orgRef.set({
-      name, plan: 'free', createdBy: STATE.user.uid,
+      name, plan: 'free', createdBy: STATE.user.uid, accessCode,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     await db.collection('members').doc(STATE.user.uid).set({
@@ -1136,7 +1145,11 @@ async function createBand() {
     startListeners();
   } catch (e) {
     console.error('createBand failed:', e);
-    onboardErr('onboard-create-error', 'Could not create the band. Please try again.');
+    if (e.code === 'permission-denied') {
+      onboardErr('onboard-create-error', 'That access code isn’t valid. Please check and try again.');
+    } else {
+      onboardErr('onboard-create-error', 'Could not create the band. Please try again.');
+    }
   }
 }
 

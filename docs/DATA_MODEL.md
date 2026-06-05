@@ -43,7 +43,30 @@ studentCodes/{CODE}                   # lookup so anonymous students find their 
 
 inviteCodes/{CODE}                    # lookup so a co-director can join an org
   └─ (fields) orgId
+
+accessCodes/{CODE}                    # controlled-rollout gate for creating a band
+  └─ (no fields needed — existence is the check)
 ```
+
+## Controlled rollout: gating new-band creation
+
+During the private rollout, creating a *new* band requires a valid access code.
+The org-create rule checks `exists(/accessCodes/{code})`. These docs are never
+read or written by clients (`allow read, write: if false`) — Firestore rule
+`exists()`/`get()` can read any document regardless of its rules, so the codes
+stay secret while still being verifiable.
+
+To manage signups, go to **Firebase Console → Firestore → Data**:
+
+- **Open a code:** create a collection `accessCodes`, then add a document whose
+  **ID is the code** (uppercase, e.g. `BETA2026`). Leave its fields empty.
+  Anyone you give that code to can create a band.
+- **Close signups again:** delete the `accessCodes` document(s).
+- **Open fully later:** remove the `accessCodes` existence check from the
+  `orgs` create rule and redeploy.
+
+Joining an *existing* band (co-director invite codes, student codes) is not
+gated by this — those are already controlled by an existing director.
 
 Everything that used to be a top-level collection now lives under
 `orgs/{orgId}/…`. Because each org has its own subtree, document IDs only need
