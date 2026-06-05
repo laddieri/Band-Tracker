@@ -745,7 +745,7 @@ function render() {
 
     case 'attendance-tab':
       title.textContent = 'Attendance';
-      actions.innerHTML = userBtn();
+      actions.innerHTML = (STATE.isAdmin ? optBtn('showAttendanceReportModal()') : '') + userBtn();
       main.innerHTML = viewAttendanceTab();
       break;
 
@@ -2749,20 +2749,8 @@ function viewAttendanceTab() {
   const rehearsals = [...DB.getRehearsals()].sort((a,b) => b.date.localeCompare(a.date));
   const students   = Object.values(DB.getStudents()).sort((a,b) => (a.name||'').localeCompare(b.name||''));
 
-  const reportSection = STATE.isAdmin ? `
-    <button class="att-tab-report-btn" onclick="showAttendanceReportModal()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;flex-shrink:0">
-        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-        <polyline points="14 2 14 8 20 8"/>
-        <line x1="16" y1="13" x2="8" y2="13"/>
-        <line x1="16" y1="17" x2="8" y2="17"/>
-        <polyline points="10 9 9 9 8 9"/>
-      </svg>
-      Create Attendance Report
-    </button>` : '';
-
   if (!rehearsals.length) {
-    return reportSection + `<div class="empty-state"><p>No rehearsals yet.</p></div>`;
+    return `<div class="empty-state"><p>No rehearsals yet.</p></div>`;
   }
 
   // ── Filter bar (shared across all student lists on this tab) ──────────────
@@ -2908,7 +2896,7 @@ function viewAttendanceTab() {
       ${historyRows}
     </div>`;
 
-  return reportSection + filterBar + recentSection + seasonSection + historySection;
+  return filterBar + recentSection + seasonSection + historySection;
 }
 
 // ── View: Rehearsal Detail ────────────────────────────────────────────────────
