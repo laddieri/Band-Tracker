@@ -329,6 +329,7 @@ auth.onAuthStateChanged(user => {
     STATE.rehearsals = [];
     STATE.entries    = {};
     STATE.songs      = [];
+    _authMode        = 'signin';
     render();
   }
 });
@@ -337,6 +338,7 @@ auth.onAuthStateChanged(user => {
 
 let _view   = 'rehearsals';
 let _params = {};
+let _authMode = 'signin'; // 'signin' | 'signup' — which director auth screen to show
 
 function navigate(view, params = {}) {
   if (_view === 'rehearsal' && view !== 'rehearsal') {
@@ -918,6 +920,7 @@ function userBtn() {
 // ── Auth views ────────────────────────────────────────────────────────────────
 
 function viewLogin() {
+  if (_authMode === 'signup') return viewSignup();
   return `
     <div class="login-view">
       ${STATE.bandLogo
@@ -953,13 +956,52 @@ function viewLogin() {
       </div>
       <button class="btn btn-secondary btn-full" onclick="doLogin()">Director Sign In</button>
       <div style="text-align:center;margin-top:12px">
-        <button class="btn-link" onclick="doSignup()"
+        <button class="btn-link" onclick="setAuthMode('signup')"
           style="background:none;border:none;color:var(--primary);text-decoration:underline;cursor:pointer;font-size:.85rem">
           New director? Create an account
         </button>
       </div>
     </div>
   `;
+}
+
+function viewSignup() {
+  return `
+    <div class="login-view">
+      <div class="login-logo">🎺</div>
+      <div class="login-title">Create Director Account</div>
+      <p style="color:var(--text-muted);font-size:.85rem;text-align:center;margin:-8px 0 16px">
+        Set up your account — you’ll name your band on the next step.
+      </p>
+
+      <div id="auth-error"></div>
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input class="form-input" id="signup-email" type="email"
+               placeholder="director@school.edu" autocomplete="email"
+               onkeydown="if(event.key==='Enter')doSignup()">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input class="form-input" id="signup-password" type="password"
+               placeholder="At least 6 characters" autocomplete="new-password"
+               onkeydown="if(event.key==='Enter')doSignup()">
+      </div>
+      <button class="btn btn-primary btn-full btn-lg" onclick="doSignup()">Create Account</button>
+
+      <div style="text-align:center;margin-top:16px">
+        <button class="btn-link" onclick="setAuthMode('signin')"
+          style="background:none;border:none;color:var(--text-muted);text-decoration:underline;cursor:pointer;font-size:.85rem">
+          ← Back to sign in
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function setAuthMode(mode) {
+  _authMode = mode;
+  render();
 }
 
 async function loginWithStudentCode() {
@@ -1012,8 +1054,8 @@ async function doLogin() {
 }
 
 async function doSignup() {
-  const email = document.getElementById('auth-email')?.value.trim();
-  const pass  = document.getElementById('auth-password')?.value;
+  const email = document.getElementById('signup-email')?.value.trim();
+  const pass  = document.getElementById('signup-password')?.value;
   if (!email || !pass) { showAuthError('Email and password are required.'); return; }
   try {
     await auth.createUserWithEmailAndPassword(email, pass);
