@@ -2395,6 +2395,17 @@ html, body {
 
 .att-summary-list { margin-bottom: 16px; }
 
+.att-season-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.att-season-row:last-child { border-bottom: none; }
+.att-season-chips { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+
 .att-summary-stu-row {
   padding: 10px 6px;
   border-bottom: 1px solid var(--border);
