@@ -3180,7 +3180,12 @@ function viewRehearsal(rid) {
 
   const attSubmitted = r?.attendanceSubmitted;
   const showAttBtn   = _view !== 'dashboard';
+  const dashHeading  = _view === 'dashboard' ? `
+    <div class="dash-reh-heading">
+      Student Feedback for ${esc(fmtDate(r.date))}${r.label ? ` — ${esc(r.label)}` : ''}
+    </div>` : '';
   return `
+    ${dashHeading}
     ${showAttBtn ? `
     <div class="rehearsal-action-row">
       <button class="att-screen-btn ${attSubmitted ? 'att-screen-btn-done' : ''}" style="flex:1;margin-bottom:0" onclick="navigate('attendance',{rid:'${esc(rid)}'})">
