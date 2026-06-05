@@ -334,6 +334,7 @@ let _songSectionFilter       = '';
 let _songHidePassedFilter    = false;
 let _songSearch              = '';
 let _dashRid        = null; // null = all rehearsals
+let _activeRid      = null; // which open rehearsal is currently being marked
 let _attModifyMode           = false; // true = show edit UI even when attendance is submitted
 let _blockMode  = false;
 let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
@@ -795,8 +796,9 @@ function render() {
       break;
 
     case 'dashboard': {
-      const openR = STATE.rehearsals.find(r => !r.ended);
+      const openR = getActiveRehearsal();
       if (STATE.isAdmin && openR) {
+        _activeRid = openR.id;
         _params = { ..._params, rid: openR.id };
         title.textContent = 'Student Feedback';
         actions.innerHTML = userBtn();
@@ -2699,6 +2701,19 @@ function viewStudent(num) {
   `;
 }
 
+// ── Active rehearsal helpers ──────────────────────────────────────────────────
+
+function getActiveRehearsal() {
+  return (_activeRid && STATE.rehearsals.find(r => r.id === _activeRid && !r.ended))
+      || STATE.rehearsals.find(r => !r.ended)
+      || null;
+}
+
+function switchToFeedback(rid) {
+  _activeRid = rid;
+  navigate('dashboard', { rid });
+}
+
 // ── View: Rehearsals List ─────────────────────────────────────────────────────
 
 function viewRehearsals() {
@@ -2739,6 +2754,8 @@ function viewRehearsals() {
         const ended    = !!r.ended;
         const attDone  = !!r.attendanceSubmitted;
         const stateCls = ended ? 'rh-card-ended' : 'rh-card-open';
+        const activeR  = getActiveRehearsal();
+        const isActive = !ended && activeR && activeR.id === r.id;
         const menuBtn = STATE.isAdmin ? `
           <div class="rh-card-menu-wrap">
             <button class="rh-card-menu-btn" onclick="event.stopPropagation();toggleRhMenu('${esc(r.id)}')" aria-label="More options">⋯</button>
@@ -2758,6 +2775,7 @@ function viewRehearsals() {
                   ${r.label ? `<div class="text-muted text-sm mt-4">${esc(r.label)}</div>` : ''}
                   <div class="rh-status-row">
                     <span class="rh-badge rh-badge-open">Open</span>
+                    ${isActive ? `<span class="rh-badge rh-badge-active">Active</span>` : ''}
                     ${attDone ? `<span class="rh-badge rh-badge-att">Attendance ✓</span>` : ''}
                   </div>
                 </div>
@@ -2775,7 +2793,7 @@ function viewRehearsals() {
                   ${attDone ? '✓ Attendance Done' : '📋 Take Attendance'}
                 </button>
                 <button class="btn btn-sm btn-secondary"
-                  onclick="navigate('dashboard',{rid:'${esc(r.id)}'})">
+                  onclick="switchToFeedback('${esc(r.id)}')">
                   ✏️ Student Feedback
                 </button>
               </div>
@@ -2818,7 +2836,7 @@ function viewAttendanceTab() {
 
   // ── Open-rehearsal attendance CTA ─────────────────────────────────────────
 
-  const openReh = STATE.isAdmin ? rehearsals.find(r => !r.ended) : null;
+  const openReh = STATE.isAdmin ? getActiveRehearsal() : null;
   let attendanceCta = '';
   if (openReh) {
     if (!openReh.attendanceSubmitted) {
@@ -4308,6 +4326,7 @@ function saveNewRehearsal() {
   STATE.rehearsals.sort((a,b) => b.date.localeCompare(a.date));
   db.collection('rehearsals').doc(id).set(r);
   closeModal();
+  _activeRid = id;
   navigate('dashboard', { rid: id });
 }
 
@@ -4483,6 +4502,11 @@ async function endRehearsal(rid) {
   r.ended = true;
   db.collection('rehearsals').doc(rid).set({ ended: true }, { merge: true });
   await batch.commit();
+  // Advance active rehearsal to the next open one if this was the active one
+  if (_activeRid === rid || !_activeRid) {
+    const next = STATE.rehearsals.find(r2 => !r2.ended && r2.id !== rid);
+    _activeRid = next ? next.id : null;
+  }
   const parts = [];
   if (onTimeCount)    parts.push(`${onTimeCount} on time`);
   if (noMistakeCount) parts.push(`${noMistakeCount} no-mistake`);
@@ -4494,8 +4518,28 @@ function reopenRehearsal(rid) {
   closeModal();
   const r = STATE.rehearsals.find(r => r.id === rid);
   if (!r) return;
+  const currentActive = getActiveRehearsal();
+  if (currentActive && currentActive.id !== rid) {
+    const curLabel = fmtDate(currentActive.date) + (currentActive.label ? ` — ${currentActive.label}` : '');
+    const newLabel  = fmtDate(r.date)            + (r.label            ? ` — ${r.label}`            : '');
+    showConfirmModal(
+      'Switch Active Rehearsal?',
+      `<strong>${curLabel}</strong> is currently open. Reopening <strong>${newLabel}</strong> will make it the active rehearsal for student feedback. The current rehearsal will remain open and become active again once this one is ended.`,
+      () => {
+        r.ended = false;
+        db.collection('rehearsals').doc(rid).set({ ended: false }, { merge: true });
+        _activeRid = rid;
+        showToast(`Switched to ${newLabel}`);
+        render();
+      },
+      'Switch Rehearsal',
+      'btn-primary'
+    );
+    return;
+  }
   r.ended = false;
   db.collection('rehearsals').doc(rid).set({ ended: false }, { merge: true });
+  _activeRid = rid;
   showToast('Rehearsal reopened.');
   render();
 }

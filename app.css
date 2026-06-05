@@ -182,9 +182,10 @@ html, body {
   padding: 2px 8px; border-radius: 20px;
   letter-spacing: .03em;
 }
-.rh-badge-open  { background: #dbeafe; color: var(--primary); }
-.rh-badge-ended { background: var(--bg); color: var(--text-muted); border: 1px solid var(--border); }
-.rh-badge-att   { background: var(--success-bg); color: var(--success); }
+.rh-badge-open   { background: #dbeafe; color: var(--primary); }
+.rh-badge-ended  { background: var(--bg); color: var(--text-muted); border: 1px solid var(--border); }
+.rh-badge-att    { background: var(--success-bg); color: var(--success); }
+.rh-badge-active { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
 
 .rh-card-actions { display: flex; gap: 8px; margin-top: 12px; }
 .rh-card-actions .btn { flex: 1; }
