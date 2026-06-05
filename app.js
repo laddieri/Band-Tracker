@@ -304,6 +304,9 @@ function navigate(view, params = {}) {
     _lbSectionFilter    = '';
     _lbGradeFilter      = '';
   }
+  if (_view === 'dashboard' && view !== 'dashboard') {
+    _dashRid = null;
+  }
   _view   = view;
   _params = params;
   render();
@@ -327,6 +330,7 @@ let _lbGradeFilter           = '';
 let _songSearch              = '';
 let _attFilterField = null; // null | 'instrument' | 'row' | 'column' | 'grade'
 let _attFilterValue = null;
+let _dashRid        = null; // null = all rehearsals
 let _attSearch               = '';
 let _blockMode  = false;
 let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
@@ -527,8 +531,9 @@ function render() {
       (_view === 'attendance' && _params.from !== 'attendance-tab' && match === 'rehearsals') ||
       (_view === 'song'       && match === 'songs')
     );
-    // Hide leaderboard tab for non-admin directors (anonymous students navigate via portal button)
+    // Hide leaderboard + dashboard tabs for students
     if (match === 'leaderboard') t.style.display = STATE.isAdmin ? '' : 'none';
+    if (match === 'dashboard')   t.style.display = STATE.isAdmin ? '' : 'none';
   });
 
   actions.innerHTML = '';
@@ -600,6 +605,12 @@ function render() {
       title.textContent = 'Band Stats';
       actions.innerHTML = (STATE.isAdmin ? userBtn() : '');
       main.innerHTML = viewLeaderboard();
+      break;
+
+    case 'dashboard':
+      title.textContent = 'Dashboard';
+      actions.innerHTML = userBtn();
+      main.innerHTML = viewDashboard();
       break;
   }
 }
@@ -1866,6 +1877,147 @@ function togglePortalRehearsal(rid) {
   card.classList.toggle('prc-open', opening);
   if (detail)  detail.style.maxHeight = opening ? detail.scrollHeight + 'px' : '0';
   if (chevron) chevron.style.transform = opening ? 'rotate(90deg)' : '';
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+
+function setDashboardRehearsal(rid) {
+  _dashRid = rid || null;
+  render();
+}
+
+function viewDashboard() {
+  if (!STATE.isAdmin) return '';
+
+  const rehearsals = [...STATE.rehearsals].sort((a, b) => b.date.localeCompare(a.date));
+
+  // Collect entries for selected scope
+  const scopeMap = _dashRid
+    ? (STATE.entries[_dashRid] || {})
+    : Object.values(STATE.entries).reduce((acc, re) => {
+        for (const [num, e] of Object.entries(re)) {
+          if (!acc[num]) acc[num] = { positives: 0, mistakes: 0, events: [], absences: 0, lates: 0 };
+          acc[num].positives += e.positives || 0;
+          acc[num].mistakes  += e.mistakes  || 0;
+          acc[num].events     = acc[num].events.concat(e.events || []);
+          if (e.attendance === 'absent') acc[num].absences++;
+          if (e.attendance === 'late')   acc[num].lates++;
+        }
+        return acc;
+      }, {});
+
+  const scopeEntries = Object.values(_dashRid ? scopeMap : scopeMap);
+  const allEvents    = scopeEntries.flatMap(e => e.events || []);
+
+  // Totals
+  const totalPos    = scopeEntries.reduce((s, e) => s + (e.positives || 0), 0);
+  const totalMis    = scopeEntries.reduce((s, e) => s + (e.mistakes  || 0), 0);
+  const totalAbsent = _dashRid
+    ? Object.values(scopeMap).filter(e => e.attendance === 'absent').length
+    : Object.values(scopeMap).reduce((s, e) => s + (e.absences || 0), 0);
+  const marked = scopeEntries.filter(e => (e.positives || 0) + (e.mistakes || 0) > 0).length;
+  const totalStudents = Object.keys(STATE.students).length;
+
+  // Note frequency counts (exclude auto-bonus marks)
+  const posCounts = {};
+  const misCounts = {};
+  for (const evt of allEvents) {
+    if (!evt.note?.trim()) continue;
+    const target = evt.type === 'positive' ? posCounts : misCounts;
+    target[evt.note] = (target[evt.note] || 0) + 1;
+  }
+  const topPos = Object.entries(posCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const topMis = Object.entries(misCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+  // Per-student totals for rankings
+  const stuList = Object.entries(_dashRid ? scopeMap : scopeMap).map(([num, e]) => ({
+    num,
+    name: STATE.students[num]?.name || `#${num}`,
+    pos:  e.positives || 0,
+    mis:  e.mistakes  || 0,
+  }));
+  const topPerformers = [...stuList].sort((a, b) => b.pos - a.pos || a.name.localeCompare(b.name)).filter(s => s.pos > 0).slice(0, 10);
+  const mostMistakes  = [...stuList].sort((a, b) => b.mis - a.mis || a.name.localeCompare(b.name)).filter(s => s.mis > 0).slice(0, 10);
+
+  const selectedR = _dashRid ? rehearsals.find(r => r.id === _dashRid) : null;
+  const scopeLabel = selectedR
+    ? fmtDate(selectedR.date) + (selectedR.label ? ` — ${selectedR.label}` : '')
+    : `All Rehearsals (${rehearsals.length} total)`;
+
+  const statCard = (label, value, sub, cls) => `
+    <div class="dash-stat">
+      <div class="dash-stat-val ${cls || ''}">${value}</div>
+      <div class="dash-stat-lbl">${label}</div>
+      ${sub ? `<div class="dash-stat-sub">${sub}</div>` : ''}
+    </div>`;
+
+  const noteRow = (note, count, type) => `
+    <div class="dash-note-row">
+      <span class="dash-note-text">${esc(note)}</span>
+      <span class="dash-note-count ${type === 'positive' ? 'dash-count-pos' : 'dash-count-mis'}">${count}</span>
+    </div>`;
+
+  const stuRow = (s, valKey, cls) => `
+    <div class="dash-stu-row">
+      <span class="dash-stu-name">${esc(s.name)}</span>
+      <span class="dash-stu-val ${cls}">${valKey === 'pos' ? '+' : ''}${s[valKey]}</span>
+    </div>`;
+
+  return `
+    <div class="dash-view">
+
+      <div class="dash-select-wrap">
+        <select class="dash-select" onchange="setDashboardRehearsal(this.value)">
+          <option value="" ${!_dashRid ? 'selected' : ''}>Season Summary — All Rehearsals</option>
+          ${rehearsals.map(r => `
+            <option value="${esc(r.id)}" ${_dashRid === r.id ? 'selected' : ''}>
+              ${esc(fmtDate(r.date))}${r.label ? ' — ' + esc(r.label) : ''}${r.ended ? '' : ' (in progress)'}
+            </option>`).join('')}
+        </select>
+      </div>
+
+      <div class="dash-stat-grid">
+        ${statCard('Positives', totalPos, null, 'dash-val-pos')}
+        ${statCard('Mistakes',  totalMis, null, 'dash-val-mis')}
+        ${statCard('Students Marked', `${marked}`, totalStudents ? `of ${totalStudents}` : null)}
+        ${statCard('Absences', totalAbsent, _dashRid ? null : 'across all rehearsals')}
+      </div>
+
+      ${topPos.length || topMis.length ? `
+        <div class="section-title" style="margin:20px 0 8px">Most Common Marks</div>
+        <div class="dash-notes-cols">
+          <div class="dash-notes-col">
+            <div class="dash-notes-hdr dash-notes-hdr-pos">✓ Positives</div>
+            ${topPos.length
+              ? topPos.map(([note, count]) => noteRow(note, count, 'positive')).join('')
+              : `<div class="dash-notes-empty">No positive marks recorded</div>`}
+          </div>
+          <div class="dash-notes-col">
+            <div class="dash-notes-hdr dash-notes-hdr-mis">✗ Mistakes</div>
+            ${topMis.length
+              ? topMis.map(([note, count]) => noteRow(note, count, 'mistake')).join('')
+              : `<div class="dash-notes-empty">No mistake marks recorded</div>`}
+          </div>
+        </div>` : ''}
+
+      ${topPerformers.length ? `
+        <div class="section-title" style="margin:20px 0 8px">Top Performers</div>
+        <div class="card" style="padding:0;overflow:hidden">
+          ${topPerformers.map(s => stuRow(s, 'pos', 'dash-val-pos')).join('')}
+        </div>` : ''}
+
+      ${mostMistakes.length ? `
+        <div class="section-title" style="margin:20px 0 8px">Most Mistakes</div>
+        <div class="card" style="padding:0;overflow:hidden">
+          ${mostMistakes.map(s => stuRow(s, 'mis', 'dash-val-mis')).join('')}
+        </div>` : ''}
+
+      ${!topPos.length && !topMis.length && !topPerformers.length ? `
+        <div class="empty-state" style="padding:48px 24px">
+          <p>No marks recorded${selectedR ? ' for this rehearsal' : ' yet'}.</p>
+        </div>` : ''}
+
+    </div>`;
 }
 
 function viewLeaderboard() {
