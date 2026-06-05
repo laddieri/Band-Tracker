@@ -50,7 +50,20 @@ if (!ORG_ID || ORG_ID === true) {
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
-admin.initializeApp(); // uses GOOGLE_APPLICATION_CREDENTIALS
+const fs   = require('fs');
+const path = require('path');
+
+// Use GOOGLE_APPLICATION_CREDENTIALS if set; otherwise auto-load
+// service-account.json from the current folder (simpler on Windows).
+if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+  admin.initializeApp();
+} else if (fs.existsSync('service-account.json')) {
+  admin.initializeApp({ credential: admin.credential.cert(require(path.resolve('service-account.json'))) });
+} else {
+  console.error('No credentials found. Set GOOGLE_APPLICATION_CREDENTIALS, or place');
+  console.error('service-account.json in this folder (scripts/).');
+  process.exit(1);
+}
 const db   = admin.firestore();
 const auth = admin.auth();
 
