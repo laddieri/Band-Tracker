@@ -2430,3 +2430,23 @@ html, body {
   border-bottom: 1px solid var(--border);
 }
 .att-review-name:last-child { border-bottom: none; }
+
+/* ── Unified student filter bar ──────────────────────────────────────────── */
+.sfb-wrap { margin-bottom: 12px; }
+.sfb-row { display: flex; gap: 8px; align-items: center; margin-bottom: 0; }
+.sfb-sort-wrap { display: flex; flex: 1; gap: 0; border: 1.5px solid var(--border); border-radius: var(--r-sm); overflow: hidden; background: var(--surface); }
+.sfb-sort-select { flex: 1; border: none; background: transparent; font-family: inherit; font-size: 0.85rem; color: var(--text); padding: 8px 10px; outline: none; cursor: pointer; min-width: 0; }
+.sfb-dir-btn { border: none; border-left: 1.5px solid var(--border); background: transparent; font-size: 1rem; font-weight: 700; color: var(--text-muted); padding: 0 12px; cursor: pointer; transition: background .15s; flex-shrink: 0; }
+.sfb-dir-btn:hover { background: var(--bg); }
+.sfb-filter-btn { display: inline-flex; align-items: center; gap: 5px; padding: 8px 12px; border: 1.5px solid var(--border); border-radius: var(--r-sm); background: var(--surface); font-family: inherit; font-size: 0.85rem; font-weight: 500; color: var(--text-muted); cursor: pointer; white-space: nowrap; transition: background .15s, border-color .15s, color .15s; flex-shrink: 0; }
+.sfb-filter-btn:hover { background: var(--bg); }
+.sfb-filter-btn.sfb-filter-active { border-color: var(--primary); color: var(--primary); background: #eff6ff; }
+.sfb-panel { background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--r-sm); padding: 12px 14px; margin-top: 8px; }
+.sfb-group { margin-bottom: 12px; }
+.sfb-group:last-of-type { margin-bottom: 8px; }
+.sfb-group-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted); margin-bottom: 8px; }
+.sfb-checks { display: flex; flex-wrap: wrap; gap: 6px; }
+.sfb-check-label { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border: 1.5px solid var(--border); border-radius: 20px; font-size: 0.82rem; font-weight: 500; cursor: pointer; user-select: none; transition: background .12s, border-color .12s; background: var(--bg); }
+.sfb-check-label:has(.sfb-checkbox:checked) { background: #eff6ff; border-color: var(--primary); color: var(--primary); }
+.sfb-checkbox { display: none; }
+.sfb-clear-btn { font-size: 0.8rem; color: var(--danger); background: none; border: none; padding: 0; cursor: pointer; font-family: inherit; text-decoration: underline; margin-top: 4px; }
