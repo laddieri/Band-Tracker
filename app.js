@@ -2520,6 +2520,7 @@ function viewRehearsals() {
 
 function viewAttendanceTab() {
   const rehearsals = [...DB.getRehearsals()].sort((a,b) => b.date.localeCompare(a.date));
+  const students   = Object.values(DB.getStudents()).sort((a,b) => (a.name||'').localeCompare(b.name||''));
 
   const reportSection = STATE.isAdmin ? `
     <button class="att-tab-report-btn" onclick="showAttendanceReportModal()">
@@ -2537,17 +2538,104 @@ function viewAttendanceTab() {
     return reportSection + `<div class="empty-state"><p>No rehearsals yet.</p></div>`;
   }
 
-  const rows = rehearsals.map(r => {
-    const entries  = STATE.entries[r.id] || {};
-    const total    = Object.keys(STATE.students).length;
-    const absent   = Object.values(entries).filter(e => e.attendance === 'absent').length;
-    const late     = Object.values(entries).filter(e => e.attendance === 'late').length;
-    const present  = total - absent - late;
-    const attDone  = !!r.attendanceSubmitted;
-    const summary  = total
-      ? [absent  ? `${absent} absent`  : '',
-         late    ? `${late} late`      : '',
-         `${present} present`].filter(Boolean).join(' · ')
+  // ── Most Recent Rehearsal ─────────────────────────────────────────────────
+
+  const latest        = rehearsals[0];
+  const latestEntries = STATE.entries[latest.id] || {};
+  const latestAbsent  = students.filter(s => latestEntries[s.number]?.attendance === 'absent');
+  const latestLate    = students.filter(s => latestEntries[s.number]?.attendance === 'late');
+  const latestPresent = students.length - latestAbsent.length - latestLate.length;
+
+  const stuMiniRow = s => {
+    const meta = [fmtPos(s.column, s.row), normInstrument(s.instrument)].filter(Boolean).join(' · ');
+    return `<div class="att-summary-stu-row">
+      <span class="att-stu-name">${esc(s.name || `#${s.number}`)}</span>
+      ${meta ? `<div class="att-stu-meta">${esc(meta)}</div>` : ''}
+    </div>`;
+  };
+
+  const stuGroup = (label, list, cls) => list.length ? `
+    <div class="att-summary-section-hdr ${cls}">${label} — ${list.length} student${list.length !== 1 ? 's' : ''}</div>
+    <div class="att-summary-list">${list.map(stuMiniRow).join('')}</div>` : '';
+
+  const recentSection = `
+    <div id="att-tab-recent-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('att-tab-recent')">
+      <span class="section-title" style="margin:0">Most Recent — ${esc(fmtDate(latest.date))}${latest.label ? ' · ' + esc(latest.label) : ''}</span>
+      <span class="sec-chevron">▾</span>
+    </div>
+    <div id="att-tab-recent">
+      <div class="att-screen-summary-bar" style="padding:8px 0 10px">
+        <span class="att-summary-chip att-chip-absent">${latestAbsent.length} Absent</span>
+        <span class="att-summary-chip att-chip-late">${latestLate.length} Late</span>
+        <span class="att-summary-chip att-chip-present">${latestPresent} Present</span>
+      </div>
+      ${stuGroup('Absent', latestAbsent, 'att-summary-hdr-absent')}
+      ${stuGroup('Late',   latestLate,   'att-summary-hdr-late')}
+      ${!latestAbsent.length && !latestLate.length
+        ? `<div class="empty-state" style="padding:12px 0 4px"><p>Everyone was present!</p></div>`
+        : ''}
+      <button class="btn btn-secondary" style="width:100%;margin:12px 0 4px"
+              onclick="navigate('attendance',{rid:'${esc(latest.id)}',from:'attendance-tab'})">
+        View Full Attendance
+      </button>
+    </div>`;
+
+  // ── Season Absence Summary ────────────────────────────────────────────────
+
+  const submitted = rehearsals.filter(r => r.attendanceSubmitted);
+  const seasonMap = {};
+  for (const r of submitted) {
+    const entries = STATE.entries[r.id] || {};
+    for (const s of students) {
+      const att = entries[s.number]?.attendance;
+      if (att === 'absent' || att === 'late') {
+        if (!seasonMap[s.number]) seasonMap[s.number] = { s, absences: 0, lates: 0 };
+        if (att === 'absent') seasonMap[s.number].absences++;
+        else                  seasonMap[s.number].lates++;
+      }
+    }
+  }
+
+  const seasonRows = Object.values(seasonMap)
+    .sort((a, b) => (b.absences - a.absences) || (b.lates - a.lates) || (a.s.name||'').localeCompare(b.s.name||''));
+
+  const seasonSection = `
+    <div id="att-tab-season-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('att-tab-season')">
+      <span class="section-title" style="margin:0">Season Absences</span>
+      <span class="sec-chevron">▾</span>
+    </div>
+    <div id="att-tab-season">
+      ${!submitted.length
+        ? `<div class="empty-state" style="padding:12px 0"><p>No submitted rehearsals yet.</p></div>`
+        : !seasonRows.length
+          ? `<div class="empty-state" style="padding:12px 0"><p>Perfect attendance so far!</p></div>`
+          : seasonRows.map(({ s, absences, lates }) => {
+              const meta = [fmtPos(s.column, s.row), normInstrument(s.instrument)].filter(Boolean).join(' · ');
+              return `<div class="att-season-row">
+                <div class="att-stu-info">
+                  <span class="att-stu-name">${esc(s.name || `#${s.number}`)}</span>
+                  ${meta ? `<div class="att-stu-meta">${esc(meta)}</div>` : ''}
+                </div>
+                <div class="att-season-chips">
+                  ${absences ? `<span class="att-summary-chip att-chip-absent">${absences} absent</span>` : ''}
+                  ${lates    ? `<span class="att-summary-chip att-chip-late">${lates} late</span>`        : ''}
+                </div>
+              </div>`;
+            }).join('')
+      }
+    </div>`;
+
+  // ── Rehearsal History ─────────────────────────────────────────────────────
+
+  const historyRows = rehearsals.map(r => {
+    const entries = STATE.entries[r.id] || {};
+    const total   = students.length;
+    const absent  = Object.values(entries).filter(e => e.attendance === 'absent').length;
+    const late    = Object.values(entries).filter(e => e.attendance === 'late').length;
+    const present = total - absent - late;
+    const attDone = !!r.attendanceSubmitted;
+    const summary = total
+      ? [absent ? `${absent} absent` : '', late ? `${late} late` : '', `${present} present`].filter(Boolean).join(' · ')
       : 'No students in roster';
     return `
       <div class="card clickable att-tab-row" onclick="navigate('attendance',{rid:'${esc(r.id)}',from:'attendance-tab'})">
@@ -2564,7 +2652,16 @@ function viewAttendanceTab() {
       </div>`;
   }).join('');
 
-  return reportSection + rows;
+  const historySection = `
+    <div id="att-tab-history-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('att-tab-history')">
+      <span class="section-title" style="margin:0">Rehearsal History</span>
+      <span class="sec-chevron">▾</span>
+    </div>
+    <div id="att-tab-history">
+      ${historyRows}
+    </div>`;
+
+  return reportSection + recentSection + seasonSection + historySection;
 }
 
 // ── View: Rehearsal Detail ────────────────────────────────────────────────────
