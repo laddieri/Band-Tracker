@@ -307,6 +307,9 @@ function navigate(view, params = {}) {
   if (_view === 'dashboard' && view !== 'dashboard') {
     _dashRid = null;
   }
+  if (_view === 'attendance' && view !== 'attendance') {
+    _attModifyMode = false;
+  }
   _view   = view;
   _params = params;
   render();
@@ -332,6 +335,7 @@ let _attFilterField = null; // null | 'instrument' | 'row' | 'column' | 'grade'
 let _attFilterValue = null;
 let _dashRid        = null; // null = all rehearsals
 let _attSearch               = '';
+let _attModifyMode           = false; // true = show edit UI even when attendance is submitted
 let _blockMode  = false;
 let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
 let _pendingSegment    = ''; // currently selected rehearsal segment in mark modal
@@ -2956,6 +2960,52 @@ function confirmMarkCustom(rid, num, type) {
 
 // ── Attendance Screen ─────────────────────────────────────────────────────────
 
+function viewAttendanceSummary(rid) {
+  const students = Object.values(DB.getStudents()).sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  const entries  = STATE.entries[rid] || {};
+
+  const absent = students.filter(s => entries[s.number]?.attendance === 'absent');
+  const late   = students.filter(s => entries[s.number]?.attendance === 'late');
+  const present = students.length - absent.length - late.length;
+
+  const stuRow = s => {
+    const meta = [fmtPos(s.column, s.row), normInstrument(s.instrument)].filter(Boolean).join(' · ');
+    return `<div class="att-summary-stu-row">
+      <span class="att-stu-name">${esc(s.name || `#${s.number}`)}</span>
+      ${meta ? `<div class="att-stu-meta">${esc(meta)}</div>` : ''}
+    </div>`;
+  };
+
+  const section = (label, list, cls) => list.length ? `
+    <div class="att-summary-section-hdr ${cls}">${label} — ${list.length} student${list.length !== 1 ? 's' : ''}</div>
+    <div class="att-summary-list">${list.map(stuRow).join('')}</div>` : '';
+
+  return `
+    <div class="att-submitted-banner">✓ Attendance submitted</div>
+
+    <div class="att-screen-summary-bar">
+      <span class="att-summary-chip att-chip-absent">${absent.length} Absent</span>
+      <span class="att-summary-chip att-chip-late">${late.length} Late</span>
+      <span class="att-summary-chip att-chip-present">${present} Present</span>
+    </div>
+
+    <button class="btn btn-secondary" style="width:100%;margin-bottom:20px"
+            onclick="enterAttModifyMode('${esc(rid)}')">Edit Attendance</button>
+
+    ${section('Absent', absent, 'att-summary-hdr-absent')}
+    ${section('Late',   late,   'att-summary-hdr-late')}
+
+    ${!absent.length && !late.length
+      ? `<div class="empty-state"><p>Everyone was present!</p></div>`
+      : ''}
+  `;
+}
+
+function enterAttModifyMode(rid) {
+  _attModifyMode = true;
+  reRender(rid);
+}
+
 function viewAttendance(rid) {
   const r        = STATE.rehearsals.find(r => r.id === rid);
   const students = Object.values(DB.getStudents());
@@ -2965,6 +3015,7 @@ function viewAttendance(rid) {
   }
 
   const submitted = r?.attendanceSubmitted || false;
+  if (submitted && !_attModifyMode) return viewAttendanceSummary(rid);
   const absent   = students.filter(s => entries[s.number]?.attendance === 'absent').length;
   const late     = students.filter(s => entries[s.number]?.attendance === 'late').length;
   const unmarked = students.length - absent - late;
@@ -3234,6 +3285,7 @@ function submitAttendance(rid) {
   r.attendanceSubmitted = true;
   db.collection('rehearsals').doc(rid).set({ attendanceSubmitted: true }, { merge: true });
   showToast('Attendance submitted.');
+  _attModifyMode = false;
   reRender(rid);
 }
 

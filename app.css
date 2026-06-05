@@ -2378,6 +2378,29 @@ html, body {
 }
 .att-screen-btn-done .att-screen-btn-label { color: var(--success); }
 
+/* ── Attendance submitted overview ───────────────────────────────────────────── */
+
+.att-summary-section-hdr {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  padding: 8px 4px 6px;
+  margin-top: 4px;
+  border-bottom: 1.5px solid var(--border);
+  margin-bottom: 4px;
+}
+.att-summary-hdr-absent { color: var(--danger); }
+.att-summary-hdr-late   { color: #92400e; }
+
+.att-summary-list { margin-bottom: 16px; }
+
+.att-summary-stu-row {
+  padding: 10px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.att-summary-stu-row:last-child { border-bottom: none; }
+
 /* ── Submit attendance review modal ──────────────────────────────────────────── */
 
 .att-review-section { margin-bottom: 14px; }
