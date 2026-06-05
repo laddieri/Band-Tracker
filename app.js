@@ -330,6 +330,7 @@ let _blockMode  = false;
 let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
 let _pendingSegment    = ''; // currently selected rehearsal segment in mark modal
 let _pendingStudentCode = ''; // code being verified for anonymous student login
+let _pendingMarkAllFilter = null; // { instruments:[], grades:[] } snapshot for multi-select mark-all
 let _pendingConfirm    = null; // callback for generic confirmation modal
 
 // ── Unified filter state ──────────────────────────────────────────────────────
@@ -3450,7 +3451,10 @@ function submitAttendance(rid) {
 function showMarkAllModal(rid) {
   const instParts  = _trackerFilter.instruments;
   const gradeParts = _trackerFilter.grades;
-  const groupName  = [...instParts, ...gradeParts].join('|') || '__all__';
+  const hasFilter  = instParts.length || gradeParts.length;
+  // Store filter snapshot so _groupMatches can apply OR-within/AND-across logic
+  _pendingMarkAllFilter = hasFilter ? { instruments: [...instParts], grades: [...gradeParts] } : null;
+  const groupName  = hasFilter ? '__filtered__' : '__all__';
   const filterLabel = [
     instParts.join(', '),
     gradeParts.map(g => g + ' Grade').join(', ')
@@ -3516,7 +3520,14 @@ function pickGroupMark(rid, type) {
 
 function _groupMatches(s, groupName) {
   if (groupName === '__all__') return true;
-  // pipe-separated parts mean ALL parts must match (instrument|grade combined filter)
+  // Multi-select mark-all: uses stored filter snapshot (OR within category, AND across)
+  if (groupName === '__filtered__') {
+    const f = _pendingMarkAllFilter;
+    if (!f) return true;
+    return (!f.instruments.length || f.instruments.includes(normInstrument(s.instrument))) &&
+           (!f.grades.length      || f.grades.includes(s.grade || ''));
+  }
+  // Custom group name (from showGroupPickerModal) — pipe-separated, ALL parts must match
   const parts = groupName.split('|');
   return parts.every(part => {
     const p = part.trim().toLowerCase();
