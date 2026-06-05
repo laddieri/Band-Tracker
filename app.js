@@ -68,6 +68,8 @@ const STATE = {
   user:         null,
   authChecking: true,
   loading:      true,
+  orgId:        null,
+  needsOnboarding: false,
   isAdmin:      false,
   studentNum:   null,
   students:     {},
@@ -104,7 +106,7 @@ const DB = {
 
 async function fsUpsertEntry(rid, num, data) {
   const docId = `${rid}_${String(num)}`;
-  await db.collection('entries').doc(docId).set({
+  await orgCol('entries').doc(docId).set({
     rehearsalId: rid,
     studentNumber: String(num),
     ...data,
@@ -113,25 +115,100 @@ async function fsUpsertEntry(rid, num, data) {
   }, { merge: true });
 }
 
+// ── Org scoping ───────────────────────────────────────────────────────────────
+
+// Returns a reference to a per-org subcollection. All app data lives under
+// orgs/{orgId}/..., so every read and write is scoped to the current org.
+function orgCol(name) {
+  if (!STATE.orgId) throw new Error(`orgCol('${name}') called before an org was resolved`);
+  return db.collection('orgs').doc(STATE.orgId).collection(name);
+}
+
+// Keep the top-level studentCodes lookup in sync so anonymous students can
+// resolve their org from a code before any membership exists. (See
+// docs/DATA_MODEL.md.) No-op for empty codes.
+function setStudentCodeLookup(code, studentNumber) {
+  if (!code || !STATE.orgId) return Promise.resolve();
+  return db.collection('studentCodes').doc(String(code).toUpperCase())
+    .set({ orgId: STATE.orgId, studentNumber: String(studentNumber) }, { merge: true });
+}
+
+// Resolve which org the signed-in user belongs to (and their role) before any
+// data is read. Membership lives in /members/{uid} (interim model — see
+// docs/DATA_MODEL.md). Returns true if an org was resolved and listeners should
+// start; false if the flow was redirected (sign-out or onboarding).
+async function resolveMembership() {
+  const uid = STATE.user.uid;
+
+  // Already a member? Use it.
+  try {
+    const snap = await db.collection('members').doc(uid).get();
+    if (snap.exists) {
+      const m = snap.data();
+      STATE.orgId   = m.orgId;
+      STATE.isAdmin = m.role === 'director';
+      if (m.studentNumber) STATE.studentNum = String(m.studentNumber);
+      return true;
+    }
+  } catch (e) {
+    console.error('membership lookup failed:', e);
+  }
+
+  // Anonymous student with no membership yet — resolve via their student code.
+  if (STATE.user.isAnonymous) {
+    const code = (_pendingStudentCode || localStorage.getItem('bandStudentCode') || '').toUpperCase();
+    if (code) {
+      try {
+        const codeSnap = await db.collection('studentCodes').doc(code).get();
+        if (codeSnap.exists) {
+          const { orgId, studentNumber } = codeSnap.data();
+          // Create our own membership (rules permit this for a valid code).
+          await db.collection('members').doc(uid).set({
+            orgId, studentNumber: String(studentNumber), role: 'student', joinCode: code
+          });
+          STATE.orgId      = orgId;
+          STATE.isAdmin    = false;
+          STATE.studentNum = String(studentNumber);
+          localStorage.setItem('bandStudentNum', String(studentNumber));
+          _pendingStudentCode = '';
+          return true;
+        }
+      } catch (e) {
+        console.error('student code lookup failed:', e);
+      }
+    }
+    // Missing or invalid code — end the anonymous session.
+    localStorage.removeItem('bandStudentCode');
+    localStorage.removeItem('bandStudentNum');
+    showToast('Code not found. Please check and try again.');
+    auth.signOut(); // onAuthStateChanged clears state and re-renders
+    return false;
+  }
+
+  // Signed-in director/email user with no org yet — needs onboarding (create or
+  // join a band). The onboarding UI is a separate milestone.
+  STATE.orgId           = null;
+  STATE.isAdmin         = false;
+  STATE.needsOnboarding = true;
+  STATE.loading         = false;
+  render();
+  return false;
+}
+
 // ── Firestore listeners ───────────────────────────────────────────────────────
 
-function startListeners() {
+async function startListeners() {
   STATE._unsubs.forEach(u => u());
   STATE._unsubs = [];
   STATE.loading = true;
-  const loaded = new Set();
 
+  // Resolve the user's org before reading any data; bail if redirected.
+  if (!await resolveMembership()) return;
+
+  const loaded = new Set();
   function tick(key) {
     loaded.add(key);
     if (loaded.size >= 4 && STATE.loading) {
-      // All collections loaded — reject anonymous sessions with no valid student code
-      if (STATE.user?.isAnonymous && !STATE.studentNum) {
-        localStorage.removeItem('bandStudentCode');
-        localStorage.removeItem('bandStudentNum');
-        showToast('Code not found. Please check and try again.');
-        auth.signOut(); // onAuthStateChanged will clear state and call render()
-        return;
-      }
       STATE.loading = false;
       render();
     } else if (!STATE.loading) {
@@ -139,22 +216,9 @@ function startListeners() {
     }
   }
 
-  const listeners = [];
-
-  // Admin listener — directors only
-  if (!STATE.user.isAnonymous && STATE.user.email) {
-    listeners.push(
-      db.collection('admins').doc(STATE.user.email).onSnapshot(doc => {
-        const prev = STATE.isAdmin;
-        STATE.isAdmin = doc.exists;
-        if (prev !== STATE.isAdmin && !STATE.loading) render();
-      })
-    );
-  }
-
-  // Settings listener — all signed-in users (students need leaderboard toggle + pseudonym salt)
-  listeners.push(
-    db.collection('settings').doc('presets').onSnapshot(doc => {
+  const listeners = [
+    // Settings — all members (students need the leaderboard toggle + pseudonym salt)
+    orgCol('settings').doc('presets').onSnapshot(doc => {
       const d = doc.exists ? doc.data() : {};
       STATE.mistakePresets             = d.mistakePresets?.length  ? d.mistakePresets  : [...MISTAKE_PRESETS];
       STATE.positivePresets            = d.positivePresets?.length ? d.positivePresets : [...POSITIVE_PRESETS];
@@ -166,42 +230,17 @@ function startListeners() {
       STATE.bandName                   = d.bandName || '';
       STATE.bandLogo                   = d.bandLogo || '';
       if (!STATE.loading) render();
-    })
-  );
+    }),
 
-  listeners.push(
-    db.collection('students').onSnapshot({ includeMetadataChanges: true }, snap => {
+    orgCol('students').onSnapshot({ includeMetadataChanges: true }, snap => {
       snap.docChanges().forEach(ch => {
         if (ch.type === 'removed') delete STATE.students[ch.doc.id];
         else STATE.students[ch.doc.id] = { ...ch.doc.data(), _id: ch.doc.id };
       });
 
-      // Skip cache-only snapshots during anonymous code lookup — the first snapshot
-      // may fire before Firestore receives the auth token and will have 0 documents.
-      // Wait for the server-confirmed snapshot (fromCache: false) to arrive.
-      if (STATE.user?.isAnonymous && _pendingStudentCode && snap.metadata.fromCache) {
-        return;
-      }
-
-      if (STATE.user?.isAnonymous) {
-        // Keep previously-resolved student num, or look up by stored num
-        const storedNum = localStorage.getItem('bandStudentNum');
-        if (storedNum && STATE.students[storedNum]) {
-          STATE.studentNum = storedNum;
-        } else if (_pendingStudentCode) {
-          STATE.studentNum = null;
-          for (const [num, s] of Object.entries(STATE.students)) {
-            if (s.studentCode && s.studentCode.toUpperCase() === _pendingStudentCode.toUpperCase()) {
-              STATE.studentNum = num;
-              localStorage.setItem('bandStudentNum', num);
-              _pendingStudentCode = '';
-              break;
-            }
-          }
-        }
-      } else {
-        // Regular (email) users: look up by studentEmail field
-        STATE.studentNum = null;
+      // Email (non-anonymous, non-director) users: match their student record by
+      // studentEmail if we don't already have a student number.
+      if (!STATE.user?.isAnonymous && !STATE.isAdmin && !STATE.studentNum) {
         const email = STATE.user?.email?.toLowerCase();
         if (email) {
           for (const [num, s] of Object.entries(STATE.students)) {
@@ -216,14 +255,14 @@ function startListeners() {
       tick('students');
     }),
 
-    db.collection('rehearsals').onSnapshot(snap => {
+    orgCol('rehearsals').onSnapshot(snap => {
       STATE.rehearsals = snap.docs
         .map(d => ({ ...d.data(), id: d.id }))
         .sort((a, b) => b.date.localeCompare(a.date));
       tick('rehearsals');
     }),
 
-    db.collection('entries').onSnapshot(snap => {
+    orgCol('entries').onSnapshot(snap => {
       snap.docChanges().forEach(ch => {
         const d = ch.doc.data();
         if (!d.rehearsalId || !d.studentNumber) return;
@@ -237,7 +276,7 @@ function startListeners() {
       tick('entries');
     }),
 
-    db.collection('songs').onSnapshot(snap => {
+    orgCol('songs').onSnapshot(snap => {
       STATE.songs = snap.docs
         .map(d => ({ ...d.data(), id: d.id }))
         .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
@@ -246,7 +285,7 @@ function startListeners() {
       console.error('songs listener error:', err);
       tick('songs'); // don't hang the app — songs will be empty
     })
-  );
+  ];
 
   STATE._unsubs = listeners;
 }
@@ -274,6 +313,8 @@ auth.onAuthStateChanged(user => {
     STATE._unsubs.forEach(u => u());
     STATE._unsubs = [];
     STATE.loading    = false;
+    STATE.orgId      = null;
+    STATE.needsOnboarding = false;
     STATE.isAdmin    = false;
     STATE.studentNum = null;
     STATE.students   = {};
@@ -658,6 +699,23 @@ function render() {
     title.textContent = 'Band Tracker';
     actions.innerHTML = userBtn();
     main.innerHTML = `<div class="loading-view"><div class="spinner"></div><span>Loading data…</span></div>`;
+    return;
+  }
+
+  // Signed in but not yet linked to a band. The self-serve create/join flow is a
+  // separate milestone; for now show a clear message instead of a blank app.
+  if (STATE.needsOnboarding) {
+    backBtn.classList.add('hidden');
+    title.textContent = 'Band Tracker';
+    actions.innerHTML = userBtn();
+    nav.style.display = 'none';
+    main.innerHTML = `
+      <div class="empty-state" style="padding:48px 24px;text-align:center;">
+        <h2>No band linked yet</h2>
+        <p>Your account isn’t connected to a band. If you’re a director, your
+        band needs to be set up for your account. If you’re a student, sign in
+        with your student code instead.</p>
+      </div>`;
     return;
   }
 
@@ -1076,7 +1134,7 @@ async function saveBrandSettings() {
   _pendingLogoData = null;
   STATE.bandName = name;
   STATE.bandLogo = logo;
-  await db.collection('settings').doc('presets').set({ bandName: name, bandLogo: logo }, { merge: true });
+  await orgCol('settings').doc('presets').set({ bandName: name, bandLogo: logo }, { merge: true });
   closeModal();
   showToast('Band settings saved.');
   render();
@@ -1152,7 +1210,7 @@ function startToday() {
   const id = genId();
   const r  = { id, date: today(), label: '' };
   STATE.rehearsals.unshift(r);
-  db.collection('rehearsals').doc(id).set(r);
+  orgCol('rehearsals').doc(id).set(r);
   navigate('rehearsal', { rid: id });
 }
 
@@ -1371,7 +1429,7 @@ async function autoGenerateStudentCodes() {
   for (let i = 0; i < updates.length; i += CHUNK) {
     const batch = db.batch();
     updates.slice(i, i + CHUNK).forEach(({ s, code }) => {
-      batch.update(db.collection('students').doc(s.number), { studentCode: code });
+      batch.update(orgCol('students').doc(s.number), { studentCode: code });
     });
     await batch.commit().catch(e => { showToast('Failed — ' + (e.message || 'check console')); throw e; });
   }
@@ -1379,6 +1437,17 @@ async function autoGenerateStudentCodes() {
   for (const { s, code } of updates) {
     STATE.students[s.number] = { ...STATE.students[s.number], studentCode: code };
   }
+
+  // Mirror new codes into the studentCodes lookup so students can sign in.
+  for (let i = 0; i < updates.length; i += CHUNK) {
+    const batch = db.batch();
+    updates.slice(i, i + CHUNK).forEach(({ s, code }) => {
+      batch.set(db.collection('studentCodes').doc(code.toUpperCase()),
+        { orgId: STATE.orgId, studentNumber: String(s.number) }, { merge: true });
+    });
+    await batch.commit().catch(e => console.error('studentCodes sync failed:', e));
+  }
+
   showToast(`${updates.length} code${updates.length !== 1 ? 's' : ''} generated.`);
   render();
 }
@@ -1420,7 +1489,7 @@ async function deleteRoster() {
   for (let i = 0; i < nums.length; i += CHUNK) {
     const batch = db.batch();
     nums.slice(i, i + CHUNK).forEach(num => {
-      batch.delete(db.collection('students').doc(num));
+      batch.delete(orgCol('students').doc(num));
     });
     await batch.commit().catch(e => { showToast('Delete failed — ' + (e.message || 'check console')); throw e; });
   }
@@ -1665,14 +1734,14 @@ function confirmSongFail(sid, num) {
 function _applySongStatus(sid, num, song, status, note = '') {
   if (status === 'not_attempted') {
     delete song.statuses[String(num)];
-    db.collection('songs').doc(sid).update({
+    orgCol('songs').doc(sid).update({
       [`statuses.${num}`]: firebase.firestore.FieldValue.delete()
     }).catch(() => {
-      db.collection('songs').doc(sid).set({ statuses: song.statuses }, { merge: false });
+      orgCol('songs').doc(sid).set({ statuses: song.statuses }, { merge: false });
     });
   } else {
     song.statuses[String(num)] = { status, note: note || '', updatedAt: Date.now(), updatedBy: STATE.user?.email || '' };
-    db.collection('songs').doc(sid).set({ statuses: { [String(num)]: song.statuses[String(num)] } }, { merge: true });
+    orgCol('songs').doc(sid).set({ statuses: { [String(num)]: song.statuses[String(num)] } }, { merge: true });
   }
 
   const listEl = document.getElementById('song-student-list');
@@ -1805,7 +1874,7 @@ function saveEditSongCategory(idx) {
   STATE.songs.forEach(song => {
     if (song.category === old) {
       song.category = val;
-      db.collection('songs').doc(song.id).set({ category: val }, { merge: true });
+      orgCol('songs').doc(song.id).set({ category: val }, { merge: true });
     }
   });
   showManageSongCategoriesModal();
@@ -1813,7 +1882,7 @@ function saveEditSongCategory(idx) {
 
 async function _saveSongCategories() {
   try {
-    await db.collection('settings').doc('presets').set(
+    await orgCol('settings').doc('presets').set(
       { songCategories: STATE.songCategories }, { merge: true }
     );
   } catch(e) {
@@ -1853,7 +1922,7 @@ function saveSong() {
   const category = document.getElementById('m-song-category')?.value || '';
   if (!title) { showToast('Please enter a song title.'); return; }
   closeModal();
-  const ref = db.collection('songs').doc();
+  const ref = orgCol('songs').doc();
   const doc = { title, dueDate, category, addedBy: STATE.user?.email || '', addedAt: Date.now(), statuses: {} };
   STATE.songs.push({ ...doc, id: ref.id });
   STATE.songs.sort((a, b) => (a.dueDate || 'z').localeCompare(b.dueDate || 'z'));
@@ -1901,7 +1970,7 @@ function updateSong(sid) {
   song.title    = title;
   song.dueDate  = dueDate;
   song.category = category;
-  db.collection('songs').doc(sid).set({ title, dueDate, category }, { merge: true });
+  orgCol('songs').doc(sid).set({ title, dueDate, category }, { merge: true });
   closeModal();
   render();
 }
@@ -1909,7 +1978,7 @@ function updateSong(sid) {
 function confirmDeleteSong(sid) {
   if (!confirm('Delete this song and all its memorization data?\n\nThis cannot be undone.')) return;
   STATE.songs = STATE.songs.filter(s => s.id !== sid);
-  db.collection('songs').doc(sid).delete();
+  orgCol('songs').doc(sid).delete();
   closeModal();
   navigate('songs');
   showToast('Song deleted.');
@@ -3564,7 +3633,7 @@ async function markAllPresent(rid) {
   const batch = db.batch();
   for (const [num] of marked) {
     const docId = `${rid}_${num}`;
-    batch.update(db.collection('entries').doc(docId), {
+    batch.update(orgCol('entries').doc(docId), {
       attendance: firebase.firestore.FieldValue.delete()
     });
     STATE.entries[rid][num] = { ...STATE.entries[rid][num], attendance: null };
@@ -3635,7 +3704,7 @@ function _applyAttendance(rid, num, cur, next) {
   STATE.entries[rid][num] = { ...cur, attendance: next };
   const docId = `${rid}_${String(num)}`;
   if (!next) {
-    db.collection('entries').doc(docId).update({
+    orgCol('entries').doc(docId).update({
       attendance: firebase.firestore.FieldValue.delete()
     }).catch(() => {});
   } else {
@@ -3697,7 +3766,7 @@ function submitAttendance(rid) {
   const r = STATE.rehearsals.find(r => r.id === rid);
   if (!r) return;
   r.attendanceSubmitted = true;
-  db.collection('rehearsals').doc(rid).set({ attendanceSubmitted: true }, { merge: true });
+  orgCol('rehearsals').doc(rid).set({ attendanceSubmitted: true }, { merge: true });
   showToast('Attendance submitted.');
   _attModifyMode = false;
   reRender(rid);
@@ -3871,7 +3940,7 @@ async function confirmGroupMark(rid, groupName, type, note) {
     if (!STATE.entries[rid]) STATE.entries[rid] = {};
     STATE.entries[rid][num] = { ...cur, [field]: newVal, events };
     const att = cur.attendance || null;
-    batch.set(db.collection('entries').doc(`${rid}_${num}`), {
+    batch.set(orgCol('entries').doc(`${rid}_${num}`), {
       rehearsalId: rid, studentNumber: num,
       mistakes:  STATE.entries[rid][num].mistakes,
       positives: STATE.entries[rid][num].positives,
@@ -4172,7 +4241,7 @@ function saveNewStudent() {
   };
 
   STATE.students[num] = student;
-  db.collection('students').doc(num).set(student);
+  orgCol('students').doc(num).set(student);
   closeModal();
   showToast(`${student.name || `#${num}`} added`);
   if (_view === 'roster' || _view === 'student') render();
@@ -4276,7 +4345,8 @@ function saveEditStudent(num) {
     studentEmail: document.getElementById('m-student-email').value.trim().toLowerCase(),
   };
   STATE.students[num] = { ...STATE.students[num], ...patch };
-  db.collection('students').doc(num).set(patch, { merge: true });
+  orgCol('students').doc(num).set(patch, { merge: true });
+  setStudentCodeLookup(patch.studentCode, num);
   closeModal();
   showToast('Student updated');
   render();
@@ -4286,9 +4356,9 @@ function confirmDeleteStudent(num) {
   const sName = STATE.students[num]?.name || `#${num}`;
   if (!confirm(`Delete ${sName} and all their rehearsal data?\n\nThis cannot be undone.`)) return;
   delete STATE.students[num];
-  db.collection('students').doc(num).delete();
+  orgCol('students').doc(num).delete();
   // Delete all entries for this student
-  db.collection('entries').where('studentNumber', '==', String(num)).get().then(snap => {
+  orgCol('entries').where('studentNumber', '==', String(num)).get().then(snap => {
     const batch = db.batch();
     snap.forEach(doc => batch.delete(doc.ref));
     batch.commit();
@@ -4326,7 +4396,7 @@ function saveNewRehearsal() {
   const r  = { id, date, label: document.getElementById('m-label').value.trim() };
   STATE.rehearsals.unshift(r);
   STATE.rehearsals.sort((a,b) => b.date.localeCompare(a.date));
-  db.collection('rehearsals').doc(id).set(r);
+  orgCol('rehearsals').doc(id).set(r);
   closeModal();
   _activeRid = id;
   navigate('dashboard', { rid: id });
@@ -4418,7 +4488,7 @@ function addSegment(rid) {
   if (!r) return;
   const segments = [...(r.segments || []), name];
   r.segments = segments;
-  db.collection('rehearsals').doc(rid).set({ segments }, { merge: true });
+  orgCol('rehearsals').doc(rid).set({ segments }, { merge: true });
   showRehearsalPlanModal(rid);
 }
 
@@ -4427,7 +4497,7 @@ function removeSegment(rid, idx) {
   if (!r) return;
   const segments = (r.segments || []).filter((_, i) => i !== idx);
   r.segments = segments;
-  db.collection('rehearsals').doc(rid).set({ segments }, { merge: true });
+  orgCol('rehearsals').doc(rid).set({ segments }, { merge: true });
   showRehearsalPlanModal(rid);
 }
 
@@ -4446,7 +4516,7 @@ function saveRehearsalEdit(rid) {
     label: document.getElementById('m-label').value.trim()
   };
   STATE.rehearsals[idx] = { ...STATE.rehearsals[idx], ...patch };
-  db.collection('rehearsals').doc(rid).set(patch, { merge: true });
+  orgCol('rehearsals').doc(rid).set(patch, { merge: true });
   closeModal();
   showToast('Rehearsal updated');
   render();
@@ -4511,7 +4581,7 @@ async function endRehearsal(rid) {
     }
 
     const positives = events.filter(e => e.type === 'positive').length;
-    const docRef    = db.collection('entries').doc(`${rid}_${num}`);
+    const docRef    = orgCol('entries').doc(`${rid}_${num}`);
     batch.set(docRef, {
       rehearsalId:   rid,
       studentNumber: String(num),
@@ -4529,7 +4599,7 @@ async function endRehearsal(rid) {
   }
 
   r.ended = true;
-  db.collection('rehearsals').doc(rid).set({ ended: true }, { merge: true });
+  orgCol('rehearsals').doc(rid).set({ ended: true }, { merge: true });
   await batch.commit();
   // Advance active rehearsal to the next open one if this was the active one
   if (_activeRid === rid || !_activeRid) {
@@ -4556,7 +4626,7 @@ function reopenRehearsal(rid) {
       `<strong>${curLabel}</strong> is currently open. Reopening <strong>${newLabel}</strong> will make it the active rehearsal for student feedback. The current rehearsal will remain open and become active again once this one is ended.`,
       () => {
         r.ended = false;
-        db.collection('rehearsals').doc(rid).set({ ended: false }, { merge: true });
+        orgCol('rehearsals').doc(rid).set({ ended: false }, { merge: true });
         _activeRid = rid;
         showToast(`Switched to ${newLabel}`);
         render();
@@ -4567,7 +4637,7 @@ function reopenRehearsal(rid) {
     return;
   }
   r.ended = false;
-  db.collection('rehearsals').doc(rid).set({ ended: false }, { merge: true });
+  orgCol('rehearsals').doc(rid).set({ ended: false }, { merge: true });
   _activeRid = rid;
   showToast('Rehearsal reopened.');
   render();
@@ -4577,8 +4647,8 @@ function confirmDeleteRehearsal(rid) {
   if (!confirm('Delete this rehearsal and all its data?\n\nThis cannot be undone.')) return;
   STATE.rehearsals = STATE.rehearsals.filter(r => r.id !== rid);
   delete STATE.entries[rid];
-  db.collection('rehearsals').doc(rid).delete();
-  db.collection('entries').where('rehearsalId', '==', rid).get().then(snap => {
+  orgCol('rehearsals').doc(rid).delete();
+  orgCol('entries').where('rehearsalId', '==', rid).get().then(snap => {
     const batch = db.batch();
     snap.forEach(doc => batch.delete(doc.ref));
     batch.commit();
@@ -4673,7 +4743,7 @@ function resetInstrumentsToDefaults() {
 
 async function _saveInstruments() {
   try {
-    await db.collection('settings').doc('presets').set(
+    await orgCol('settings').doc('presets').set(
       { instruments: STATE.instruments }, { merge: true }
     );
   } catch(e) {
@@ -4687,7 +4757,7 @@ async function _saveInstruments() {
 async function randomizePseudonyms() {
   const salt = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
   try {
-    await db.collection('settings').doc('presets').set({ pseudonymSalt: salt }, { merge: true });
+    await orgCol('settings').doc('presets').set({ pseudonymSalt: salt }, { merge: true });
     showToast('Leaderboard names reassigned.');
   } catch(e) {
     console.error('Failed to randomize pseudonyms:', e);
@@ -4698,7 +4768,7 @@ async function randomizePseudonyms() {
 async function toggleMarchingLeaderboard() {
   STATE.marchingLeaderboardEnabled = !STATE.marchingLeaderboardEnabled;
   try {
-    await db.collection('settings').doc('presets').set(
+    await orgCol('settings').doc('presets').set(
       { marchingLeaderboardEnabled: STATE.marchingLeaderboardEnabled }, { merge: true }
     );
   } catch(e) {
@@ -4792,7 +4862,7 @@ function resetSectionsToDefaults() {
 
 async function _saveSections() {
   try {
-    await db.collection('settings').doc('presets').set(
+    await orgCol('settings').doc('presets').set(
       { sections: STATE.sections }, { merge: true }
     );
   } catch(e) {
@@ -4895,7 +4965,7 @@ function saveEditPreset(type, idx) {
 
 async function _savePresets() {
   try {
-    await db.collection('settings').doc('presets').set({
+    await orgCol('settings').doc('presets').set({
       mistakePresets:  STATE.mistakePresets,
       positivePresets: STATE.positivePresets
     });
@@ -5107,14 +5177,14 @@ async function executeImport() {
     if (existing[num]) {
       if (strategy === 'overwrite') {
         STATE.students[num] = { ...STATE.students[num], ...incoming };
-        batch.set(db.collection('students').doc(num), incoming, { merge: true });
+        batch.set(orgCol('students').doc(num), incoming, { merge: true });
         updated++;
       } else {
         skipped++;
       }
     } else {
       STATE.students[num] = incoming;
-      batch.set(db.collection('students').doc(num), incoming);
+      batch.set(orgCol('students').doc(num), incoming);
       added++;
     }
   }

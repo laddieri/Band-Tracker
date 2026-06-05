@@ -43,23 +43,31 @@ GOOGLE_APPLICATION_CREDENTIALS=./service-account.json \
 If a director has never signed in, the script can't find their Auth `uid` and
 will warn. Have them sign in once, then re-run (it's idempotent).
 
-## 2. Update the app to read/write the org subtree (next milestone)
+## 2. Update the app to read/write the org subtree — DONE
 
-`app.js` must be changed to:
+`app.js` has been scoped to the org subtree:
 
-- Resolve the current user's `orgId` from `members/{uid}` at startup.
-- Point every `db.collection('students' | 'rehearsals' | 'entries' | 'songs' |
-  'settings')` call at `db.collection('orgs').doc(orgId).collection(...)`.
-- Resolve anonymous students via `studentCodes/{CODE}` and write their own
-  `members/{uid}` doc.
-
-This is the "scope all queries to orgId" milestone (~40–50 call sites). The
-cleanest way is a small data-access helper, e.g. `orgCol(name)` returning the
-right subcollection ref, so the change is mechanical and centralized.
+- `resolveMembership()` runs at startup, reading the current user's `orgId` and
+  role from `members/{uid}`.
+- A small `orgCol(name)` helper returns
+  `db.collection('orgs').doc(orgId).collection(name)`; every `students`,
+  `rehearsals`, `entries`, `songs`, and `settings` access now goes through it.
+- Anonymous students resolve their org via `studentCodes/{CODE}` and create
+  their own `members/{uid}` doc on first sign-in.
+- When a director generates or edits a student code, the top-level
+  `studentCodes` lookup is kept in sync (`setStudentCodeLookup`).
+- A signed-in user with no membership sees a "No band linked yet" screen
+  (`STATE.needsOnboarding`) instead of a blank app, until the onboarding
+  milestone lands.
 
 Deploy the updated `app.js` (push to GitHub Pages) **after** step 1 and verify
 it works while the **old rules are still live** (old rules are permissive, so
-the new subtree reads/writes are allowed).
+the new subtree reads/writes are allowed). Then proceed to step 3.
+
+> Known follow-ups (not blockers): if a student's code is *changed*, the old
+> `studentCodes/{OLD}` doc is left behind (the old code still resolves);
+> clean-up can be added with the onboarding milestone. Email-only student logins
+> require a `members` doc — handled by the onboarding flow.
 
 ## 3. Deploy the new security rules (the lockdown)
 
