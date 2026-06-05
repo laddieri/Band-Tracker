@@ -81,6 +81,8 @@ const STATE = {
   marchingLeaderboardEnabled: false,
   pseudonymSalt:              '',
   songCategories:             [],
+  bandName:                   '',
+  bandLogo:                   '',
   _unsubs:      []
 };
 
@@ -161,6 +163,8 @@ function startListeners() {
       STATE.marchingLeaderboardEnabled = !!d.marchingLeaderboardEnabled;
       STATE.pseudonymSalt              = d.pseudonymSalt || '';
       STATE.songCategories             = d.songCategories || [];
+      STATE.bandName                   = d.bandName || '';
+      STATE.bandLogo                   = d.bandLogo || '';
       if (!STATE.loading) render();
     })
   );
@@ -331,6 +335,7 @@ let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
 let _pendingSegment    = ''; // currently selected rehearsal segment in mark modal
 let _pendingStudentCode = ''; // code being verified for anonymous student login
 let _pendingMarkAllFilter = null; // { instruments:[], grades:[] } snapshot for multi-select mark-all
+let _pendingLogoData   = null; // null=no change, ''=clear, dataURL=new logo
 let _pendingConfirm    = null; // callback for generic confirmation modal
 
 // ── Unified filter state ──────────────────────────────────────────────────────
@@ -608,9 +613,21 @@ function render() {
   const tabs    = document.querySelectorAll('.nav-tab');
   const nav     = document.getElementById('bottom-nav');
 
+  // Sync header logo + browser tab title
+  const headerLogo = document.getElementById('header-logo');
+  if (headerLogo) {
+    if (STATE.bandLogo) {
+      headerLogo.src = STATE.bandLogo;
+      headerLogo.style.display = '';
+    } else {
+      headerLogo.style.display = 'none';
+    }
+  }
+  document.title = STATE.bandName || 'Band Tracker';
+
   if (STATE.authChecking) {
     backBtn.classList.add('hidden');
-    title.textContent = 'Band Tracker';
+    title.textContent = STATE.bandName || 'Band Tracker';
     actions.innerHTML = '';
     nav.style.display = 'none';
     main.innerHTML = `<div class="loading-view"><div class="spinner"></div></div>`;
@@ -817,8 +834,10 @@ function userBtn() {
 function viewLogin() {
   return `
     <div class="login-view">
-      <div class="login-logo">🎺</div>
-      <div class="login-title">Band Tracker</div>
+      ${STATE.bandLogo
+        ? `<img src="${STATE.bandLogo}" class="login-logo-img" alt="Band Logo">`
+        : `<div class="login-logo">🎺</div>`}
+      <div class="login-title">${esc(STATE.bandName || 'Band Tracker')}</div>
 
       <div class="login-section-label">Students</div>
       <div id="student-code-error"></div>
@@ -940,10 +959,98 @@ function showUserMenu() {
       <span style="font-size:0.8rem">${STATE.isAdmin ? '⭐ Admin' : 'Director'}</span>
     </div>
     <div class="modal-actions">
+      ${STATE.isAdmin ? `<button class="btn btn-secondary btn-full" onclick="closeModal();showBrandSettingsModal()">Band Settings</button>` : ''}
       <button class="btn btn-secondary btn-full" onclick="closeModal()">Close</button>
       <button class="btn btn-danger btn-full" onclick="doLogout()">Sign Out</button>
     </div>
   `);
+}
+
+// ── Brand settings ────────────────────────────────────────────────────────────
+
+function showBrandSettingsModal() {
+  if (!STATE.isAdmin) return;
+  _pendingLogoData = null;
+  const currentLogo = STATE.bandLogo;
+  openModal(`
+    <div class="modal-title">Band Settings</div>
+
+    <div class="form-group">
+      <label class="form-label">Band Name</label>
+      <input class="form-input" id="brand-name-input" type="text"
+             placeholder="e.g. Lincoln High School Band"
+             value="${esc(STATE.bandName)}">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Logo</label>
+      <div class="brand-logo-area" id="brand-logo-area">
+        ${currentLogo
+          ? `<img src="${currentLogo}" class="brand-logo-preview" id="brand-logo-preview" alt="Current logo">`
+          : `<div class="brand-logo-placeholder" id="brand-logo-preview" style="display:none"></div>`}
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <label class="btn btn-secondary" style="cursor:pointer;margin:0">
+          ${currentLogo ? 'Replace Logo' : 'Upload Logo'}
+          <input type="file" accept="image/*" style="display:none" onchange="handleLogoUpload(event)">
+        </label>
+        ${currentLogo ? `<button class="btn btn-secondary" onclick="removeBrandLogo()">Remove</button>` : ''}
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveBrandSettings()">Save</button>
+    </div>
+  `);
+}
+
+function handleLogoUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 192;
+      let { width, height } = img;
+      if (width > MAX || height > MAX) {
+        const ratio = Math.min(MAX / width, MAX / height);
+        width  = Math.round(width  * ratio);
+        height = Math.round(height * ratio);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width  = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      _pendingLogoData = canvas.toDataURL('image/png');
+      const preview = document.getElementById('brand-logo-preview');
+      if (preview) {
+        preview.src   = _pendingLogoData;
+        preview.style.display = '';
+        preview.className = 'brand-logo-preview';
+      }
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeBrandLogo() {
+  _pendingLogoData = '';
+  showBrandSettingsModal(); // re-open without current logo so Remove btn disappears
+}
+
+async function saveBrandSettings() {
+  const name = document.getElementById('brand-name-input')?.value.trim() || '';
+  const logo = _pendingLogoData !== null ? _pendingLogoData : STATE.bandLogo;
+  _pendingLogoData = null;
+  STATE.bandName = name;
+  STATE.bandLogo = logo;
+  await db.collection('settings').doc('presets').set({ bandName: name, bandLogo: logo }, { merge: true });
+  closeModal();
+  showToast('Band settings saved.');
+  render();
 }
 
 // ── View: Home ────────────────────────────────────────────────────────────────
