@@ -761,7 +761,7 @@ function render() {
     case 'rehearsal': {
       const r = DB.getRehearsals().find(r => r.id === _params.rid);
       title.textContent = r ? fmtShort(r.date) + (r.label ? ` — ${r.label}` : '') : 'Rehearsal';
-      actions.innerHTML = optBtn(`showRehearsalOptions('${esc(_params.rid)}')`) + userBtn();
+      actions.innerHTML = userBtn();
       main.innerHTML = viewRehearsal(_params.rid);
       if (_blockMode && !_activeNum) initBlockPinch(_params.rid);
       break;
@@ -799,7 +799,7 @@ function render() {
       if (STATE.isAdmin && openR) {
         _params = { ..._params, rid: openR.id };
         title.textContent = 'Student Feedback';
-        actions.innerHTML = optBtn(`showRehearsalOptions('${esc(openR.id)}')`) + userBtn();
+        actions.innerHTML = userBtn();
         main.innerHTML = viewRehearsal(openR.id);
         if (_blockMode && !_activeNum) initBlockPinch(openR.id);
       } else {
@@ -2743,7 +2743,9 @@ function viewRehearsals() {
           <div class="rh-card-menu-wrap">
             <button class="rh-card-menu-btn" onclick="event.stopPropagation();toggleRhMenu('${esc(r.id)}')" aria-label="More options">⋯</button>
             <div class="rh-card-menu-list hidden" id="rh-menu-${esc(r.id)}">
-              ${!ended ? '' : `<button class="rh-card-menu-item" onclick="reopenRehearsal('${esc(r.id)}')">Reopen Rehearsal</button>`}
+              <button class="rh-card-menu-item" onclick="showRehearsalEditModal('${esc(r.id)}')">Edit Rehearsal</button>
+              <button class="rh-card-menu-item" onclick="showRehearsalPlanModal('${esc(r.id)}')">Rehearsal Plan</button>
+              ${ended ? `<button class="rh-card-menu-item" onclick="reopenRehearsal('${esc(r.id)}')">Reopen Rehearsal</button>` : ''}
               <button class="rh-card-menu-item rh-menu-danger" onclick="confirmDeleteRehearsal('${esc(r.id)}')">Delete Rehearsal</button>
             </div>
           </div>` : '';
@@ -4302,12 +4304,11 @@ function saveNewRehearsal() {
   navigate('dashboard', { rid: id });
 }
 
-function showRehearsalOptions(rid) {
+function showRehearsalEditModal(rid) {
   const r = DB.getRehearsals().find(r => r.id === rid);
   if (!r) return;
-  const segments = r.segments || [];
   openModal(`
-    <div class="modal-title">Rehearsal Options</div>
+    <div class="modal-title">Edit Rehearsal</div>
     <div class="form-group">
       <label class="form-label">Date</label>
       <input class="form-input" id="m-date" type="date" value="${esc(r.date)}">
@@ -4317,13 +4318,20 @@ function showRehearsalOptions(rid) {
       <input class="form-input" id="m-label" type="text" value="${esc(r.label||'')}"
              placeholder="e.g. Evening, Full Band…" autocomplete="off">
     </div>
-    <div class="modal-actions" style="margin-bottom:0">
+    <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveRehearsalEdit('${esc(rid)}')">Save</button>
     </div>
+  `);
+}
 
-    <div class="section-title" style="margin-top:24px">Rehearsal Plan</div>
-    <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:10px">
+function showRehearsalPlanModal(rid) {
+  const r = DB.getRehearsals().find(r => r.id === rid);
+  if (!r) return;
+  const segments = r.segments || [];
+  openModal(`
+    <div class="modal-title">Rehearsal Plan</div>
+    <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:12px">
       Segments let directors tag which part of rehearsal a mark was noticed in.
     </p>
     ${segments.length ? `
@@ -4335,23 +4343,15 @@ function showRehearsalOptions(rid) {
           </div>`).join('')}
       </div>` : `<p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:10px">No segments added yet.</p>`}
     ${STATE.isAdmin ? `
-      <div class="flex gap-8">
+      <div class="flex gap-8" style="margin-top:12px">
         <input class="form-input" id="seg-input" type="text"
                placeholder="e.g. Warmup, Closer drill…" autocomplete="off"
                onkeydown="if(event.key==='Enter')addSegment('${esc(rid)}')">
         <button class="btn btn-primary btn-sm" style="flex-shrink:0" onclick="addSegment('${esc(rid)}')">+ Add</button>
       </div>` : ''}
-
-    ${STATE.isAdmin && r.ended ? `
-    <div class="section-title" style="margin-top:24px">Rehearsal Status</div>
-    <div class="ended-status-badge">✓ Rehearsal has been ended</div>
-    <p style="font-size:0.82rem;color:var(--text-muted);margin:8px 0 12px">
-      Automatic positive marks were applied to students with no mistakes.
-      You can still edit marks, or reopen the rehearsal to run the process again.
-    </p>
-    <button class="btn btn-secondary btn-full" onclick="reopenRehearsal('${esc(rid)}')">Reopen Rehearsal</button>
-    ` : ''}
-
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Done</button>
+    </div>
   `);
 }
 
@@ -4364,7 +4364,7 @@ function addSegment(rid) {
   const segments = [...(r.segments || []), name];
   r.segments = segments;
   db.collection('rehearsals').doc(rid).set({ segments }, { merge: true });
-  showRehearsalOptions(rid);
+  showRehearsalPlanModal(rid);
 }
 
 function removeSegment(rid, idx) {
@@ -4373,7 +4373,7 @@ function removeSegment(rid, idx) {
   const segments = (r.segments || []).filter((_, i) => i !== idx);
   r.segments = segments;
   db.collection('rehearsals').doc(rid).set({ segments }, { merge: true });
-  showRehearsalOptions(rid);
+  showRehearsalPlanModal(rid);
 }
 
 function selectSegment(name) {
