@@ -54,6 +54,15 @@ html, body {
   z-index: 10;
 }
 
+#header-logo {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  object-fit: contain;
+  flex-shrink: 0;
+  background: rgba(255,255,255,.15);
+}
+
 #page-title {
   flex: 1;
   font-size: 1.1rem;
@@ -1621,7 +1630,33 @@ html, body {
   margin: 0 auto;
 }
 .login-logo { font-size: 3.5rem; margin-bottom: 12px; line-height: 1; }
+.login-logo-img {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  border-radius: 16px;
+  margin-bottom: 16px;
+  background: var(--bg);
+}
 .login-title { font-size: 1.8rem; font-weight: 800; margin-bottom: 20px; }
+
+/* ── Brand settings modal ────────────────────────────────────────────────── */
+.brand-logo-area {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  border: 1.5px dashed var(--border);
+  border-radius: var(--r-sm);
+  padding: 12px;
+}
+.brand-logo-preview {
+  max-width: 120px;
+  max-height: 120px;
+  object-fit: contain;
+  border-radius: 8px;
+}
 .login-sub { color: var(--text-muted); margin-bottom: 36px; font-size: 0.95rem; }
 .login-section-label {
   width: 100%;
