@@ -1782,7 +1782,7 @@ function confirmDeleteSong(sid) {
 function showStudentPortalPreview(num) {
   const prev = STATE.studentNum;
   STATE.studentNum = num;
-  const html = viewStudentPortal();
+  const html = viewStudentPortal(true);
   STATE.studentNum = prev;
   openModal(`
     <div class="modal-handle"></div>
@@ -1794,7 +1794,22 @@ function showStudentPortalPreview(num) {
   `);
 }
 
-function viewStudentPortal() {
+function previewLeaderboard(num) {
+  const prev = STATE.studentNum;
+  STATE.studentNum = num;
+  const html = viewLeaderboard();
+  STATE.studentNum = prev;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title" style="font-size:0.85rem;color:var(--text-muted);font-weight:500;margin-bottom:8px">Student View Preview — Band Stats</div>
+    <div style="margin: 0 -4px">${html}</div>
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Close</button>
+    </div>
+  `);
+}
+
+function viewStudentPortal(previewMode = false) {
   const num  = STATE.studentNum;
   const s    = STATE.students[num];
   const hist = DB.getStudentHistory(num);
@@ -1964,7 +1979,7 @@ function viewStudentPortal() {
         </div>
       ` : `<p class="empty-state" style="padding:24px 0">No rehearsal history yet.</p>`}
 
-      <button class="leaderboard-link-btn" onclick="navigate('leaderboard')">
+      <button class="leaderboard-link-btn" onclick="${previewMode ? `previewLeaderboard('${esc(num)}')` : "navigate('leaderboard')"}">
         📊 View Band Stats &amp; Leaderboard
       </button>
     </div>`;
