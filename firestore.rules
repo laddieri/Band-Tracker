@@ -2,32 +2,127 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Any authenticated user (director or anonymous student) can read
-    // Non-anonymous users (directors) can write
-    match /students/{doc} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    // Interim membership model: the caller's org/role live in /members/{uid} and
+    // are resolved here with get(). This costs one extra read per request. The
+    // migration target is to move orgId/role into custom auth claims; when that
+    // lands, only these helpers change. See docs/DATA_MODEL.md.
+
+    function isSignedIn() {
+      return request.auth != null;
     }
 
-    match /rehearsals/{doc} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    function isAnonymous() {
+      return request.auth.token.firebase.sign_in_provider == 'anonymous';
     }
 
-    match /entries/{doc} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    function memberPath() {
+      return /databases/$(database)/documents/members/$(request.auth.uid);
     }
 
-    match /songs/{doc} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    function isMember() {
+      return isSignedIn() && exists(memberPath());
     }
 
-    // Only directors (non-anonymous) can read admin list
-    match /admins/{doc} {
-      allow read: if request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous';
-      allow write: if false; // managed via Firebase console only
+    function member() {
+      return get(memberPath()).data;
+    }
+
+    // True if the caller is a member of the given org (any role).
+    function belongsTo(orgId) {
+      return isMember() && member().orgId == orgId;
+    }
+
+    // True if the caller is a director of the given org.
+    function isDirectorOf(orgId) {
+      return belongsTo(orgId) && member().role == 'director';
+    }
+
+    // ── Per-org data (subcollections) ─────────────────────────────────────────
+    // Reads: any member of the org. Writes: directors of the org only.
+
+    match /orgs/{orgId} {
+
+      // Org metadata. Anyone may create an org they own (create-a-band flow);
+      // only its directors may read/update it. No client deletes.
+      allow read:   if belongsTo(orgId);
+      allow create: if isSignedIn() && !isAnonymous()
+                    && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isDirectorOf(orgId);
+      allow delete: if false;
+
+      function canRead()  { return belongsTo(orgId); }
+      function canWrite() { return isDirectorOf(orgId); }
+
+      match /settings/{doc} {
+        allow read:  if canRead();
+        allow write: if canWrite();
+      }
+
+      match /students/{doc} {
+        allow read:  if canRead();
+        allow write: if canWrite();
+      }
+
+      match /rehearsals/{doc} {
+        allow read:  if canRead();
+        allow write: if canWrite();
+      }
+
+      match /entries/{doc} {
+        allow read:  if canRead();
+        allow write: if canWrite();
+      }
+
+      match /songs/{doc} {
+        allow read:  if canRead();
+        allow write: if canWrite();
+      }
+    }
+
+    // ── Membership ────────────────────────────────────────────────────────────
+    // A user may read only their own membership. Creating a membership is how a
+    // user joins an org; the rules below ensure you can only join an org you are
+    // entitled to. Updates/deletes are not allowed from the client (managed by
+    // migration/admin tooling, and later by Functions).
+
+    match /members/{uid} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+
+      // Director self-join: only for an org you just created (createdBy == you).
+      // Co-director invites will relax this in the onboarding milestone.
+      function directorJoin() {
+        let m = request.resource.data;
+        return !isAnonymous()
+          && m.role == 'director'
+          && exists(/databases/$(database)/documents/orgs/$(m.orgId))
+          && get(/databases/$(database)/documents/orgs/$(m.orgId)).data.createdBy == request.auth.uid;
+      }
+
+      // Student self-join: only with a valid student code that maps to the org.
+      function studentJoin() {
+        let m = request.resource.data;
+        return m.role == 'student'
+          && exists(/databases/$(database)/documents/studentCodes/$(m.joinCode))
+          && get(/databases/$(database)/documents/studentCodes/$(m.joinCode)).data.orgId == m.orgId;
+      }
+
+      allow create: if isSignedIn() && request.auth.uid == uid
+                    && (directorJoin() || studentJoin());
+      allow update, delete: if false;
+    }
+
+    // ── Student code lookup ───────────────────────────────────────────────────
+    // Readable by any signed-in user so an anonymous student can resolve their
+    // org before a membership exists. Contains no sensitive data (org id + a
+    // student number). Only directors of the owning org may manage codes.
+
+    match /studentCodes/{code} {
+      allow read:   if isSignedIn();
+      allow create: if isDirectorOf(request.resource.data.orgId);
+      allow update: if isDirectorOf(resource.data.orgId)
+                    && isDirectorOf(request.resource.data.orgId);
+      allow delete: if isDirectorOf(resource.data.orgId);
     }
   }
 }

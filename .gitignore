@@ -1,1 +1,6 @@
 .claude/
+
+# Never commit service-account credentials or local deps
+service-account.json
+**/service-account*.json
+node_modules/
