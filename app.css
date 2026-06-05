@@ -1149,6 +1149,14 @@ html, body {
   max-width: 600px;
   margin: 0 auto;
 }
+.dash-reh-heading {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
 .dash-select-wrap { margin-bottom: 16px; }
 .dash-select {
   width: 100%;
