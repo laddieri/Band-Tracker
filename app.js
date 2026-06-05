@@ -306,6 +306,8 @@ function navigate(view, params = {}) {
     _lbFilter = _mkFilter('score', 'desc');
   }
   if (_view === 'dashboard' && view !== 'dashboard') {
+    _activeNum = null; _numSearch = ''; _blockMode = false; _blockPath = [];
+    _trackerFilter = _mkFilter('name', 'asc');
     _dashRid = null;
   }
   if (_view === 'attendance' && view !== 'attendance') {
@@ -685,13 +687,14 @@ function render() {
   }
 
   const studentOnLeaderboard = _view === 'leaderboard' && STATE.studentNum && !STATE.isAdmin;
-  const isTop = ['roster','rehearsals','songs','attendance-tab','leaderboard'].includes(_view) && !studentOnLeaderboard;
+  const isTop = ['roster','rehearsals','songs','attendance-tab','leaderboard','dashboard'].includes(_view) && !studentOnLeaderboard;
   backBtn.classList.toggle('hidden', isTop);
   backBtn.onclick = () => {
     if (_view === 'student')    navigate('roster');
     else if (_view === 'rehearsal')  navigate('rehearsals');
     else if (_view === 'attendance') {
       if (_params.from === 'attendance-tab') navigate('attendance-tab');
+      else if (_params.from === 'rehearsals') navigate('rehearsals');
       else navigate('rehearsal', { rid: _params.rid });
     }
     else if (_view === 'song')  navigate('songs');
@@ -706,7 +709,8 @@ function render() {
       (_view === 'student'    && match === 'roster') ||
       (_view === 'rehearsal'  && match === 'rehearsals') ||
       (_view === 'attendance' && _params.from === 'attendance-tab' && match === 'attendance-tab') ||
-      (_view === 'attendance' && _params.from !== 'attendance-tab' && match === 'rehearsals') ||
+      (_view === 'attendance' && _params.from === 'rehearsals' && match === 'rehearsals') ||
+      (_view === 'attendance' && _params.from !== 'attendance-tab' && _params.from !== 'rehearsals' && match === 'rehearsals') ||
       (_view === 'song'       && match === 'songs')
     );
     // Hide leaderboard + dashboard tabs for students
@@ -790,11 +794,21 @@ function render() {
       main.innerHTML = viewLeaderboard();
       break;
 
-    case 'dashboard':
-      title.textContent = 'Rehearsal Marks';
-      actions.innerHTML = userBtn();
-      main.innerHTML = viewDashboard();
+    case 'dashboard': {
+      const openR = STATE.rehearsals.find(r => !r.ended);
+      if (STATE.isAdmin && openR) {
+        _params = { ..._params, rid: openR.id };
+        title.textContent = 'Student Feedback';
+        actions.innerHTML = optBtn(`showRehearsalOptions('${esc(openR.id)}')`) + userBtn();
+        main.innerHTML = viewRehearsal(openR.id);
+        if (_blockMode && !_activeNum) initBlockPinch(openR.id);
+      } else {
+        title.textContent = 'Rehearsal Marks';
+        actions.innerHTML = userBtn();
+        main.innerHTML = viewDashboard();
+      }
       break;
+    }
   }
 }
 
@@ -2722,19 +2736,46 @@ function viewRehearsals() {
         const ended    = !!r.ended;
         const attDone  = !!r.attendanceSubmitted;
         const stateCls = ended ? 'rh-card-ended' : 'rh-card-open';
+        if (!ended) {
+          return `
+            <div class="card rh-card ${stateCls}">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="font-bold">${fmtDate(r.date)}</div>
+                  ${r.label ? `<div class="text-muted text-sm mt-4">${esc(r.label)}</div>` : ''}
+                  <div class="rh-status-row">
+                    <span class="rh-badge rh-badge-open">Open</span>
+                    ${attDone ? `<span class="rh-badge rh-badge-att">Attendance ✓</span>` : ''}
+                  </div>
+                </div>
+                <div class="flex gap-6 items-center">
+                  ${cnt > 0 ? `<span class="badge badge-neutral">${cnt} tracked</span>` : ''}
+                  ${errs > 0 ? `<span class="badge badge-danger">${errs}✗</span>` : ''}
+                  ${pos  > 0 ? `<span class="badge badge-success">${pos}✓</span>` : ''}
+                </div>
+              </div>
+              ${STATE.isAdmin ? `
+              <div class="rh-card-actions">
+                <button class="btn btn-sm ${attDone ? 'btn-success' : 'btn-primary'}"
+                  onclick="navigate('attendance',{rid:'${esc(r.id)}',from:'rehearsals'})">
+                  ${attDone ? '✓ Attendance Done' : '📋 Take Attendance'}
+                </button>
+                <button class="btn btn-sm btn-secondary"
+                  onclick="navigate('dashboard',{rid:'${esc(r.id)}'})">
+                  ✏️ Student Feedback
+                </button>
+              </div>` : ''}
+            </div>`;
+        }
         return `
-          <div class="card clickable rh-card ${stateCls}" onclick="navigate('rehearsal',{rid:'${esc(r.id)}'})">
+          <div class="card rh-card ${stateCls}">
             <div class="flex items-center justify-between">
               <div>
                 <div class="font-bold">${fmtDate(r.date)}</div>
                 ${r.label ? `<div class="text-muted text-sm mt-4">${esc(r.label)}</div>` : ''}
                 <div class="rh-status-row">
-                  ${ended
-                    ? `<span class="rh-badge rh-badge-ended">Ended</span>`
-                    : `<span class="rh-badge rh-badge-open">Open</span>`}
-                  ${attDone
-                    ? `<span class="rh-badge rh-badge-att">Attendance ✓</span>`
-                    : ''}
+                  <span class="rh-badge rh-badge-ended">Ended</span>
+                  ${attDone ? `<span class="rh-badge rh-badge-att">Attendance ✓</span>` : ''}
                 </div>
               </div>
               <div class="flex gap-6 items-center">
@@ -3117,8 +3158,10 @@ function viewRehearsal(rid) {
 
   const attSubmitted = r?.attendanceSubmitted;
   const showEndBtn   = STATE.isAdmin && !r?.ended;
+  const showAttBtn   = _view !== 'dashboard';
   return `
     <div class="rehearsal-action-row">
+      ${showAttBtn ? `
       <button class="att-screen-btn ${attSubmitted ? 'att-screen-btn-done' : ''}" style="flex:1;margin-bottom:0" onclick="navigate('attendance',{rid:'${esc(rid)}'})">
         <div class="att-screen-btn-label">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;flex-shrink:0">
@@ -3127,7 +3170,7 @@ function viewRehearsal(rid) {
           ${attSubmitted ? 'Attendance ✓' : 'Take Attendance'}
         </div>
         ${attSummary ? `<div class="att-screen-btn-summary">${attSummary}</div>` : ''}
-      </button>
+      </button>` : ''}
       ${showEndBtn ? `
         <button class="btn btn-danger end-rehearsal-btn" onclick="confirmEndRehearsal('${esc(rid)}')">
           End<br>Rehearsal
@@ -3996,7 +4039,7 @@ function reRender(rid) {
     mc.innerHTML = viewStudent(_params.num);
   } else if (_view === 'attendance') {
     mc.innerHTML = viewAttendance(rid);
-  } else {
+  } else if (_view === 'rehearsal' || _view === 'dashboard') {
     mc.innerHTML = viewRehearsal(rid);
     if (_blockMode && !_activeNum) initBlockPinch(rid);
   }
@@ -4241,9 +4284,7 @@ function saveNewRehearsal() {
   STATE.rehearsals.sort((a,b) => b.date.localeCompare(a.date));
   db.collection('rehearsals').doc(id).set(r);
   closeModal();
-  _activeNum = null;
-  _numSearch = '';
-  navigate('rehearsal', { rid: id });
+  navigate('dashboard', { rid: id });
 }
 
 function showRehearsalOptions(rid) {
