@@ -2758,6 +2758,24 @@ function viewAttendanceTab() {
     return `<div class="empty-state"><p>No rehearsals yet.</p></div>`;
   }
 
+  // ── Open-rehearsal attendance CTA ─────────────────────────────────────────
+
+  const openReh = STATE.isAdmin ? rehearsals.find(r => !r.ended) : null;
+  let attendanceCta = '';
+  if (openReh) {
+    if (!openReh.attendanceSubmitted) {
+      attendanceCta = `<button class="start-rehearsal-btn"
+        onclick="navigate('attendance',{rid:'${esc(openReh.id)}',from:'attendance-tab'})">
+        📋 Take Attendance — ${esc(fmtDate(openReh.date))}${openReh.label ? ' · ' + esc(openReh.label) : ''}
+      </button>`;
+    } else {
+      attendanceCta = `<button class="start-rehearsal-btn att-modify-att-btn"
+        onclick="confirmModifyAttendance('${esc(openReh.id)}')">
+        ✏️ Modify Current Rehearsal Attendance
+      </button>`;
+    }
+  }
+
   // ── Filter bar (shared across all student lists on this tab) ──────────────
 
   const filterBar = renderFilterBar('att-tab', _attTabFilter, [
@@ -2901,7 +2919,7 @@ function viewAttendanceTab() {
       ${historyRows}
     </div>`;
 
-  return filterBar + recentSection + seasonSection + historySection;
+  return attendanceCta + filterBar + recentSection + seasonSection + historySection;
 }
 
 // ── View: Rehearsal Detail ────────────────────────────────────────────────────
@@ -3341,6 +3359,19 @@ function viewAttendanceSummary(rid) {
 function enterAttModifyMode(rid) {
   _attModifyMode = true;
   reRender(rid);
+}
+
+function confirmModifyAttendance(rid) {
+  showConfirmModal(
+    'Modify Submitted Attendance',
+    'Attendance for this rehearsal has already been submitted. Are you sure you want to make changes?',
+    () => {
+      _attModifyMode = true;
+      navigate('attendance', { rid, from: 'attendance-tab' });
+    },
+    'Modify',
+    'btn-primary'
+  );
 }
 
 function viewAttendance(rid) {
