@@ -164,6 +164,11 @@ html, body {
 }
 .start-rehearsal-btn:hover  { background: var(--primary-bg, #ede9fe); }
 .start-rehearsal-btn:active { transform: scale(.98); }
+.att-modify-att-btn {
+  border-color: #d97706;
+  color: #92400e;
+}
+.att-modify-att-btn:hover { background: #fffbeb; }
 
 /* ── Rehearsal list cards ────────────────────────────────────────────────── */
 .rh-card { border-left: 4px solid transparent; padding-left: 12px; }
