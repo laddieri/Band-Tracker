@@ -315,6 +315,9 @@ function navigate(view, params = {}) {
   if (_view === 'roster' && view !== 'roster') {
     _rosterFilter = _mkFilter('name', 'asc');
   }
+  if (_view === 'attendance-tab' && view !== 'attendance-tab') {
+    _attTabFilter = _mkFilter('absences', 'desc');
+  }
   _view   = view;
   _params = params;
   render();
@@ -343,10 +346,11 @@ let _pendingConfirm    = null; // callback for generic confirmation modal
 function _mkFilter(sortField, sortDir) {
   return { search: '', sortField, sortDir, instruments: [], sections: [], grades: [], panelOpen: false };
 }
-let _rosterFilter  = _mkFilter('name',  'asc');
-let _trackerFilter = _mkFilter('name',  'asc');
-let _attFilter     = _mkFilter('name',  'asc');
-let _lbFilter      = _mkFilter('score', 'desc');
+let _rosterFilter  = _mkFilter('name',     'asc');
+let _trackerFilter = _mkFilter('name',     'asc');
+let _attFilter     = _mkFilter('name',     'asc');
+let _attTabFilter  = _mkFilter('absences', 'desc');
+let _lbFilter      = _mkFilter('score',    'desc');
 
 // ── Debounce store for note fields ────────────────────────────────────────────
 
@@ -469,7 +473,7 @@ function renderFilterBar(viewId, f, sortOptions) {
 // ── Filter event handlers ─────────────────────────────────────────────────────
 
 function _getFilterObj(viewId) {
-  return { roster: _rosterFilter, tracker: _trackerFilter, att: _attFilter, lb: _lbFilter }[viewId];
+  return { roster: _rosterFilter, tracker: _trackerFilter, att: _attFilter, 'att-tab': _attTabFilter, lb: _lbFilter }[viewId];
 }
 
 function _rerenderForFilter(viewId) {
@@ -2761,13 +2765,29 @@ function viewAttendanceTab() {
     return reportSection + `<div class="empty-state"><p>No rehearsals yet.</p></div>`;
   }
 
+  // ── Filter bar (shared across all student lists on this tab) ──────────────
+
+  const filterBar = renderFilterBar('att-tab', _attTabFilter, [
+    { value: 'absences',   label: 'Most Absent' },
+    { value: 'lates',      label: 'Most Late'   },
+    { value: 'name',       label: 'Name'        },
+    { value: 'instrument', label: 'Instrument'  },
+    { value: 'grade',      label: 'Grade'       },
+  ]);
+
+  // Helper: filter a student list by search + checkboxes (no sort — sublists keep name order)
+  const filterSublist = list =>
+    filterAndSortStudents(list, { ..._attTabFilter, sortField: 'name', sortDir: 'asc' }, {});
+
   // ── Most Recent Rehearsal ─────────────────────────────────────────────────
 
   const latest        = rehearsals[0];
   const latestEntries = STATE.entries[latest.id] || {};
-  const latestAbsent  = students.filter(s => latestEntries[s.number]?.attendance === 'absent');
-  const latestLate    = students.filter(s => latestEntries[s.number]?.attendance === 'late');
-  const latestPresent = students.length - latestAbsent.length - latestLate.length;
+  const latestAbsent  = filterSublist(students.filter(s => latestEntries[s.number]?.attendance === 'absent'));
+  const latestLate    = filterSublist(students.filter(s => latestEntries[s.number]?.attendance === 'late'));
+  const latestPresent = students.length
+    - students.filter(s => latestEntries[s.number]?.attendance === 'absent').length
+    - students.filter(s => latestEntries[s.number]?.attendance === 'late').length;
 
   const stuMiniRow = s => {
     const meta = [fmtPos(s.column, s.row), normInstrument(s.instrument)].filter(Boolean).join(' · ');
@@ -2795,7 +2815,7 @@ function viewAttendanceTab() {
       ${stuGroup('Absent', latestAbsent, 'att-summary-hdr-absent')}
       ${stuGroup('Late',   latestLate,   'att-summary-hdr-late')}
       ${!latestAbsent.length && !latestLate.length
-        ? `<div class="empty-state" style="padding:12px 0 4px"><p>Everyone was present!</p></div>`
+        ? `<div class="empty-state" style="padding:12px 0 4px"><p>${_attTabFilter.search || _attTabFilter.instruments.length || _attTabFilter.grades.length || _attTabFilter.sections.length ? 'No matches for current filter.' : 'Everyone was present!'}</p></div>`
         : ''}
       <button class="btn btn-secondary" style="width:100%;margin:12px 0 4px"
               onclick="navigate('attendance',{rid:'${esc(latest.id)}',from:'attendance-tab'})">
@@ -2819,8 +2839,11 @@ function viewAttendanceTab() {
     }
   }
 
-  const seasonRows = Object.values(seasonMap)
-    .sort((a, b) => (b.absences - a.absences) || (b.lates - a.lates) || (a.s.name||'').localeCompare(b.s.name||''));
+  // Build scoreMap for sort-by-absences/lates and apply unified filter
+  const seasonScoreMap = {};
+  for (const [num, d] of Object.entries(seasonMap)) seasonScoreMap[num] = { absences: d.absences, lates: d.lates };
+  const seasonStudents  = Object.values(seasonMap).map(d => d.s);
+  const filteredSeason  = filterAndSortStudents(seasonStudents, _attTabFilter, seasonScoreMap);
 
   const seasonSection = `
     <div id="att-tab-season-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('att-tab-season')">
@@ -2830,9 +2853,10 @@ function viewAttendanceTab() {
     <div id="att-tab-season">
       ${!submitted.length
         ? `<div class="empty-state" style="padding:12px 0"><p>No submitted rehearsals yet.</p></div>`
-        : !seasonRows.length
-          ? `<div class="empty-state" style="padding:12px 0"><p>Perfect attendance so far!</p></div>`
-          : seasonRows.map(({ s, absences, lates }) => {
+        : !filteredSeason.length
+          ? `<div class="empty-state" style="padding:12px 0"><p>${seasonStudents.length ? 'No matches for current filter.' : 'Perfect attendance so far!'}</p></div>`
+          : filteredSeason.map(s => {
+              const { absences, lates } = seasonMap[s.number];
               const meta = [fmtPos(s.column, s.row), normInstrument(s.instrument)].filter(Boolean).join(' · ');
               return `<div class="att-season-row">
                 <div class="att-stu-info">
@@ -2884,7 +2908,7 @@ function viewAttendanceTab() {
       ${historyRows}
     </div>`;
 
-  return reportSection + recentSection + seasonSection + historySection;
+  return reportSection + filterBar + recentSection + seasonSection + historySection;
 }
 
 // ── View: Rehearsal Detail ────────────────────────────────────────────────────
