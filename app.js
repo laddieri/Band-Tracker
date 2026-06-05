@@ -2739,6 +2739,14 @@ function viewRehearsals() {
         const ended    = !!r.ended;
         const attDone  = !!r.attendanceSubmitted;
         const stateCls = ended ? 'rh-card-ended' : 'rh-card-open';
+        const menuBtn = STATE.isAdmin ? `
+          <div class="rh-card-menu-wrap">
+            <button class="rh-card-menu-btn" onclick="event.stopPropagation();toggleRhMenu('${esc(r.id)}')" aria-label="More options">⋯</button>
+            <div class="rh-card-menu-list hidden" id="rh-menu-${esc(r.id)}">
+              ${!ended ? '' : `<button class="rh-card-menu-item" onclick="reopenRehearsal('${esc(r.id)}')">Reopen Rehearsal</button>`}
+              <button class="rh-card-menu-item rh-menu-danger" onclick="confirmDeleteRehearsal('${esc(r.id)}')">Delete Rehearsal</button>
+            </div>
+          </div>` : '';
         if (!ended) {
           return `
             <div class="card rh-card ${stateCls}">
@@ -2755,6 +2763,7 @@ function viewRehearsals() {
                   ${cnt > 0 ? `<span class="badge badge-neutral">${cnt} tracked</span>` : ''}
                   ${errs > 0 ? `<span class="badge badge-danger">${errs}✗</span>` : ''}
                   ${pos  > 0 ? `<span class="badge badge-success">${pos}✓</span>` : ''}
+                  ${menuBtn}
                 </div>
               </div>
               ${STATE.isAdmin ? `
@@ -2767,7 +2776,9 @@ function viewRehearsals() {
                   onclick="navigate('dashboard',{rid:'${esc(r.id)}'})">
                   ✏️ Student Feedback
                 </button>
-              </div>` : ''}
+              </div>
+              <button class="btn btn-sm btn-danger btn-full" style="margin-top:8px"
+                onclick="confirmEndRehearsal('${esc(r.id)}')">End Rehearsal</button>` : ''}
             </div>`;
         }
         return `
@@ -2785,6 +2796,7 @@ function viewRehearsals() {
                 ${cnt > 0 ? `<span class="badge badge-neutral">${cnt} tracked</span>` : ''}
                 ${errs > 0 ? `<span class="badge badge-danger">${errs}✗</span>` : ''}
                 ${pos  > 0 ? `<span class="badge badge-success">${pos}✓</span>` : ''}
+                ${menuBtn}
               </div>
             </div>
           </div>`;
@@ -3165,11 +3177,10 @@ function viewRehearsal(rid) {
   ].filter(Boolean).join(' · ') : '';
 
   const attSubmitted = r?.attendanceSubmitted;
-  const showEndBtn   = STATE.isAdmin && !r?.ended;
   const showAttBtn   = _view !== 'dashboard';
   return `
+    ${showAttBtn ? `
     <div class="rehearsal-action-row">
-      ${showAttBtn ? `
       <button class="att-screen-btn ${attSubmitted ? 'att-screen-btn-done' : ''}" style="flex:1;margin-bottom:0" onclick="navigate('attendance',{rid:'${esc(rid)}'})">
         <div class="att-screen-btn-label">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;flex-shrink:0">
@@ -3178,12 +3189,8 @@ function viewRehearsal(rid) {
           ${attSubmitted ? 'Attendance ✓' : 'Take Attendance'}
         </div>
         ${attSummary ? `<div class="att-screen-btn-summary">${attSummary}</div>` : ''}
-      </button>` : ''}
-      ${showEndBtn ? `
-        <button class="btn btn-danger end-rehearsal-btn" onclick="confirmEndRehearsal('${esc(rid)}')">
-          End<br>Rehearsal
-        </button>` : ''}
-    </div>
+      </button>
+    </div>` : ''}
 
     ${trackerSection}
 
@@ -4345,12 +4352,6 @@ function showRehearsalOptions(rid) {
     <button class="btn btn-secondary btn-full" onclick="reopenRehearsal('${esc(rid)}')">Reopen Rehearsal</button>
     ` : ''}
 
-    <div class="danger-zone">
-      <div class="danger-zone-title">Danger Zone</div>
-      <button class="btn btn-danger btn-full" onclick="confirmDeleteRehearsal('${esc(rid)}')">
-        Delete This Rehearsal
-      </button>
-    </div>
   `);
 }
 
@@ -4479,7 +4480,7 @@ async function endRehearsal(rid) {
   if (onTimeCount)    parts.push(`${onTimeCount} on time`);
   if (noMistakeCount) parts.push(`${noMistakeCount} no-mistake`);
   showToast(`Rehearsal ended — ${parts.length ? parts.join(', ') + ' positives applied.' : 'no auto-positives.'}`);
-  reRender(rid);
+  render();
 }
 
 function reopenRehearsal(rid) {
@@ -4489,7 +4490,7 @@ function reopenRehearsal(rid) {
   r.ended = false;
   db.collection('rehearsals').doc(rid).set({ ended: false }, { merge: true });
   showToast('Rehearsal reopened.');
-  reRender(rid);
+  render();
 }
 
 function confirmDeleteRehearsal(rid) {
@@ -5253,6 +5254,20 @@ function buildAttendanceReportHTML(rehearsals, periodLabel) {
 </body>
 </html>`;
 }
+
+// ── Rehearsal card dropdown menu ──────────────────────────────────────────────
+
+function toggleRhMenu(rid) {
+  const target = document.getElementById(`rh-menu-${rid}`);
+  if (!target) return;
+  const isHidden = target.classList.contains('hidden');
+  document.querySelectorAll('.rh-card-menu-list').forEach(el => el.classList.add('hidden'));
+  if (isHidden) target.classList.remove('hidden');
+}
+
+document.addEventListener('click', () => {
+  document.querySelectorAll('.rh-card-menu-list').forEach(el => el.classList.add('hidden'));
+});
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 

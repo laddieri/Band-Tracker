@@ -189,6 +189,30 @@ html, body {
 .rh-card-actions { display: flex; gap: 8px; margin-top: 12px; }
 .rh-card-actions .btn { flex: 1; }
 
+.rh-card-menu-wrap { position: relative; }
+.rh-card-menu-btn {
+  background: none; border: none; cursor: pointer;
+  padding: 4px 6px; border-radius: var(--r-sm);
+  font-size: 1.1rem; color: var(--text-muted); line-height: 1;
+  letter-spacing: .05em;
+}
+.rh-card-menu-btn:hover { background: var(--bg); color: var(--text); }
+.rh-card-menu-list {
+  position: absolute; right: 0; top: calc(100% + 4px);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-sm); min-width: 172px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.12); z-index: 50; overflow: hidden;
+}
+.rh-card-menu-item {
+  display: block; width: 100%; text-align: left;
+  padding: 11px 14px; font-size: 0.875rem; font-weight: 500;
+  background: none; border: none; border-bottom: 1px solid var(--border);
+  cursor: pointer; color: var(--text); font-family: inherit;
+}
+.rh-card-menu-item:last-child { border-bottom: none; }
+.rh-card-menu-item:hover { background: var(--bg); }
+.rh-menu-danger { color: var(--danger); }
+
 /* ── Attendance Tab ──────────────────────────────────────────────────────── */
 
 .att-tab-report-btn {
