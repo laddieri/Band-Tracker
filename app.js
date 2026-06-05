@@ -287,12 +287,11 @@ let _params = {};
 
 function navigate(view, params = {}) {
   if (_view === 'rehearsal' && view !== 'rehearsal') {
-    _activeNum  = null;
-    _numSearch  = '';
-    _blockMode  = false;
-    _blockPath  = [];
-    _trackerInstrumentFilter = '';
-    _trackerGradeFilter      = '';
+    _activeNum     = null;
+    _numSearch     = '';
+    _blockMode     = false;
+    _blockPath     = [];
+    _trackerFilter = _mkFilter('name', 'asc');
   }
   if (_view === 'song' && view !== 'song') {
     _songSectionFilter    = '';
@@ -300,15 +299,17 @@ function navigate(view, params = {}) {
     _songSearch           = '';
   }
   if (_view === 'leaderboard' && view !== 'leaderboard') {
-    _lbInstrumentFilter = '';
-    _lbSectionFilter    = '';
-    _lbGradeFilter      = '';
+    _lbFilter = _mkFilter('score', 'desc');
   }
   if (_view === 'dashboard' && view !== 'dashboard') {
     _dashRid = null;
   }
   if (_view === 'attendance' && view !== 'attendance') {
     _attModifyMode = false;
+    _attFilter     = _mkFilter('name', 'asc');
+  }
+  if (_view === 'roster' && view !== 'roster') {
+    _rosterFilter = _mkFilter('name', 'asc');
   }
   _view   = view;
   _params = params;
@@ -320,27 +321,26 @@ function navigate(view, params = {}) {
 
 let _activeNum  = null;
 let _numSearch  = '';
-let _rosterSearch = '';
-let _rosterInstrumentFilter  = '';
-let _rosterGradeFilter       = '';
-let _trackerInstrumentFilter = '';
-let _trackerGradeFilter      = '';
 let _songSectionFilter       = '';
 let _songHidePassedFilter    = false;
-let _lbInstrumentFilter      = '';
-let _lbSectionFilter         = '';
-let _lbGradeFilter           = '';
 let _songSearch              = '';
-let _attFilterField = null; // null | 'instrument' | 'row' | 'column' | 'grade'
-let _attFilterValue = null;
 let _dashRid        = null; // null = all rehearsals
-let _attSearch               = '';
 let _attModifyMode           = false; // true = show edit UI even when attendance is submitted
 let _blockMode  = false;
 let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
 let _pendingSegment    = ''; // currently selected rehearsal segment in mark modal
 let _pendingStudentCode = ''; // code being verified for anonymous student login
 let _pendingConfirm    = null; // callback for generic confirmation modal
+
+// ── Unified filter state ──────────────────────────────────────────────────────
+
+function _mkFilter(sortField, sortDir) {
+  return { search: '', sortField, sortDir, instruments: [], sections: [], grades: [], panelOpen: false };
+}
+let _rosterFilter  = _mkFilter('name',  'asc');
+let _trackerFilter = _mkFilter('name',  'asc');
+let _attFilter     = _mkFilter('name',  'asc');
+let _lbFilter      = _mkFilter('score', 'desc');
 
 // ── Debounce store for note fields ────────────────────────────────────────────
 
@@ -349,6 +349,158 @@ const _debounce = {};
 function debounced(key, fn, ms = 800) {
   clearTimeout(_debounce[key]);
   _debounce[key] = setTimeout(fn, ms);
+}
+
+// ── Core filter + sort ────────────────────────────────────────────────────────
+
+function filterAndSortStudents(students, f, scoreMap) {
+  let pool = [...students];
+  // search
+  if (f.search) {
+    const q = f.search.toLowerCase();
+    pool = pool.filter(s =>
+      (s.name||'').toLowerCase().includes(q) ||
+      String(s.number).includes(q) ||
+      normInstrument(s.instrument).toLowerCase().includes(q)
+    );
+  }
+  // filters — OR within category, AND across categories
+  if (f.instruments.length) pool = pool.filter(s => f.instruments.includes(normInstrument(s.instrument)));
+  if (f.grades.length)      pool = pool.filter(s => f.grades.includes(s.grade || ''));
+  if (f.sections.length)    pool = pool.filter(s => f.sections.includes(s.section || ''));
+  // sort
+  pool.sort((a, b) => {
+    let va, vb;
+    switch (f.sortField) {
+      case 'name':       va = (a.name||'').toLowerCase();          vb = (b.name||'').toLowerCase(); break;
+      case 'number':     va = +a.number||0;                        vb = +b.number||0; break;
+      case 'instrument': va = normInstrument(a.instrument).toLowerCase(); vb = normInstrument(b.instrument).toLowerCase(); break;
+      case 'section':    va = (a.section||'').toLowerCase();       vb = (b.section||'').toLowerCase(); break;
+      case 'grade':      va = GRADE_LEVELS.indexOf(a.grade||'');   vb = GRADE_LEVELS.indexOf(b.grade||''); break;
+      case 'column':     va = (a.column||'').toUpperCase();        vb = (b.column||'').toUpperCase(); break;
+      case 'row':        va = +a.row||0;                           vb = +b.row||0; break;
+      case 'score': case 'positives': case 'mistakes': {
+        va = scoreMap?.[a.number]?.[f.sortField] ?? -1;
+        vb = scoreMap?.[b.number]?.[f.sortField] ?? -1;
+        break;
+      }
+      case 'absences':   va = scoreMap?.[a.number]?.absences ?? 0; vb = scoreMap?.[b.number]?.absences ?? 0; break;
+      case 'lates':      va = scoreMap?.[a.number]?.lates ?? 0;    vb = scoreMap?.[b.number]?.lates ?? 0; break;
+      case 'attStatus': {
+        const order = { absent: 0, late: 1, present: 2, undefined: 2 };
+        va = order[scoreMap?.[a.number]?.att] ?? 2;
+        vb = order[scoreMap?.[b.number]?.att] ?? 2;
+        break;
+      }
+      default: va = (a.name||'').toLowerCase(); vb = (b.name||'').toLowerCase();
+    }
+    const cmp = typeof va === 'string' ? va.localeCompare(vb) : (va - vb);
+    return f.sortDir === 'asc' ? cmp : -cmp;
+  });
+  return pool;
+}
+
+// ── Filter bar renderer ───────────────────────────────────────────────────────
+
+function renderFilterBar(viewId, f, sortOptions) {
+  const activeCount = f.instruments.length + f.sections.length + f.grades.length;
+  const instruments = instrumentsInRoster();
+  const sections    = sectionsInRoster();
+  const grades      = gradesInRoster();
+
+  const panel = f.panelOpen ? (() => {
+    const checkGroup = (title, items, selected, field) => !items.length ? '' : `
+      <div class="sfb-group">
+        <div class="sfb-group-label">${title}</div>
+        <div class="sfb-checks">
+          ${items.map(item => `
+            <label class="sfb-check-label">
+              <input type="checkbox" class="sfb-checkbox" ${selected.includes(item)?'checked':''}
+                     onchange="toggleFilterItem('${viewId}','${esc(field)}','${esc(item)}',this.checked)">
+              <span>${esc(item)}</span>
+            </label>`).join('')}
+        </div>
+      </div>`;
+    return `<div class="sfb-panel">
+      ${checkGroup('Instrument', instruments, f.instruments, 'instruments')}
+      ${checkGroup('Grade',      grades,      f.grades,      'grades')}
+      ${checkGroup('Section',    sections,    f.sections,    'sections')}
+      ${activeCount ? `<button class="sfb-clear-btn" onclick="clearFilter('${viewId}')">Clear all filters</button>` : ''}
+    </div>`;
+  })() : '';
+
+  return `
+    <div class="sfb-wrap">
+      <div class="search-wrap" style="margin-bottom:8px">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input class="search-input" type="search" placeholder="Search by name or number…"
+               value="${esc(f.search)}"
+               oninput="updateFilter('${viewId}','search',this.value)" autocomplete="off">
+      </div>
+      <div class="sfb-row">
+        <div class="sfb-sort-wrap">
+          <select class="sfb-sort-select" onchange="updateFilter('${viewId}','sortField',this.value)">
+            ${sortOptions.map(o => `<option value="${esc(o.value)}" ${f.sortField===o.value?'selected':''}>${esc(o.label)}</option>`).join('')}
+          </select>
+          <button class="sfb-dir-btn" onclick="updateFilter('${viewId}','sortDir','${f.sortDir==='asc'?'desc':'asc'}')" title="Reverse sort">
+            ${f.sortDir === 'asc' ? '↑' : '↓'}
+          </button>
+        </div>
+        <button class="sfb-filter-btn ${activeCount?'sfb-filter-active':''}"
+                onclick="updateFilter('${viewId}','panelOpen',${!f.panelOpen})">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
+            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+          </svg>
+          Filters${activeCount ? ` (${activeCount})` : ''}
+        </button>
+      </div>
+      ${panel}
+    </div>`;
+}
+
+// ── Filter event handlers ─────────────────────────────────────────────────────
+
+function _getFilterObj(viewId) {
+  return { roster: _rosterFilter, tracker: _trackerFilter, att: _attFilter, lb: _lbFilter }[viewId];
+}
+
+function _rerenderForFilter(viewId) {
+  const mc = document.getElementById('main-content');
+  const st = mc ? mc.scrollTop : 0;
+  switch (viewId) {
+    case 'roster':  mc.innerHTML = viewRoster(); break;
+    case 'att-tab': mc.innerHTML = viewAttendanceTab(); break;
+    case 'att':     mc.innerHTML = viewAttendance(_params.rid); break;
+    case 'tracker': reRender(_params.rid); break;
+    case 'lb':      mc.innerHTML = viewLeaderboard(); break;
+  }
+  if (mc) mc.scrollTop = st;
+}
+
+function updateFilter(viewId, field, value) {
+  const f = _getFilterObj(viewId);
+  if (!f) return;
+  f[field] = value;
+  _rerenderForFilter(viewId);
+}
+
+function toggleFilterItem(viewId, field, item, checked) {
+  const f = _getFilterObj(viewId);
+  if (!f) return;
+  if (checked) { if (!f[field].includes(item)) f[field].push(item); }
+  else f[field] = f[field].filter(x => x !== item);
+  _rerenderForFilter(viewId);
+}
+
+function clearFilter(viewId) {
+  const f = _getFilterObj(viewId);
+  if (!f) return;
+  f.instruments = [];
+  f.sections    = [];
+  f.grades      = [];
+  _rerenderForFilter(viewId);
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
@@ -931,28 +1083,21 @@ function studentSuggestions(query, instrumentFilter, gradeFilter) {
 
 function viewRoster() {
   const students = DB.getStudents();
-  const list = Object.values(students)
-    .sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  const allStudents = Object.values(students);
+  const filtered = filterAndSortStudents(allStudents, _rosterFilter);
 
-  const rosterGrades = gradesInRoster();
   return `
-    ${instrumentFilterChips(_rosterInstrumentFilter, 'filterRosterInstrument')}
-    ${rosterGrades.length ? `
-    <div class="inst-filter-row" style="padding:0 0 4px">
-      <button class="inst-chip ${!_rosterGradeFilter ? 'inst-active' : ''}" onclick="filterRosterGrade('')">All Grades</button>
-      ${rosterGrades.map(g => `<button class="inst-chip ${_rosterGradeFilter === g ? 'inst-active' : ''}" onclick="filterRosterGrade('${esc(g)}')">${esc(g)}</button>`).join('')}
-    </div>` : ''}
-    <div class="search-wrap">
-      <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-      </svg>
-      <input class="search-input" type="search" id="roster-search"
-             placeholder="Search by name, number, section…"
-             value="${esc(_rosterSearch)}"
-             oninput="filterRoster(this.value)" autocomplete="off">
-    </div>
-    <div id="roster-list">${rosterRows(list, _rosterSearch, _rosterInstrumentFilter, _rosterGradeFilter)}</div>
-    ${list.length === 0 ? `
+    ${renderFilterBar('roster', _rosterFilter, [
+      {value:'name',       label:'Name'},
+      {value:'number',     label:'Number'},
+      {value:'instrument', label:'Instrument'},
+      {value:'section',    label:'Section'},
+      {value:'grade',      label:'Grade'},
+      {value:'column',     label:'Column'},
+      {value:'row',        label:'Row'}
+    ])}
+    <div id="roster-list">${rosterRows(filtered)}</div>
+    ${allStudents.length === 0 ? `
       <div class="empty-state">
         <div class="empty-icon">👥</div>
         <p>No students yet.</p>
@@ -961,23 +1106,12 @@ function viewRoster() {
   `;
 }
 
-function rosterRows(list, search, instrumentFilter, gradeFilter) {
-  const q = search.toLowerCase().trim();
-  const filtered = list.filter(s => {
-    if (instrumentFilter && normInstrument(s.instrument) !== instrumentFilter) return false;
-    if (gradeFilter      && (s.grade || '') !== gradeFilter) return false;
-    if (!q) return true;
-    return String(s.number).includes(q) ||
-           normInstrument(s.instrument).toLowerCase().includes(q) ||
-           (s.section||'').toLowerCase().includes(q) ||
-           (s.name||'').toLowerCase().includes(q);
-  });
-
-  if (!filtered.length && q) {
-    return `<div class="empty-state" style="padding:24px"><p>No students match "${esc(q)}"</p></div>`;
+function rosterRows(list) {
+  if (!list.length) {
+    return `<div class="empty-state" style="padding:24px"><p>No students match the current filter.</p></div>`;
   }
 
-  return filtered.map(s => {
+  return list.map(s => {
     const hist = DB.getStudentHistory(s.number);
     const errs = hist.reduce((sum,e)=>sum+(e.entry.mistakes||0),0);
     const pos  = hist.reduce((sum,e)=>sum+(e.entry.positives||0),0);
@@ -996,24 +1130,7 @@ function rosterRows(list, search, instrumentFilter, gradeFilter) {
   }).join('');
 }
 
-function filterRoster(val) {
-  _rosterSearch = val;
-  const list = Object.values(DB.getStudents())
-    .sort((a,b) => (a.name||'').localeCompare(b.name||''));
-  document.getElementById('roster-list').innerHTML = rosterRows(list, val, _rosterInstrumentFilter, _rosterGradeFilter);
-}
-
-function filterRosterInstrument(inst) {
-  _rosterInstrumentFilter = inst;
-  const main = document.getElementById('main-content');
-  if (main) main.innerHTML = viewRoster();
-}
-
-function filterRosterGrade(grade) {
-  _rosterGradeFilter = grade;
-  const main = document.getElementById('main-content');
-  if (main) main.innerHTML = viewRoster();
-}
+// filterRoster, filterRosterInstrument, filterRosterGrade replaced by updateFilter / unified filter bar
 
 function showRosterOptionsModal() {
   const students = Object.values(DB.getStudents());
@@ -1176,19 +1293,7 @@ async function deleteRoster() {
   render();
 }
 
-function filterTrackerInstrument(rid, inst) {
-  _trackerInstrumentFilter = inst;
-  _activeNum = null;
-  _numSearch = '';
-  reRender(rid);
-}
-
-function filterTrackerGrade(rid, grade) {
-  _trackerGradeFilter = grade;
-  _activeNum = null;
-  _numSearch = '';
-  reRender(rid);
-}
+// filterTrackerInstrument and filterTrackerGrade replaced by updateFilter / unified filter bar
 
 // ── View: Student Detail ──────────────────────────────────────────────────────
 
@@ -2225,21 +2330,23 @@ function viewLeaderboard() {
                               - (e.attendance === 'absent' ? 1 : 0)
                               - (e.attendance === 'late'   ? 0.5 : 0) : 0);
           }, 0);
-          return { docId, s, score, name: fakeAnimalName(docId) };
-        }).sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+          return { docId, s, score, name: fakeAnimalName(docId), positives: Object.values(STATE.entries).reduce((sum, re) => sum + (re[String(s.number)]?.positives || 0), 0), mistakes: Object.values(STATE.entries).reduce((sum, re) => sum + (re[String(s.number)]?.mistakes || 0), 0) };
+        });
 
-        const scored = allScored
-          .filter(({ s }) => !_lbInstrumentFilter || normInstrument(s.instrument) === _lbInstrumentFilter)
-          .filter(({ s }) => !_lbSectionFilter    || s.section === _lbSectionFilter)
-          .filter(({ s }) => !_lbGradeFilter      || (s.grade || '') === _lbGradeFilter);
+        // Build scoreMap for filterAndSortStudents
+        const lbScoreMap = {};
+        allScored.forEach(({ s, score, positives, mistakes }) => {
+          lbScoreMap[s.number] = { score, positives, mistakes };
+        });
 
-        const myDocId    = STATE.studentNum;
-        const instruments = instrumentsInRoster();
-        const sections    = sectionsInRoster();
-        const lbGrades    = gradesInRoster();
+        // Apply filter+sort via unified system
+        const lbStudents = allScored.map(({ s }) => s);
+        // Override sortField 'score' since filterAndSortStudents handles it via scoreMap
+        const filteredLbStudents = filterAndSortStudents(lbStudents, _lbFilter, lbScoreMap);
+        // Map back to scored objects in filtered+sorted order
+        const scored = filteredLbStudents.map(s => allScored.find(a => a.docId === (s._id || String(s.number)) || a.s === s)).filter(Boolean);
 
-        const filterChip = (label, active, onclick) =>
-          `<button class="inst-chip ${active ? 'inst-active' : ''}" onclick="${onclick}">${esc(label)}</button>`;
+        const myDocId = STATE.studentNum;
 
         return `
           <div id="lb-sec-ranking-hdr" class="sec-hdr sec-hdr-open lb-marching-hdr" onclick="toggleCollapse('lb-sec-ranking')">
@@ -2257,21 +2364,14 @@ function viewLeaderboard() {
             ${!STATE.marchingLeaderboardEnabled && STATE.isAdmin
               ? `<p class="lb-hidden-note">Students cannot see this leaderboard. Toggle above to enable it.</p>`
               : ''}
-            ${instruments.length ? `
-              <div class="inst-filter-row" style="padding:4px 0 4px">
-                ${filterChip('All', !_lbInstrumentFilter, "filterLb('instrument','')")}
-                ${instruments.map(i => filterChip(i, _lbInstrumentFilter === i, `filterLb('instrument','${esc(i)}')`)).join('')}
-              </div>` : ''}
-            ${sections.length ? `
-              <div class="inst-filter-row" style="padding:0 0 4px">
-                ${filterChip('All sections', !_lbSectionFilter, "filterLb('section','')")}
-                ${sections.map(s => filterChip(s, _lbSectionFilter === s, `filterLb('section','${esc(s)}')`)).join('')}
-              </div>` : ''}
-            ${lbGrades.length ? `
-              <div class="inst-filter-row" style="padding:0 0 6px">
-                ${filterChip('All grades', !_lbGradeFilter, "filterLb('grade','')")}
-                ${lbGrades.map(g => filterChip(g, _lbGradeFilter === g, `filterLb('grade','${esc(g)}')`)).join('')}
-              </div>` : ''}
+            ${renderFilterBar('lb', _lbFilter, [
+              {value:'score',      label:'Score'},
+              {value:'name',       label:'Name'},
+              {value:'instrument', label:'Instrument'},
+              {value:'grade',      label:'Grade'},
+              {value:'positives',  label:'Positives'},
+              {value:'mistakes',   label:'Mistakes'}
+            ])}
             <div class="card mb-12" style="padding:0;overflow:hidden">
               ${scored.length === 0
                 ? `<div class="lb-stat-row"><div class="lb-stat-label">No students match this filter.</div></div>`
@@ -2787,44 +2887,44 @@ function viewRehearsal(rid) {
       </div>`;
   } else {
     const isNameSearch = _numSearch.trim() && !/^\d+$/.test(_numSearch.trim());
-    const suggestions  = isNameSearch ? studentSuggestions(_numSearch, _trackerInstrumentFilter, _trackerGradeFilter) : [];
+    const suggestions  = isNameSearch ? studentSuggestions(_numSearch, _trackerFilter.instruments[0] || '', _trackerFilter.grades[0] || '') : [];
     // Show scrollable student list whenever search box is empty (all students or filtered)
     const showAllForFilter = !_numSearch.trim();
-    const trackerGrades = gradesInRoster();
     const allFiltered = showAllForFilter
-      ? Object.values(students)
-          .filter(s => !_trackerInstrumentFilter || normInstrument(s.instrument) === _trackerInstrumentFilter)
-          .filter(s => !_trackerGradeFilter      || (s.grade || '') === _trackerGradeFilter)
-          .sort((a,b) => (a.name||'').localeCompare(b.name||''))
+      ? filterAndSortStudents(Object.values(students), _trackerFilter)
       : [];
+    const activeFilterCount = _trackerFilter.instruments.length + _trackerFilter.grades.length + _trackerFilter.sections.length;
     const activeFilterLabel = [
-      _trackerInstrumentFilter,
-      _trackerGradeFilter ? _trackerGradeFilter + ' Grade' : ''
+      ..._trackerFilter.instruments,
+      ..._trackerFilter.grades.map(g => g + ' Grade')
     ].filter(Boolean).join(', ');
 
     trackerSection = `
       <div class="tracker-card">
         ${!_activeNum ? `
           <div class="tracker-label">Track a Student</div>
-          <div class="tracker-chips-row">
-            ${instrumentFilterChips(_trackerInstrumentFilter, 'filterTrackerInstrument', rid)}
-            <button class="inst-chip tracker-grid-btn" title="Open Block Grid" onclick="toggleBlockMode('${esc(rid)}')">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+            <div style="flex:1">
+              ${renderFilterBar('tracker', _trackerFilter, [
+                {value:'name',       label:'Name'},
+                {value:'number',     label:'Number'},
+                {value:'instrument', label:'Instrument'},
+                {value:'section',    label:'Section'},
+                {value:'grade',      label:'Grade'}
+              ])}
+            </div>
+            <button class="inst-chip tracker-grid-btn" title="Open Block Grid" onclick="toggleBlockMode('${esc(rid)}')" style="flex-shrink:0;margin-bottom:12px">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;display:block">
                 <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
                 <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
               </svg>
             </button>
           </div>
-          ${trackerGrades.length ? `
-          <div class="inst-filter-row" style="padding:0 0 4px">
-            <button class="inst-chip ${!_trackerGradeFilter ? 'inst-active' : ''}" onclick="filterTrackerGrade('${esc(rid)}','')">All Grades</button>
-            ${trackerGrades.map(g => `<button class="inst-chip ${_trackerGradeFilter === g ? 'inst-active' : ''}" onclick="filterTrackerGrade('${esc(rid)}','${esc(g)}')">${esc(g)}</button>`).join('')}
-          </div>` : ''}
           <button class="mark-all-btn" onclick="showMarkAllModal('${esc(rid)}')">
             Mark All${activeFilterLabel ? ` (${esc(activeFilterLabel)})` : ''}
           </button>
           <input class="num-input" type="text" inputmode="text"
-                 id="num-input" placeholder="Search by name…"
+                 id="num-input" placeholder="Search by name or number…"
                  value="${esc(_numSearch)}"
                  autocomplete="off" autocorrect="off" autocapitalize="off"
                  oninput="onNumInput(this.value,'${esc(rid)}')"
@@ -2928,7 +3028,7 @@ function onNumInput(val, rid) {
     _activeNum = null;
     const el = document.getElementById('tracker-suggestions');
     if (el) {
-      const matches = studentSuggestions(trimmed, _trackerInstrumentFilter);
+      const matches = studentSuggestions(trimmed, _trackerFilter.instruments[0] || '', _trackerFilter.grades[0] || '');
       el.innerHTML = matches.map(s => `
         <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
           <span class="suggestion-num">#${esc(s.number)}</span>
@@ -3117,27 +3217,11 @@ function viewAttendance(rid) {
   const late     = students.filter(s => entries[s.number]?.attendance === 'late').length;
   const unmarked = students.length - absent - late;
 
-  const instruments = instrumentsInRoster();
-  const grades      = gradesInRoster();
-  const rows        = rowsInRoster();
-  const cols        = columnsInRoster();
-
-  const sel = (field, opts, placeholder, labelFn) => {
-    const active = _attFilterField === field ? _attFilterValue : '';
-    return `<select class="att-filter-select ${active ? 'att-filter-active' : ''}"
-                    onchange="setAttendanceFilter(this.value?'${field}':null,this.value||null,'${esc(rid)}')">
-      <option value="">${placeholder}</option>
-      ${opts.map(o => `<option value="${esc(o)}" ${active===o?'selected':''}>${esc(labelFn ? labelFn(o) : o)}</option>`).join('')}
-    </select>`;
-  };
-
-  const filterRow = `
-    <div class="att-filter-row">
-      ${instruments.length ? sel('instrument', instruments, 'All Instruments') : ''}
-      ${grades.length      ? sel('grade',      grades,      'All Grades', g => g + ' Grade') : ''}
-      ${rows.length        ? sel('row',        rows,        'All Rows')        : ''}
-      ${cols.length        ? sel('column',     cols,        'All Columns')     : ''}
-    </div>`;
+  // Build attMap for status-based sorting
+  const attMap = {};
+  students.forEach(s => {
+    attMap[s.number] = { att: entries[s.number]?.attendance || 'present' };
+  });
 
   return `
     ${submitted ? `
@@ -3151,17 +3235,13 @@ function viewAttendance(rid) {
       <span class="att-summary-chip att-chip-present">${unmarked} Present</span>
     </div>
 
-    <div class="search-wrap" style="margin-bottom:10px">
-      <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-      </svg>
-      <input class="search-input" type="search" id="att-search"
-             placeholder="Search by name or number…"
-             value="${esc(_attSearch)}"
-             oninput="filterAttendanceList('${esc(rid)}', this.value)" autocomplete="off">
-    </div>
-
-    ${filterRow}
+    ${renderFilterBar('att', _attFilter, [
+      {value:'name',      label:'Name'},
+      {value:'number',    label:'Number'},
+      {value:'instrument',label:'Instrument'},
+      {value:'grade',     label:'Grade'},
+      {value:'attStatus', label:'Status'}
+    ])}
 
     <div style="display:flex;gap:8px;margin-bottom:12px">
       <button class="btn btn-secondary" style="flex:1" onclick="markAllPresent('${esc(rid)}')">
@@ -3181,39 +3261,23 @@ function viewAttendance(rid) {
 
 
 function buildAttBodyHtml(rid, students, entries) {
-  const q = _attSearch.toLowerCase().trim();
-  let pool = q ? students.filter(s =>
-    (s.name || '').toLowerCase().includes(q) ||
-    String(s.number).includes(q) ||
-    normInstrument(s.instrument).toLowerCase().includes(q)
-  ) : students;
+  const attMap = {};
+  students.forEach(s => {
+    attMap[s.number] = { att: entries[s.number]?.attendance || 'present' };
+  });
 
-  if (_attFilterField === 'instrument') {
-    pool = pool.filter(s => normInstrument(s.instrument).toLowerCase() === (_attFilterValue || '').toLowerCase());
-  } else if (_attFilterField === 'grade') {
-    pool = pool.filter(s => (s.grade || '') === _attFilterValue);
-  } else if (_attFilterField === 'row') {
-    pool = pool.filter(s => String(s.row ?? '') === _attFilterValue);
-  } else if (_attFilterField === 'column') {
-    pool = pool.filter(s => (s.column || '') === _attFilterValue);
-  }
+  const pool = filterAndSortStudents(students, _attFilter, attMap);
 
   if (!pool.length) {
-    const msg = q ? `No students match "${esc(_attSearch)}"` : 'No students in this group.';
+    const hasFilter = _attFilter.search || _attFilter.instruments.length || _attFilter.grades.length || _attFilter.sections.length;
+    const msg = hasFilter ? 'No students match the current filter.' : 'No students in this group.';
     return `<div class="empty-state" style="padding:24px"><p>${msg}</p></div>`;
   }
 
-  const sorted = [...pool].sort((a,b) => (a.name||'').localeCompare(b.name||''));
-  return sorted.map(s => attStudentRow(rid, s, entries)).join('');
+  return pool.map(s => attStudentRow(rid, s, entries)).join('');
 }
 
-function filterAttendanceList(rid, val) {
-  _attSearch = val;
-  const students = Object.values(DB.getStudents());
-  const entries  = STATE.entries[rid] || {};
-  const el = document.getElementById('att-student-list');
-  if (el) el.innerHTML = buildAttBodyHtml(rid, students, entries);
-}
+// filterAttendanceList replaced by updateFilter / unified filter bar
 
 function attStudentRow(rid, s, entries) {
   const att  = entries[s.number]?.attendance || null; // null = unmarked = present
@@ -3233,12 +3297,7 @@ function attStudentRow(rid, s, entries) {
     </div>`;
 }
 
-function setAttendanceFilter(field, value, rid) {
-  _attFilterField = field;
-  _attFilterValue = value;
-  const mc = document.getElementById('main-content');
-  if (mc) { const st = mc.scrollTop; mc.innerHTML = viewAttendance(rid); mc.scrollTop = st; }
-}
+// setAttendanceFilter replaced by updateFilter / unified filter bar
 
 async function markAllPresent(rid) {
   const entries = STATE.entries[rid] || {};
@@ -3389,11 +3448,16 @@ function submitAttendance(rid) {
 // ── Group Marks ───────────────────────────────────────────────────────────────
 
 function showMarkAllModal(rid) {
-  const groupName = [_trackerInstrumentFilter, _trackerGradeFilter].filter(Boolean).join('|') || '__all__';
-  const filterLabel = [_trackerInstrumentFilter, _trackerGradeFilter ? _trackerGradeFilter + ' Grade' : ''].filter(Boolean).join(', ') || 'entire band';
+  const instParts  = _trackerFilter.instruments;
+  const gradeParts = _trackerFilter.grades;
+  const groupName  = [...instParts, ...gradeParts].join('|') || '__all__';
+  const filterLabel = [
+    instParts.join(', '),
+    gradeParts.map(g => g + ' Grade').join(', ')
+  ].filter(Boolean).join(', ') || 'entire band';
   const count = Object.values(STATE.students).filter(s =>
-    (!_trackerInstrumentFilter || normInstrument(s.instrument) === _trackerInstrumentFilter) &&
-    (!_trackerGradeFilter      || (s.grade || '') === _trackerGradeFilter)
+    (!instParts.length  || instParts.includes(normInstrument(s.instrument))) &&
+    (!gradeParts.length || gradeParts.includes(s.grade || ''))
   ).length;
   openModal(`
     <div class="modal-handle"></div>
@@ -4307,12 +4371,7 @@ async function _saveInstruments() {
   }
 }
 
-function filterLb(type, val) {
-  if (type === 'instrument') _lbInstrumentFilter = val;
-  else if (type === 'section') _lbSectionFilter  = val;
-  else if (type === 'grade')   _lbGradeFilter    = val;
-  render();
-}
+// filterLb replaced by updateFilter / unified filter bar
 
 async function randomizePseudonyms() {
   const salt = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
