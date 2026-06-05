@@ -1188,14 +1188,44 @@ html, body {
 .dash-stu-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   font-size: 0.88rem;
+  cursor: pointer;
+  transition: background .12s;
 }
 .dash-stu-row:last-child { border-bottom: none; }
-.dash-stu-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dash-stu-val  { font-weight: 700; font-size: 0.95rem; flex-shrink: 0; }
+.dash-stu-row:active { background: var(--bg); }
+.dash-stu-name    { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-stu-val     { font-weight: 700; font-size: 0.95rem; flex-shrink: 0; }
+.dash-stu-chevron { color: var(--text-muted); font-size: 1rem; flex-shrink: 0; }
+
+.dash-modal-events { max-height: 55vh; overflow-y: auto; margin: 0 -4px; }
+.dash-modal-reh-hdr {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-muted);
+  padding: 10px 4px 4px;
+}
+.dash-modal-reh-hdr:first-child { padding-top: 2px; }
+.dash-evt-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+.dash-evt-row:last-child { border-bottom: none; }
+.dash-evt-icon { font-size: 0.8rem; flex-shrink: 0; margin-top: 1px; font-weight: 700; }
+.dash-evt-pos  { color: var(--success); }
+.dash-evt-mis  { color: var(--danger);  }
+.dash-evt-text { flex: 1; min-width: 0; }
+.dash-evt-time { font-size: 0.72rem; color: var(--text-muted); flex-shrink: 0; align-self: center; }
+.dash-evt-summary { display: flex; align-items: center; gap: 6px; padding: 8px 4px; }
 
 /* ── Leaderboard ─────────────────────────────────────────────────────────── */
 

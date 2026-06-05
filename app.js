@@ -608,7 +608,7 @@ function render() {
       break;
 
     case 'dashboard':
-      title.textContent = 'Dashboard';
+      title.textContent = 'Rehearsal Marks';
       actions.innerHTML = userBtn();
       main.innerHTML = viewDashboard();
       break;
@@ -1879,7 +1879,7 @@ function togglePortalRehearsal(rid) {
   if (chevron) chevron.style.transform = opening ? 'rotate(90deg)' : '';
 }
 
-// ── Dashboard ─────────────────────────────────────────────────────────────────
+// ── Rehearsal Marks Dashboard ─────────────────────────────────────────────────
 
 function setDashboardRehearsal(rid) {
   _dashRid = rid || null;
@@ -1958,9 +1958,10 @@ function viewDashboard() {
     </div>`;
 
   const stuRow = (s, valKey, cls) => `
-    <div class="dash-stu-row">
+    <div class="dash-stu-row" onclick="showStudentMarksModal('${esc(s.num)}','${esc(_dashRid||'')}')">
       <span class="dash-stu-name">${esc(s.name)}</span>
       <span class="dash-stu-val ${cls}">${valKey === 'pos' ? '+' : ''}${s[valKey]}</span>
+      <span class="dash-stu-chevron">›</span>
     </div>`;
 
   return `
@@ -2018,6 +2019,63 @@ function viewDashboard() {
         </div>` : ''}
 
     </div>`;
+}
+
+function showStudentMarksModal(num, rid) {
+  const s = STATE.students[num];
+  const name = s?.name || `#${num}`;
+
+  // Build a list of { rehearsal, events } pairs for the scope
+  const rehearsals = [...STATE.rehearsals].sort((a, b) => b.date.localeCompare(a.date));
+  const scoped = rid
+    ? rehearsals.filter(r => r.id === rid)
+    : rehearsals.filter(r => STATE.entries[r.id]?.[num]);
+
+  const eventRow = (evt) => {
+    const isMistake = evt.type === 'mistake';
+    const parts = [evt.note?.trim(), evt.segment?.trim()].filter(Boolean);
+    return `
+      <div class="dash-evt-row">
+        <span class="dash-evt-icon ${isMistake ? 'dash-evt-mis' : 'dash-evt-pos'}">${isMistake ? '✗' : '✓'}</span>
+        <span class="dash-evt-text">${parts.length ? esc(parts.join(' — ')) : `<em style="color:var(--text-muted)">No note</em>`}</span>
+        ${evt.ts ? `<span class="dash-evt-time">${fmtTime(evt.ts)}</span>` : ''}
+      </div>`;
+  };
+
+  const rehSection = (r) => {
+    const entry = STATE.entries[r.id]?.[num];
+    if (!entry) return '';
+    const evts = (entry.events || []);
+    const posCount = entry.positives || 0;
+    const misCount = entry.mistakes  || 0;
+    if (!posCount && !misCount) return '';
+    return `
+      ${!rid ? `<div class="dash-modal-reh-hdr">${esc(fmtDate(r.date))}${r.label ? ' — ' + esc(r.label) : ''}</div>` : ''}
+      ${evts.length
+        ? evts.map(eventRow).join('')
+        : `<div class="dash-evt-summary">
+             ${posCount ? `<span class="dash-count-pos" style="border-radius:4px;padding:2px 7px;font-size:.8rem;font-weight:700">+${posCount}</span>` : ''}
+             ${misCount ? `<span class="dash-count-mis" style="border-radius:4px;padding:2px 7px;font-size:.8rem;font-weight:700">${misCount}✗</span>` : ''}
+             <span style="font-size:.82rem;color:var(--text-muted);margin-left:4px">No detail recorded</span>
+           </div>`}`;
+  };
+
+  const body = scoped.map(rehSection).filter(Boolean).join('');
+
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">${esc(name)}
+      <div style="font-size:0.78rem;font-weight:400;color:var(--text-muted);margin-top:2px">
+        ${rid ? (() => { const r = STATE.rehearsals.find(r => r.id === rid); return r ? fmtDate(r.date) + (r.label ? ' — ' + esc(r.label) : '') : ''; })() : 'All Rehearsals'}
+      </div>
+    </div>
+    <div class="dash-modal-events">
+      ${body || `<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:.88rem">No marks recorded.</div>`}
+    </div>
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Close</button>
+    </div>
+  `);
 }
 
 function viewLeaderboard() {
