@@ -40,6 +40,9 @@ members/{uid}                         # who belongs to which org, and as what
 
 studentCodes/{CODE}                   # lookup so anonymous students find their org
   └─ (fields) orgId, studentNumber
+
+inviteCodes/{CODE}                    # lookup so a co-director can join an org
+  └─ (fields) orgId
 ```
 
 Everything that used to be a top-level collection now lives under
@@ -67,10 +70,17 @@ do that — only the rule helper functions do. See the runbook.
 
 - **Create a band:** the client creates `orgs/{orgId}` with
   `createdBy == request.auth.uid`, then creates its own `members/{uid}` doc with
-  `role: "director"`. Rules only allow the director member doc if that org's
-  `createdBy` matches the caller (so you can only become director of an org you
-  just created). Joining an *existing* org as a co-director will use an invite
-  code — added with the onboarding milestone.
+  `role: "director"`, then seeds `orgs/{orgId}/settings/presets`. Rules allow the
+  director member doc if that org's `createdBy` matches the caller.
+- **Join as a co-director:** an existing director generates an
+  `inviteCodes/{CODE}` → `{ orgId }` (Band Settings). Another signed-in director
+  enters the code; the client reads it to resolve the org and writes
+  `members/{uid}` = `{ orgId, role: "director", inviteCode: CODE }`. Rules allow
+  this only when a matching `inviteCodes/{CODE}` exists for that org.
+
+New directors self-register (email/password) from the login screen; a freshly
+created account has no membership, so the app routes it to the onboarding screen
+(create or join a band).
 
 ### How anonymous students get an org
 

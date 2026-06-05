@@ -69,6 +69,7 @@ const STATE = {
   authChecking: true,
   loading:      true,
   orgId:        null,
+  org:          null,
   needsOnboarding: false,
   isAdmin:      false,
   studentNum:   null,
@@ -217,6 +218,12 @@ async function startListeners() {
   }
 
   const listeners = [
+    // Org metadata (name, plan, invite code) — kept live for the settings UI.
+    db.collection('orgs').doc(STATE.orgId).onSnapshot(doc => {
+      STATE.org = doc.exists ? { id: doc.id, ...doc.data() } : null;
+      if (!STATE.loading) render();
+    }),
+
     // Settings — all members (students need the leaderboard toggle + pseudonym salt)
     orgCol('settings').doc('presets').onSnapshot(doc => {
       const d = doc.exists ? doc.data() : {};
@@ -314,6 +321,7 @@ auth.onAuthStateChanged(user => {
     STATE._unsubs = [];
     STATE.loading    = false;
     STATE.orgId      = null;
+    STATE.org        = null;
     STATE.needsOnboarding = false;
     STATE.isAdmin    = false;
     STATE.studentNum = null;
@@ -707,15 +715,9 @@ function render() {
   if (STATE.needsOnboarding) {
     backBtn.classList.add('hidden');
     title.textContent = 'Band Tracker';
-    actions.innerHTML = userBtn();
+    actions.innerHTML = '';
     nav.style.display = 'none';
-    main.innerHTML = `
-      <div class="empty-state" style="padding:48px 24px;text-align:center;">
-        <h2>No band linked yet</h2>
-        <p>Your account isn’t connected to a band. If you’re a director, your
-        band needs to be set up for your account. If you’re a student, sign in
-        with your student code instead.</p>
-      </div>`;
+    main.innerHTML = viewOnboarding();
     return;
   }
 
@@ -950,6 +952,12 @@ function viewLogin() {
                onkeydown="if(event.key==='Enter')doLogin()">
       </div>
       <button class="btn btn-secondary btn-full" onclick="doLogin()">Director Sign In</button>
+      <div style="text-align:center;margin-top:12px">
+        <button class="btn-link" onclick="doSignup()"
+          style="background:none;border:none;color:var(--primary);text-decoration:underline;cursor:pointer;font-size:.85rem">
+          New director? Create an account
+        </button>
+      </div>
     </div>
   `;
 }
@@ -1009,8 +1017,105 @@ async function doSignup() {
   if (!email || !pass) { showAuthError('Email and password are required.'); return; }
   try {
     await auth.createUserWithEmailAndPassword(email, pass);
+    // New account has no membership yet → onAuthStateChanged routes to onboarding.
   } catch(e) {
     showAuthError(authMsg(e.code));
+  }
+}
+
+// ── Onboarding (create / join a band) ──────────────────────────────────────────
+
+function viewOnboarding() {
+  return `
+    <div class="login-view">
+      <div class="login-logo">🎺</div>
+      <div class="login-title">Set up your band</div>
+      <p style="color:var(--text-muted);font-size:.85rem;text-align:center;margin:-8px 0 16px">
+        Signed in as ${esc(STATE.user?.email || '')}
+      </p>
+
+      <div class="login-section-label">Create a new band</div>
+      <div id="onboard-create-error"></div>
+      <div class="form-group">
+        <input class="form-input" id="onboard-band-name" type="text"
+               placeholder="e.g. Lincoln High School Band"
+               onkeydown="if(event.key==='Enter')createBand()">
+      </div>
+      <button class="btn btn-primary btn-full btn-lg" onclick="createBand()">Create Band</button>
+
+      <div class="login-divider"><span>or</span></div>
+
+      <div class="login-section-label">Join an existing band</div>
+      <div id="onboard-join-error"></div>
+      <div class="form-group">
+        <input class="form-input" id="onboard-invite-code" type="text"
+               placeholder="Enter invite code"
+               autocomplete="off" autocapitalize="characters" spellcheck="false"
+               style="text-transform:uppercase;letter-spacing:.1em;text-align:center"
+               onkeydown="if(event.key==='Enter')joinBandWithInvite()">
+      </div>
+      <button class="btn btn-secondary btn-full" onclick="joinBandWithInvite()">Join Band</button>
+
+      <div style="text-align:center;margin-top:24px">
+        <button class="btn-link" onclick="doLogout()"
+          style="background:none;border:none;color:var(--text-muted);text-decoration:underline;cursor:pointer;font-size:.85rem">
+          Sign out
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function onboardErr(id, msg) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = `<div class="auth-error">${esc(msg)}</div>`;
+}
+
+async function createBand() {
+  const name = document.getElementById('onboard-band-name')?.value.trim();
+  if (!name) { onboardErr('onboard-create-error', 'Please enter a band name.'); return; }
+  try {
+    const orgRef = db.collection('orgs').doc();
+    const orgId  = orgRef.id;
+    // Order matters for the security rules: create the org (createdBy = me),
+    // then my director membership, then seed settings (needs membership).
+    await orgRef.set({
+      name, plan: 'free', createdBy: STATE.user.uid,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    await db.collection('members').doc(STATE.user.uid).set({
+      orgId, role: 'director', email: STATE.user.email || ''
+    });
+    await orgRef.collection('settings').doc('presets').set({ bandName: name }, { merge: true });
+
+    STATE.needsOnboarding = false;
+    STATE.loading = true;
+    render();
+    startListeners();
+  } catch (e) {
+    console.error('createBand failed:', e);
+    onboardErr('onboard-create-error', 'Could not create the band. Please try again.');
+  }
+}
+
+async function joinBandWithInvite() {
+  const code = document.getElementById('onboard-invite-code')?.value.trim().toUpperCase();
+  if (!code) { onboardErr('onboard-join-error', 'Please enter an invite code.'); return; }
+  try {
+    const snap = await db.collection('inviteCodes').doc(code).get();
+    if (!snap.exists) { onboardErr('onboard-join-error', 'Invite code not found.'); return; }
+    const { orgId } = snap.data();
+    await db.collection('members').doc(STATE.user.uid).set({
+      orgId, role: 'director', email: STATE.user.email || '', inviteCode: code
+    });
+
+    STATE.needsOnboarding = false;
+    STATE.loading = true;
+    render();
+    startListeners();
+  } catch (e) {
+    console.error('joinBandWithInvite failed:', e);
+    onboardErr('onboard-join-error', 'Could not join the band. Please try again.');
   }
 }
 
@@ -1085,11 +1190,47 @@ function showBrandSettingsModal() {
       </div>
     </div>
 
+    <div class="form-group">
+      <label class="form-label">Co-director invite code</label>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <code id="invite-code-display"
+          style="font-size:1.1rem;letter-spacing:.15em;padding:6px 12px;background:var(--surface-2,#eee);border-radius:6px">
+          ${STATE.org?.inviteCode ? esc(STATE.org.inviteCode) : '— none —'}
+        </code>
+        <button class="btn btn-secondary" onclick="generateInviteCode()">
+          ${STATE.org?.inviteCode ? 'Regenerate' : 'Generate'}
+        </button>
+      </div>
+      <p style="font-size:.75rem;color:var(--text-muted);margin-top:6px">
+        Share this code with another director so they can join this band.
+        Regenerating revokes the old code.
+      </p>
+    </div>
+
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveBrandSettings()">Save</button>
     </div>
   `);
+}
+
+async function generateInviteCode() {
+  if (!STATE.isAdmin || !STATE.orgId) return;
+  const code = genStudentCode();
+  try {
+    const old = STATE.org?.inviteCode;
+    await db.collection('inviteCodes').doc(code).set({ orgId: STATE.orgId });
+    await db.collection('orgs').doc(STATE.orgId).set({ inviteCode: code }, { merge: true });
+    if (old && old !== code) {
+      await db.collection('inviteCodes').doc(old).delete().catch(() => {});
+    }
+    if (STATE.org) STATE.org.inviteCode = code; // optimistic; org listener will confirm
+    showToast('Invite code generated.');
+    showBrandSettingsModal();
+  } catch (e) {
+    console.error('generateInviteCode failed:', e);
+    showToast('Could not generate invite code.');
+  }
 }
 
 function handleLogoUpload(event) {

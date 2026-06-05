@@ -89,14 +89,20 @@ service cloud.firestore {
     match /members/{uid} {
       allow read: if isSignedIn() && request.auth.uid == uid;
 
-      // Director self-join: only for an org you just created (createdBy == you).
-      // Co-director invites will relax this in the onboarding milestone.
+      // Director join: allowed if you either created the org (create-a-band) or
+      // hold a valid invite code that maps to it (co-director invite).
       function directorJoin() {
         let m = request.resource.data;
         return !isAnonymous()
           && m.role == 'director'
-          && exists(/databases/$(database)/documents/orgs/$(m.orgId))
-          && get(/databases/$(database)/documents/orgs/$(m.orgId)).data.createdBy == request.auth.uid;
+          && (
+            (exists(/databases/$(database)/documents/orgs/$(m.orgId))
+              && get(/databases/$(database)/documents/orgs/$(m.orgId)).data.createdBy == request.auth.uid)
+            ||
+            (m.inviteCode is string
+              && exists(/databases/$(database)/documents/inviteCodes/$(m.inviteCode))
+              && get(/databases/$(database)/documents/inviteCodes/$(m.inviteCode)).data.orgId == m.orgId)
+          );
       }
 
       // Student self-join: only with a valid student code that maps to the org.
@@ -118,6 +124,19 @@ service cloud.firestore {
     // student number). Only directors of the owning org may manage codes.
 
     match /studentCodes/{code} {
+      allow read:   if isSignedIn();
+      allow create: if isDirectorOf(request.resource.data.orgId);
+      allow update: if isDirectorOf(resource.data.orgId)
+                    && isDirectorOf(request.resource.data.orgId);
+      allow delete: if isDirectorOf(resource.data.orgId);
+    }
+
+    // ── Co-director invite codes ──────────────────────────────────────────────
+    // Readable by any signed-in user so a joining director can resolve the org
+    // before a membership exists. Exposes only an org id. Managed by the org's
+    // directors.
+
+    match /inviteCodes/{code} {
       allow read:   if isSignedIn();
       allow create: if isDirectorOf(request.resource.data.orgId);
       allow update: if isDirectorOf(resource.data.orgId)

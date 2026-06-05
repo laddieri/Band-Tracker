@@ -92,8 +92,12 @@ After a safe period with the new model verified in production:
 
 - Delete the legacy top-level collections (`students`, `rehearsals`, `entries`,
   `songs`, `settings`, `admins`).
-- Build the self-serve onboarding flow (create band / join with code), which
-  creates `orgs`, `members`, and `studentCodes` docs through the rules above.
+
+The self-serve onboarding flow (create band / join with invite code) is built:
+new directors sign up from the login screen, then create a band or join one with
+an invite code generated in Band Settings. Students still join with their
+student code. This produces `orgs`, `members`, `studentCodes`, and `inviteCodes`
+docs through the rules above.
 
 ## 5. Future: move membership to custom claims (cost/perf)
 
