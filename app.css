@@ -1120,6 +1120,7 @@ html, body {
 }
 .suggestion-row:last-child { border-bottom: none; }
 .suggestion-row:hover, .suggestion-row:active { background: var(--hover-bg, #f1f5f9); }
+.tracker-hint { padding: 12px 4px; font-size: 0.82rem; color: var(--text-muted); text-align: center; }
 .suggestion-num-hidden {
   display: none;
   min-width: 0;

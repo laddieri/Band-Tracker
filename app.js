@@ -3109,12 +3109,12 @@ function viewRehearsal(rid) {
   } else {
     const isNameSearch = _numSearch.trim() && !/^\d+$/.test(_numSearch.trim());
     const suggestions  = isNameSearch ? studentSuggestions(_numSearch, _trackerFilter.instruments[0] || '', _trackerFilter.grades[0] || '') : [];
-    // Show scrollable student list whenever search box is empty (all students or filtered)
-    const showAllForFilter = !_numSearch.trim();
+    const activeFilterCount = _trackerFilter.instruments.length + _trackerFilter.grades.length + _trackerFilter.sections.length;
+    // Only show the full student list when a filter is active — not by default
+    const showAllForFilter = !_numSearch.trim() && activeFilterCount > 0;
     const allFiltered = showAllForFilter
       ? filterAndSortStudents(Object.values(students), _trackerFilter)
       : [];
-    const activeFilterCount = _trackerFilter.instruments.length + _trackerFilter.grades.length + _trackerFilter.sections.length;
     const activeFilterLabel = [
       ..._trackerFilter.instruments,
       ..._trackerFilter.grades.map(g => g + ' Grade')
@@ -3161,6 +3161,8 @@ function viewRehearsal(rid) {
                 <span class="suggestion-name">${esc(s.name || `#${s.number}`)}</span>
                 <span class="suggestion-detail">${esc(fmtPos(s.column,s.row))}</span>
               </div>`).join('') : ''}
+            ${!isNameSearch && !showAllForFilter ? `
+              <div class="tracker-hint">Search by name or number, or use filters to find students.</div>` : ''}
           </div>
         ` : ''}
         ${activeCard}
