@@ -114,8 +114,14 @@ const STATE = {
   songCategories:             [],
   bandName:                   '',
   bandLogo:                   '',
+  activeStudentFields:        null,
   _unsubs:      []
 };
+
+function hasField(key) {
+  const af = STATE.activeStudentFields;
+  return !af || af.includes(key);
+}
 
 // ── DB read layer (same API as before — views unchanged) ──────────────────────
 
@@ -264,6 +270,7 @@ async function startListeners() {
       STATE.songCategories             = d.songCategories || [];
       STATE.bandName                   = d.bandName || '';
       STATE.bandLogo                   = d.bandLogo || '';
+      STATE.activeStudentFields        = Array.isArray(d.activeStudentFields) ? d.activeStudentFields : null;
       if (!STATE.loading) render();
     }),
 
@@ -1569,16 +1576,17 @@ function viewRoster() {
   const allStudents = Object.values(students);
   const filtered = filterAndSortStudents(allStudents, _rosterFilter);
 
+  const rosterSortOpts = [
+    {value:'name',   label:'Name'},
+    {value:'number', label:'Number'},
+    ...(hasField('instrument') ? [{value:'instrument', label:'Instrument'}] : []),
+    ...(hasField('section')    ? [{value:'section',    label:'Section'}]    : []),
+    ...(hasField('grade')      ? [{value:'grade',      label:'Grade'}]      : []),
+    ...(hasField('column')     ? [{value:'column',     label:'Column'}]     : []),
+    ...(hasField('row')        ? [{value:'row',        label:'Row'}]        : []),
+  ];
   return `
-    ${renderFilterBar('roster', _rosterFilter, [
-      {value:'name',       label:'Name'},
-      {value:'number',     label:'Number'},
-      {value:'instrument', label:'Instrument'},
-      {value:'section',    label:'Section'},
-      {value:'grade',      label:'Grade'},
-      {value:'column',     label:'Column'},
-      {value:'row',        label:'Row'}
-    ])}
+    ${renderFilterBar('roster', _rosterFilter, rosterSortOpts)}
     <div id="roster-list">${rosterRows(filtered)}</div>
     ${allStudents.length === 0 ? `
       <div class="empty-state">
@@ -1603,7 +1611,11 @@ function rosterRows(list) {
       <div class="roster-row" onclick="navigate('student',{num:'${esc(s.number)}'})">
         <div class="student-info">
           ${s.name ? `<div class="student-name">${esc(s.name)}</div>` : `<div class="student-name text-muted">#${esc(s.number)}</div>`}
-          <div class="student-detail">${esc([fmtPos(s.column,s.row),normInstrument(s.instrument),s.section].filter(Boolean).join(' · ')) || '<em style="color:var(--text-muted)">No details set</em>'}</div>
+          <div class="student-detail">${esc([
+            (hasField('column')||hasField('row')) ? fmtPos(hasField('column')?s.column:'',hasField('row')?s.row:'') : '',
+            hasField('instrument') ? normInstrument(s.instrument) : '',
+            hasField('section')    ? s.section : ''
+          ].filter(Boolean).join(' · ')) || '<em style="color:var(--text-muted)">No details set</em>'}</div>
         </div>
         <div class="student-badges">
           ${avg !== null ? `<span class="badge badge-danger">${avg}✗</span>` : ''}
@@ -1622,6 +1634,13 @@ function showRosterOptionsModal() {
     <div class="modal-handle"></div>
     <div class="modal-title">Roster Options</div>
     <div class="options-menu">
+      <button class="options-menu-item" onclick="closeModal();showManageStudentFieldsModal()">
+        <div class="options-menu-icon">🗃️</div>
+        <div>
+          <div class="options-menu-label">Student Fields</div>
+          <div class="options-menu-sub">Choose which fields appear in the roster and forms</div>
+        </div>
+      </button>
       <button class="options-menu-item" onclick="closeModal();showAutoGenerateCodesModal()">
         <div class="options-menu-icon">🔑</div>
         <div>
@@ -1669,6 +1688,38 @@ function showRosterOptionsModal() {
       <button class="btn btn-secondary btn-full" onclick="closeModal()">Cancel</button>
     </div>
   `);
+}
+
+function showManageStudentFieldsModal() {
+  if (!STATE.isAdmin) return;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Student Fields</div>
+    <div class="form-hint" style="margin:0 0 16px">Choose which fields are visible in the roster, student forms, and CSV import.</div>
+    ${STUDENT_FIELD_DEFS.map(f => `
+      <label style="display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border);cursor:pointer">
+        <input type="checkbox" id="sf-${f.key}" ${hasField(f.key)?'checked':''} style="width:18px;height:18px;flex-shrink:0;cursor:pointer">
+        <div>
+          <div style="font-weight:600">${f.label}</div>
+          <div class="form-hint" style="margin:2px 0 0">${f.description}</div>
+        </div>
+      </label>`).join('')}
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveStudentFields()">Save</button>
+    </div>
+  `);
+}
+
+function saveStudentFields() {
+  const active = STUDENT_FIELD_DEFS
+    .filter(f => document.getElementById(`sf-${f.key}`)?.checked)
+    .map(f => f.key);
+  STATE.activeStudentFields = active.length ? active : null;
+  orgCol('settings').doc('presets').set({ activeStudentFields: active }, { merge: true });
+  closeModal();
+  showToast('Student fields updated');
+  if (_view === 'roster') render();
 }
 
 function showMarksOptionsModal() {
@@ -4483,47 +4534,48 @@ function showAddStudentModal(prefill = '') {
       <label class="form-label">Name (optional)</label>
       <input class="form-input" id="m-name" type="text" placeholder="First Last" autocomplete="off">
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="form-group" style="margin-bottom:0">
+    ${(hasField('column')||hasField('row')) ? `
+    <div style="display:grid;grid-template-columns:${hasField('column')&&hasField('row')?'1fr 1fr':'1fr'};gap:12px">
+      ${hasField('column') ? `<div class="form-group" style="margin-bottom:0">
         <label class="form-label">Column (A–L)</label>
         <select class="form-select" id="m-column">
           <option value="">—</option>
           ${COLUMNS.map(c=>`<option value="${c}">${c}</option>`).join('')}
         </select>
-      </div>
-      <div class="form-group" style="margin-bottom:0">
+      </div>` : ''}
+      ${hasField('row') ? `<div class="form-group" style="margin-bottom:0">
         <label class="form-label">Row (1–12)</label>
         <select class="form-select" id="m-row">
           <option value="">—</option>
           ${ROWS.map(r=>`<option value="${r}">${r}</option>`).join('')}
         </select>
-      </div>
-    </div>
-    <div class="form-group">
+      </div>` : ''}
+    </div>` : ''}
+    ${hasField('instrument') ? `<div class="form-group">
       <label class="form-label">Instrument</label>
       <select class="form-select" id="m-instrument">
         <option value="">— Select instrument —</option>
         ${STATE.instruments.map(i=>`<option value="${esc(i)}">${esc(i)}</option>`).join('')}
       </select>
-    </div>
-    <div class="form-group">
+    </div>` : ''}
+    ${hasField('section') ? `<div class="form-group">
       <label class="form-label">Section</label>
       <select class="form-select" id="m-section">
         <option value="">— Select section —</option>
         ${STATE.sections.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('')}
       </select>
-    </div>
-    <div class="form-group">
+    </div>` : ''}
+    ${hasField('grade') ? `<div class="form-group">
       <label class="form-label">Grade</label>
       <select class="form-select" id="m-grade">
         <option value="">— Select grade —</option>
         ${GRADE_LEVELS.map(g=>`<option value="${g}">${g} Grade</option>`).join('')}
       </select>
-    </div>
-    <div class="form-group">
+    </div>` : ''}
+    ${hasField('notes') ? `<div class="form-group">
       <label class="form-label">Director Notes (optional)</label>
       <textarea class="form-textarea" id="m-notes" placeholder="Any notes about this student…"></textarea>
-    </div>
+    </div>` : ''}
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveNewStudent()">Add Student</button>
@@ -4538,16 +4590,16 @@ function saveNewStudent() {
   if (STATE.students[num]) { showToast(`Student #${num} already exists`); return; }
 
   const student = {
-    number:     num,
-    name:       document.getElementById('m-name').value.trim(),
-    column:     document.getElementById('m-column').value,
-    row:        document.getElementById('m-row').value,
-    instrument: document.getElementById('m-instrument').value,
-    section:    document.getElementById('m-section').value,
-    grade:      document.getElementById('m-grade').value,
-    notes:      document.getElementById('m-notes').value.trim(),
-    songs:      []
+    number: num,
+    name:   document.getElementById('m-name').value.trim(),
+    songs:  []
   };
+  if (hasField('column'))     student.column     = document.getElementById('m-column')?.value     || '';
+  if (hasField('row'))        student.row        = document.getElementById('m-row')?.value        || '';
+  if (hasField('instrument')) student.instrument = document.getElementById('m-instrument')?.value || '';
+  if (hasField('section'))    student.section    = document.getElementById('m-section')?.value    || '';
+  if (hasField('grade'))      student.grade      = document.getElementById('m-grade')?.value      || '';
+  if (hasField('notes'))      student.notes      = document.getElementById('m-notes')?.value?.trim() || '';
 
   STATE.students[num] = student;
   orgCol('students').doc(num).set(student);
@@ -4567,47 +4619,48 @@ function showEditStudentModal(num) {
       <label class="form-label">Name (optional)</label>
       <input class="form-input" id="m-name" type="text" value="${esc(s.name||'')}" autocomplete="off">
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="form-group" style="margin-bottom:0">
+    ${(hasField('column')||hasField('row')) ? `
+    <div style="display:grid;grid-template-columns:${hasField('column')&&hasField('row')?'1fr 1fr':'1fr'};gap:12px">
+      ${hasField('column') ? `<div class="form-group" style="margin-bottom:0">
         <label class="form-label">Column (A–L)</label>
         <select class="form-select" id="m-column">
           <option value="">—</option>
           ${COLUMNS.map(c=>`<option value="${c}" ${s.column===c?'selected':''}>${c}</option>`).join('')}
         </select>
-      </div>
-      <div class="form-group" style="margin-bottom:0">
+      </div>` : ''}
+      ${hasField('row') ? `<div class="form-group" style="margin-bottom:0">
         <label class="form-label">Row (1–12)</label>
         <select class="form-select" id="m-row">
           <option value="">—</option>
           ${ROWS.map(r=>`<option value="${r}" ${String(s.row)===String(r)?'selected':''}>${r}</option>`).join('')}
         </select>
-      </div>
-    </div>
-    <div class="form-group">
+      </div>` : ''}
+    </div>` : ''}
+    ${hasField('instrument') ? `<div class="form-group">
       <label class="form-label">Instrument</label>
       <select class="form-select" id="m-instrument">
         <option value="">— Select instrument —</option>
         ${STATE.instruments.map(i=>`<option value="${esc(i)}" ${(normInstrument(s.instrument)===i||s.instrument===i)?'selected':''}>${esc(i)}</option>`).join('')}
       </select>
-    </div>
-    <div class="form-group">
+    </div>` : ''}
+    ${hasField('section') ? `<div class="form-group">
       <label class="form-label">Section</label>
       <select class="form-select" id="m-section">
         <option value="">— Select section —</option>
         ${STATE.sections.map(sec=>`<option value="${esc(sec)}" ${s.section===sec?'selected':''}>${esc(sec)}</option>`).join('')}
       </select>
-    </div>
-    <div class="form-group">
+    </div>` : ''}
+    ${hasField('grade') ? `<div class="form-group">
       <label class="form-label">Grade</label>
       <select class="form-select" id="m-grade">
         <option value="">— Select grade —</option>
         ${GRADE_LEVELS.map(g=>`<option value="${g}" ${s.grade===g?'selected':''}>${g} Grade</option>`).join('')}
       </select>
-    </div>
-    <div class="form-group">
+    </div>` : ''}
+    ${hasField('notes') ? `<div class="form-group">
       <label class="form-label">Director Notes</label>
       <textarea class="form-textarea" id="m-notes">${esc(s.notes||'')}</textarea>
-    </div>
+    </div>` : ''}
     <div class="form-group">
       <label class="form-label">Student Code</label>
       <div style="display:flex;gap:8px">
@@ -4644,15 +4697,15 @@ function saveEditStudent(num) {
   if (!STATE.students[num]) return;
   const patch = {
     name:         document.getElementById('m-name').value.trim(),
-    column:       document.getElementById('m-column').value,
-    row:          document.getElementById('m-row').value,
-    instrument:   document.getElementById('m-instrument').value,
-    section:      document.getElementById('m-section').value,
-    grade:        document.getElementById('m-grade').value,
-    notes:        document.getElementById('m-notes').value.trim(),
     studentCode:  document.getElementById('m-student-code').value.trim().toUpperCase(),
     studentEmail: document.getElementById('m-student-email').value.trim().toLowerCase(),
   };
+  if (hasField('column'))     patch.column     = document.getElementById('m-column')?.value     || '';
+  if (hasField('row'))        patch.row        = document.getElementById('m-row')?.value        || '';
+  if (hasField('instrument')) patch.instrument = document.getElementById('m-instrument')?.value || '';
+  if (hasField('section'))    patch.section    = document.getElementById('m-section')?.value    || '';
+  if (hasField('grade'))      patch.grade      = document.getElementById('m-grade')?.value      || '';
+  if (hasField('notes'))      patch.notes      = document.getElementById('m-notes')?.value?.trim() || '';
   STATE.students[num] = { ...STATE.students[num], ...patch };
   orgCol('students').doc(num).set(patch, { merge: true });
   setStudentCodeLookup(patch.studentCode, num);
@@ -5314,36 +5367,12 @@ function showImportModal() {
             <td style="padding:5px 6px">Student's display name</td>
             <td style="padding:5px 6px;color:var(--text-muted)">Name, Student Name, Full Name, First Name, Last Name</td>
           </tr>
-          <tr style="border-bottom:1px solid var(--border)">
-            <td style="padding:5px 6px;font-weight:700;white-space:nowrap">Instrument</td>
-            <td style="padding:5px 6px">Instrument played</td>
-            <td style="padding:5px 6px;color:var(--text-muted)">Instrument, Inst</td>
-          </tr>
-          <tr style="border-bottom:1px solid var(--border)">
-            <td style="padding:5px 6px;font-weight:700;white-space:nowrap">Section</td>
-            <td style="padding:5px 6px">Band section or ensemble group</td>
-            <td style="padding:5px 6px;color:var(--text-muted)">Section, Part, Group, Ensemble</td>
-          </tr>
-          <tr style="border-bottom:1px solid var(--border)">
-            <td style="padding:5px 6px;font-weight:700;white-space:nowrap">Column</td>
-            <td style="padding:5px 6px">Marching position — column letter (e.g. A, B, C)</td>
-            <td style="padding:5px 6px;color:var(--text-muted)">Column, Col, Letter, Column Letter, File</td>
-          </tr>
-          <tr style="border-bottom:1px solid var(--border)">
-            <td style="padding:5px 6px;font-weight:700;white-space:nowrap">Row</td>
-            <td style="padding:5px 6px">Marching position — row number (e.g. 1, 2, 3)</td>
-            <td style="padding:5px 6px;color:var(--text-muted)">Row, Rank, Row Number, Set</td>
-          </tr>
-          <tr style="border-bottom:1px solid var(--border)">
-            <td style="padding:5px 6px;font-weight:700;white-space:nowrap">Grade</td>
-            <td style="padding:5px 6px">Grade level (9–12)</td>
-            <td style="padding:5px 6px;color:var(--text-muted)">Grade, Grade Level, Year, Class Year</td>
-          </tr>
-          <tr>
-            <td style="padding:5px 6px;font-weight:700;white-space:nowrap">Notes</td>
-            <td style="padding:5px 6px">Private director notes for the student</td>
-            <td style="padding:5px 6px;color:var(--text-muted)">Notes, Note, Comments, Director Notes</td>
-          </tr>
+          ${STUDENT_FIELD_DEFS.filter(f => hasField(f.key)).map((f, i, arr) => `
+          <tr${i < arr.length-1 ? ' style="border-bottom:1px solid var(--border)"' : ''}>
+            <td style="padding:5px 6px;font-weight:700;white-space:nowrap">${f.label}</td>
+            <td style="padding:5px 6px">${f.description}</td>
+            <td style="padding:5px 6px;color:var(--text-muted)">${f.aliases}</td>
+          </tr>`).join('')}
         </tbody>
       </table>
     </div>
@@ -5385,6 +5414,15 @@ function parseCSV(text) {
   return text.replace(/\r\n/g,'\n').replace(/\r/g,'\n')
     .split('\n').filter(l => l.trim()).map(parseCSVLine);
 }
+
+const STUDENT_FIELD_DEFS = [
+  { key: 'instrument', label: 'Instrument',  description: 'Instrument played',                        aliases: 'Instrument, Inst' },
+  { key: 'section',    label: 'Section',     description: 'Band section or ensemble group',           aliases: 'Section, Part, Group, Ensemble' },
+  { key: 'column',     label: 'Column',      description: 'Marching position — column letter (A–L)',  aliases: 'Column, Col, Letter, Column Letter, File' },
+  { key: 'row',        label: 'Row',         description: 'Marching position — row number (1–12)',    aliases: 'Row, Rank, Row Number, Set' },
+  { key: 'grade',      label: 'Grade',       description: 'Grade level (9–12)',                       aliases: 'Grade, Grade Level, Year, Class Year' },
+  { key: 'notes',      label: 'Notes',       description: 'Private director notes for the student',   aliases: 'Notes, Note, Comments, Director Notes' },
+];
 
 const COL_ALIASES = {
   number:     ['number','student number','student #','student no','student id','id','#','num','no.','no'],
@@ -5453,7 +5491,7 @@ function renderImportPreview() {
   const dupCount  = rows.length - newCount;
   const preview   = rows.slice(0, 8);
   const LABELS    = { number:'Number', name:'Name', column:'Column', row:'Row', instrument:'Instrument', section:'Section', grade:'Grade', notes:'Notes' };
-  const fields    = Object.keys(colMap);
+  const fields    = Object.keys(colMap).filter(f => f === 'number' || f === 'name' || hasField(f));
 
   document.getElementById('import-preview').innerHTML = `
     <hr class="divider">
@@ -5525,13 +5563,13 @@ async function executeImport() {
     const num = csvRow[colMap.number]?.trim();
     if (!num) continue;
     const incoming = { number: num };
-    if (colMap.name       !== undefined) incoming.name       = csvRow[colMap.name].trim();
-    if (colMap.column     !== undefined) incoming.column     = csvRow[colMap.column].trim().toUpperCase();
-    if (colMap.row        !== undefined) incoming.row        = csvRow[colMap.row].trim();
-    if (colMap.instrument !== undefined) incoming.instrument = csvRow[colMap.instrument].trim();
-    if (colMap.section    !== undefined) incoming.section    = csvRow[colMap.section].trim();
-    if (colMap.grade      !== undefined) incoming.grade      = normalizeGrade(csvRow[colMap.grade].trim());
-    if (colMap.notes      !== undefined) incoming.notes      = csvRow[colMap.notes].trim();
+    if (colMap.name       !== undefined)              incoming.name       = csvRow[colMap.name].trim();
+    if (colMap.column     !== undefined && hasField('column'))     incoming.column     = csvRow[colMap.column].trim().toUpperCase();
+    if (colMap.row        !== undefined && hasField('row'))        incoming.row        = csvRow[colMap.row].trim();
+    if (colMap.instrument !== undefined && hasField('instrument')) incoming.instrument = csvRow[colMap.instrument].trim();
+    if (colMap.section    !== undefined && hasField('section'))    incoming.section    = csvRow[colMap.section].trim();
+    if (colMap.grade      !== undefined && hasField('grade'))      incoming.grade      = normalizeGrade(csvRow[colMap.grade].trim());
+    if (colMap.notes      !== undefined && hasField('notes'))      incoming.notes      = csvRow[colMap.notes].trim();
     if (existing[num]) {
       if (strategy === 'overwrite') {
         STATE.students[num] = { ...STATE.students[num], ...incoming };
