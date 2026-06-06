@@ -564,7 +564,12 @@ function _rerenderForFilter(viewId) {
   const st = mc ? mc.scrollTop : 0;
   switch (viewId) {
     case 'roster':  mc.innerHTML = viewRoster(); break;
-    case 'att-tab': mc.innerHTML = viewAttendanceTab(); break;
+    case 'att-tab': {
+        const el = document.getElementById('att-tab-filtered');
+        if (el) { el.innerHTML = _attTabFilteredContent(); if (mc) mc.scrollTop = st; }
+        else mc.innerHTML = viewAttendanceTab();
+        break;
+      }
     case 'att':     mc.innerHTML = viewAttendance(_params.rid); break;
     case 'tracker': reRender(_params.rid); break;
     case 'lb':      mc.innerHTML = viewLeaderboard(); break;
@@ -3193,43 +3198,11 @@ function viewRehearsals() {
 
 // ── View: Attendance Tab ──────────────────────────────────────────────────────
 
-function viewAttendanceTab() {
+function _attTabFilteredContent() {
   const rehearsals = [...DB.getRehearsals()].sort((a,b) => b.date.localeCompare(a.date));
   const students   = Object.values(DB.getStudents()).sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  if (!rehearsals.length) return '';
 
-  if (!rehearsals.length) {
-    return `<div class="empty-state"><p>No rehearsals yet.</p></div>`;
-  }
-
-  // ── Open-rehearsal attendance CTA ─────────────────────────────────────────
-
-  const openReh = STATE.isAdmin ? getActiveRehearsal() : null;
-  let attendanceCta = '';
-  if (openReh) {
-    if (!openReh.attendanceSubmitted) {
-      attendanceCta = `<button class="start-rehearsal-btn"
-        onclick="navigate('attendance',{rid:'${esc(openReh.id)}',from:'attendance-tab'})">
-        📋 Take Attendance — ${esc(fmtDate(openReh.date))}${openReh.label ? ' · ' + esc(openReh.label) : ''}
-      </button>`;
-    } else {
-      attendanceCta = `<button class="start-rehearsal-btn att-modify-att-btn"
-        onclick="confirmModifyAttendance('${esc(openReh.id)}')">
-        ✏️ Modify Current Rehearsal Attendance
-      </button>`;
-    }
-  }
-
-  // ── Filter bar (shared across all student lists on this tab) ──────────────
-
-  const filterBar = renderFilterBar('att-tab', _attTabFilter, [
-    { value: 'absences',   label: 'Most Absent' },
-    { value: 'lates',      label: 'Most Late'   },
-    { value: 'name',       label: 'Name'        },
-    { value: 'instrument', label: 'Instrument'  },
-    { value: 'grade',      label: 'Grade'       },
-  ]);
-
-  // Helper: filter a student list by search + checkboxes (no sort — sublists keep name order)
   const filterSublist = list =>
     filterAndSortStudents(list, { ..._attTabFilter, sortField: 'name', sortDir: 'asc' }, {});
 
@@ -3298,7 +3271,6 @@ function viewAttendanceTab() {
     }
   }
 
-  // Build scoreMap for sort-by-absences/lates and apply unified filter
   const seasonScoreMap = {};
   for (const [num, d] of Object.entries(seasonMap)) seasonScoreMap[num] = { absences: d.absences, lates: d.lates };
   const seasonStudents  = Object.values(seasonMap).map(d => d.s);
@@ -3331,7 +3303,46 @@ function viewAttendanceTab() {
       }
     </div>`;
 
-  // ── Rehearsal History ─────────────────────────────────────────────────────
+  return recentSection + seasonSection;
+}
+
+function viewAttendanceTab() {
+  const rehearsals = [...DB.getRehearsals()].sort((a,b) => b.date.localeCompare(a.date));
+  const students   = Object.values(DB.getStudents()).sort((a,b) => (a.name||'').localeCompare(b.name||''));
+
+  if (!rehearsals.length) {
+    return `<div class="empty-state"><p>No rehearsals yet.</p></div>`;
+  }
+
+  // ── Open-rehearsal attendance CTA ─────────────────────────────────────────
+
+  const openReh = STATE.isAdmin ? getActiveRehearsal() : null;
+  let attendanceCta = '';
+  if (openReh) {
+    if (!openReh.attendanceSubmitted) {
+      attendanceCta = `<button class="start-rehearsal-btn"
+        onclick="navigate('attendance',{rid:'${esc(openReh.id)}',from:'attendance-tab'})">
+        📋 Take Attendance — ${esc(fmtDate(openReh.date))}${openReh.label ? ' · ' + esc(openReh.label) : ''}
+      </button>`;
+    } else {
+      attendanceCta = `<button class="start-rehearsal-btn att-modify-att-btn"
+        onclick="confirmModifyAttendance('${esc(openReh.id)}')">
+        ✏️ Modify Current Rehearsal Attendance
+      </button>`;
+    }
+  }
+
+  // ── Filter bar ────────────────────────────────────────────────────────────
+
+  const filterBar = renderFilterBar('att-tab', _attTabFilter, [
+    { value: 'absences',   label: 'Most Absent' },
+    { value: 'lates',      label: 'Most Late'   },
+    { value: 'name',       label: 'Name'        },
+    { value: 'instrument', label: 'Instrument'  },
+    { value: 'grade',      label: 'Grade'       },
+  ]);
+
+  // ── Rehearsal History (not affected by filter) ────────────────────────────
 
   const historyRows = rehearsals.map(r => {
     const entries = STATE.entries[r.id] || {};
@@ -3367,7 +3378,9 @@ function viewAttendanceTab() {
       ${historyRows}
     </div>`;
 
-  return attendanceCta + filterBar + recentSection + seasonSection + historySection;
+  return attendanceCta + filterBar
+    + `<div id="att-tab-filtered">${_attTabFilteredContent()}</div>`
+    + historySection;
 }
 
 // ── View: Rehearsal Detail ────────────────────────────────────────────────────
