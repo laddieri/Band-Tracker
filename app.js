@@ -2,6 +2,23 @@
 // BAND TRACKER — Firebase Edition
 // =============================================================================
 
+// ── Theme ─────────────────────────────────────────────────────────────────────
+
+function initTheme() {
+  const stored = localStorage.getItem('bandTheme');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.setAttribute('data-theme', stored || (prefersDark ? 'dark' : 'light'));
+}
+initTheme();
+
+function toggleTheme() {
+  const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('bandTheme', next);
+  closeModal();
+  showUserMenu();
+}
+
 const FAKE_ADJECTIVES = [
   'Fluffy','Speedy','Grumpy','Happy','Sleepy','Bouncy','Sparkly','Wobbly',
   'Snappy','Fuzzy','Silly','Jolly','Brave','Clever','Dizzy','Fancy',
@@ -1201,12 +1218,14 @@ function showUserMenu() {
         Viewing as<br><strong style="color:var(--text)">${esc(s?.name || 'Student #' + STATE.studentNum)}</strong>
       </div>
       <div class="modal-actions">
+        <button class="btn btn-secondary btn-full" onclick="toggleTheme()">${document.documentElement.getAttribute('data-theme') === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode'}</button>
         <button class="btn btn-secondary btn-full" onclick="closeModal()">Close</button>
         <button class="btn btn-danger btn-full" onclick="doLogout()">Exit Student View</button>
       </div>
     `);
     return;
   }
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   openModal(`
     <div class="modal-title">Account</div>
     <div style="font-size:0.9rem;color:var(--text-muted);margin-bottom:20px">
@@ -1218,6 +1237,7 @@ function showUserMenu() {
         <button class="btn btn-secondary btn-full" onclick="closeModal();navigate('roster')">Manage Roster</button>
         <button class="btn btn-secondary btn-full" onclick="closeModal();showBrandSettingsModal()">Band Settings</button>
       ` : ''}
+      <button class="btn btn-secondary btn-full" onclick="toggleTheme()">${isDark ? '☀️ Light Mode' : '🌙 Dark Mode'}</button>
       <button class="btn btn-secondary btn-full" onclick="closeModal()">Close</button>
       <button class="btn btn-danger btn-full" onclick="doLogout()">Sign Out</button>
     </div>
