@@ -1825,7 +1825,7 @@ function viewSongs() {
   };
 
   if (!cats.length) {
-    return `<div style="padding:8px 0">${songs.map(songRow).join('')}</div>`;
+    return `<div class="songs-list-grid">${songs.map(songRow).join('')}</div>`;
   }
 
   // Group songs by category
@@ -1837,7 +1837,7 @@ function viewSongs() {
     else uncategorized.push(song);
   });
 
-  let html = '<div style="padding:8px 0">';
+  let html = '<div class="songs-list-grid">';
   cats.forEach(cat => {
     if (!grouped[cat].length) return;
     html += `<div class="song-cat-hdr">${esc(cat)}</div>`;
@@ -3100,7 +3100,7 @@ function viewRehearsals() {
     const [y, m] = key.split('-').map(Number);
     return `
       <div class="section-title">${MONTHS[m-1]} ${y}</div>
-      ${group.map(r => {
+      <div class="rh-cards-grid">${group.map(r => {
         const ents = DB.getRehearsalEntries(r.id);
         const cnt  = Object.keys(ents).length;
         const errs = Object.values(ents).reduce((s,e)=>s+(e.mistakes||0),0);
@@ -3174,7 +3174,7 @@ function viewRehearsals() {
               </div>
             </div>
           </div>`;
-      }).join('')}`;
+      }).join('')}</div>`;
   }).join('');
 }
 
