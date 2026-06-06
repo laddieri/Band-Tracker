@@ -1637,18 +1637,11 @@ function showRosterOptionsModal() {
     <div class="modal-handle"></div>
     <div class="modal-title">Roster Options</div>
     <div class="options-menu">
-      <button class="options-menu-item" onclick="closeModal();showManageStudentFieldsModal()">
+      <button class="options-menu-item" onclick="closeModal();showManageFieldsModal()">
         <div class="options-menu-icon">🗃️</div>
         <div>
-          <div class="options-menu-label">Student Fields</div>
-          <div class="options-menu-sub">Choose which fields appear in the roster and forms</div>
-        </div>
-      </button>
-      <button class="options-menu-item" onclick="closeModal();showManageCustomFieldsModal()">
-        <div class="options-menu-icon">🖊️</div>
-        <div>
-          <div class="options-menu-label">Custom Fields</div>
-          <div class="options-menu-sub">Add your own fields to student profiles</div>
+          <div class="options-menu-label">Manage Fields</div>
+          <div class="options-menu-sub">Toggle built-in fields and add custom ones</div>
         </div>
       </button>
       <button class="options-menu-item" onclick="closeModal();showAutoGenerateCodesModal()">
@@ -1700,43 +1693,25 @@ function showRosterOptionsModal() {
   `);
 }
 
-function showManageStudentFieldsModal() {
+function showManageFieldsModal() {
   if (!STATE.isAdmin) return;
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">Student Fields</div>
-    <div class="form-hint" style="margin:0 0 16px">Choose which fields are visible in the roster, student forms, and CSV import.</div>
+    <div class="modal-title">Manage Fields</div>
+    <div class="section-title" style="margin-top:0">Built-in Fields</div>
+    <div class="form-hint" style="margin:0 0 10px">Toggle which fields appear in forms, roster cards, and CSV import.</div>
     ${STUDENT_FIELD_DEFS.map(f => `
-      <label style="display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border);cursor:pointer">
-        <input type="checkbox" id="sf-${f.key}" ${hasField(f.key)?'checked':''} style="width:18px;height:18px;flex-shrink:0;cursor:pointer">
+      <label style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer">
+        <input type="checkbox" id="sf-${f.key}" ${hasField(f.key)?'checked':''}
+               onchange="toggleBuiltinField('${f.key}')"
+               style="width:18px;height:18px;flex-shrink:0;cursor:pointer">
         <div>
           <div style="font-weight:600">${f.label}</div>
           <div class="form-hint" style="margin:2px 0 0">${f.description}</div>
         </div>
       </label>`).join('')}
-    <div class="modal-actions" style="margin-top:16px">
-      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveStudentFields()">Save</button>
-    </div>
-  `);
-}
-
-function saveStudentFields() {
-  const active = STUDENT_FIELD_DEFS
-    .filter(f => document.getElementById(`sf-${f.key}`)?.checked)
-    .map(f => f.key);
-  STATE.activeStudentFields = active.length ? active : null;
-  orgCol('settings').doc('presets').set({ activeStudentFields: active }, { merge: true });
-  closeModal();
-  showToast('Student fields updated');
-  if (_view === 'roster') render();
-}
-
-function showManageCustomFieldsModal() {
-  if (!STATE.isAdmin) return;
-  openModal(`
-    <div class="modal-handle"></div>
-    <div class="modal-title">Custom Fields</div>
+    <div class="section-title" style="margin-top:18px">Custom Fields</div>
+    <div class="form-hint" style="margin:0 0 10px">Add your own fields to student profiles.</div>
     <div class="preset-section">
       <div id="custom-field-list">${_renderCustomFieldList()}</div>
       <div class="preset-add-row">
@@ -1746,10 +1721,18 @@ function showManageCustomFieldsModal() {
         <button class="preset-add-btn preset-add-btn-positive" onclick="addCustomField()">Add</button>
       </div>
     </div>
-    <div class="modal-actions" style="margin-top:10px">
+    <div class="modal-actions" style="margin-top:12px">
       <button class="btn btn-secondary btn-full" onclick="closeModal()">Done</button>
     </div>
   `);
+}
+
+function toggleBuiltinField(key) {
+  const current = STATE.activeStudentFields ?? STUDENT_FIELD_DEFS.map(f => f.key);
+  const next = current.includes(key) ? current.filter(k => k !== key) : [...current, key];
+  STATE.activeStudentFields = next.length === STUDENT_FIELD_DEFS.length ? null : next;
+  orgCol('settings').doc('presets').set({ activeStudentFields: next }, { merge: true });
+  if (_view === 'roster') render();
 }
 
 function _renderCustomFieldList() {
@@ -1792,7 +1775,7 @@ function editCustomField(key) {
            value="${esc(cf.label)}" maxlength="40"
            onkeydown="if(event.key==='Enter')saveEditCustomField('${esc(key)}')">
     <div class="modal-actions" style="margin-top:12px">
-      <button class="btn btn-secondary" onclick="showManageCustomFieldsModal()">Cancel</button>
+      <button class="btn btn-secondary" onclick="showManageFieldsModal()">Cancel</button>
       <button class="btn btn-primary"   onclick="saveEditCustomField('${esc(key)}')">Save</button>
     </div>
   `);
@@ -1806,7 +1789,7 @@ function saveEditCustomField(key) {
     cf.key === key ? { key, label } : cf
   );
   _saveCustomFields();
-  showManageCustomFieldsModal();
+  showManageFieldsModal();
 }
 
 async function _saveCustomFields() {
