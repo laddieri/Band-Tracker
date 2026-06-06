@@ -376,6 +376,7 @@ auth.onAuthStateChanged(user => {
 let _view   = 'rehearsals';
 let _params = {};
 let _authMode = 'signin'; // 'signin' | 'signup' — which director auth screen to show
+let _pendingVerification = false; // true after signup until email is verified
 
 function navigate(view, params = {}) {
   if (_view === 'rehearsal' && view !== 'rehearsal') {
@@ -744,6 +745,15 @@ function render() {
     return;
   }
 
+  if (_pendingVerification && !STATE.user.emailVerified && !STATE.user.isAnonymous) {
+    backBtn.classList.add('hidden');
+    title.textContent = 'Verify Email';
+    actions.innerHTML = '';
+    nav.style.display = 'none';
+    main.innerHTML = viewVerificationPending();
+    return;
+  }
+
   nav.style.display = '';
 
   if (STATE.loading) {
@@ -1034,6 +1044,12 @@ function viewSignup() {
                placeholder="At least 6 characters" autocomplete="new-password"
                onkeydown="if(event.key==='Enter')doSignup()">
       </div>
+      <div class="form-group">
+        <label class="form-label">Confirm Password</label>
+        <input class="form-input" id="signup-password-confirm" type="password"
+               placeholder="Re-enter your password" autocomplete="new-password"
+               onkeydown="if(event.key==='Enter')doSignup()">
+      </div>
       <button class="btn btn-primary btn-full btn-lg" onclick="doSignup()">Create Account</button>
 
       <div style="text-align:center;margin-top:16px">
@@ -1101,14 +1117,72 @@ async function doLogin() {
 }
 
 async function doSignup() {
-  const email = document.getElementById('signup-email')?.value.trim();
-  const pass  = document.getElementById('signup-password')?.value;
+  const email    = document.getElementById('signup-email')?.value.trim();
+  const pass     = document.getElementById('signup-password')?.value;
+  const passConf = document.getElementById('signup-password-confirm')?.value;
   if (!email || !pass) { showAuthError('Email and password are required.'); return; }
+  if (pass !== passConf) { showAuthError('Passwords do not match.'); return; }
   try {
-    await auth.createUserWithEmailAndPassword(email, pass);
-    // New account has no membership yet → onAuthStateChanged routes to onboarding.
+    const cred = await auth.createUserWithEmailAndPassword(email, pass);
+    await cred.user.sendEmailVerification();
+    _pendingVerification = true;
+    render();
   } catch(e) {
     showAuthError(authMsg(e.code));
+  }
+}
+
+function viewVerificationPending() {
+  const email = STATE.user?.email || 'your email address';
+  return `
+    <div class="login-view">
+      <div class="login-logo">📬</div>
+      <div class="login-title">Check your inbox</div>
+      <p style="color:var(--text-muted);font-size:.85rem;text-align:center;margin:-8px 0 20px">
+        We sent a verification link to<br><strong>${esc(email)}</strong>
+      </p>
+      <div id="verify-msg"></div>
+      <button class="btn btn-primary btn-full btn-lg" onclick="checkEmailVerified()">
+        I've verified my email
+      </button>
+      <button class="btn btn-secondary btn-full" style="margin-top:10px" onclick="resendVerification()">
+        Resend email
+      </button>
+      <div style="text-align:center;margin-top:20px">
+        <button class="btn-link" onclick="doLogout()"
+          style="background:none;border:none;color:var(--text-muted);text-decoration:underline;cursor:pointer;font-size:.85rem">
+          Sign out
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+async function checkEmailVerified() {
+  try {
+    await auth.currentUser.reload();
+    if (auth.currentUser.emailVerified) {
+      _pendingVerification = false;
+      STATE.user = auth.currentUser;
+      render();
+    } else {
+      const el = document.getElementById('verify-msg');
+      if (el) el.innerHTML = `<div class="auth-error" style="margin-bottom:12px">Email not yet verified — please click the link in the email first.</div>`;
+    }
+  } catch(e) {
+    const el = document.getElementById('verify-msg');
+    if (el) el.innerHTML = `<div class="auth-error" style="margin-bottom:12px">Could not check verification status. Please try again.</div>`;
+  }
+}
+
+async function resendVerification() {
+  try {
+    await auth.currentUser.sendEmailVerification();
+    const el = document.getElementById('verify-msg');
+    if (el) el.innerHTML = `<div style="color:var(--success);font-size:.85rem;text-align:center;margin-bottom:12px">Verification email resent.</div>`;
+  } catch(e) {
+    const el = document.getElementById('verify-msg');
+    if (el) el.innerHTML = `<div class="auth-error" style="margin-bottom:12px">Could not resend — please wait a moment and try again.</div>`;
   }
 }
 
