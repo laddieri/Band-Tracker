@@ -5268,9 +5268,58 @@ function showImportModal() {
   openModal(`
     <div class="modal-title">Import Roster from CSV</div>
     <div class="import-hint">
-      <strong>Column names recognized</strong> (header row required):<br>
-      <em>Number / Student # / ID</em> &nbsp;·&nbsp; <em>Name</em> &nbsp;·&nbsp;
-      <em>Instrument / Inst</em> &nbsp;·&nbsp; <em>Section / Part</em> &nbsp;·&nbsp; <em>Notes</em>
+      <strong>Your CSV must have a header row.</strong> The <em>Number</em> column is required; all others are optional. Headers are case-insensitive.
+      <table style="width:100%;border-collapse:collapse;font-size:0.8rem;margin-top:10px">
+        <thead>
+          <tr style="border-bottom:1.5px solid var(--border)">
+            <th style="text-align:left;padding:4px 6px 6px;font-weight:700;white-space:nowrap">Field</th>
+            <th style="text-align:left;padding:4px 6px 6px;font-weight:700">Description</th>
+            <th style="text-align:left;padding:4px 6px 6px;font-weight:700">Accepted column headers</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:5px 6px;font-weight:700;white-space:nowrap;color:var(--primary)">Number ★</td>
+            <td style="padding:5px 6px">Unique student ID used for all tracking</td>
+            <td style="padding:5px 6px;color:var(--text-muted)">Number, Student #, Student No, Student ID, ID, #, Num</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:5px 6px;font-weight:700;white-space:nowrap">Name</td>
+            <td style="padding:5px 6px">Student's display name</td>
+            <td style="padding:5px 6px;color:var(--text-muted)">Name, Student Name, Full Name, First Name, Last Name</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:5px 6px;font-weight:700;white-space:nowrap">Instrument</td>
+            <td style="padding:5px 6px">Instrument played</td>
+            <td style="padding:5px 6px;color:var(--text-muted)">Instrument, Inst</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:5px 6px;font-weight:700;white-space:nowrap">Section</td>
+            <td style="padding:5px 6px">Band section or ensemble group</td>
+            <td style="padding:5px 6px;color:var(--text-muted)">Section, Part, Group, Ensemble</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:5px 6px;font-weight:700;white-space:nowrap">Column</td>
+            <td style="padding:5px 6px">Marching position — column letter (e.g. A, B, C)</td>
+            <td style="padding:5px 6px;color:var(--text-muted)">Column, Col, Letter, Column Letter, File</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:5px 6px;font-weight:700;white-space:nowrap">Row</td>
+            <td style="padding:5px 6px">Marching position — row number (e.g. 1, 2, 3)</td>
+            <td style="padding:5px 6px;color:var(--text-muted)">Row, Rank, Row Number, Set</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:5px 6px;font-weight:700;white-space:nowrap">Grade</td>
+            <td style="padding:5px 6px">Grade level (9–12)</td>
+            <td style="padding:5px 6px;color:var(--text-muted)">Grade, Grade Level, Year, Class Year</td>
+          </tr>
+          <tr>
+            <td style="padding:5px 6px;font-weight:700;white-space:nowrap">Notes</td>
+            <td style="padding:5px 6px">Private director notes for the student</td>
+            <td style="padding:5px 6px;color:var(--text-muted)">Notes, Note, Comments, Director Notes</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
     <div class="form-group" style="margin-top:14px">
       <label class="form-label">Choose .csv File</label>
