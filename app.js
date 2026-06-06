@@ -114,6 +114,9 @@ const STATE = {
   songCategories:             [],
   bandName:                   '',
   bandLogo:                   '',
+  // Band-wide feature toggles (default on; missing = on, so existing bands keep
+  // everything). 'stats' also requires 'marks' — see featureOn().
+  features: { attendance: true, marks: true, songs: true, stats: true },
   _unsubs:      []
 };
 
@@ -264,6 +267,12 @@ async function startListeners() {
       STATE.songCategories             = d.songCategories || [];
       STATE.bandName                   = d.bandName || '';
       STATE.bandLogo                   = d.bandLogo || '';
+      STATE.features = {
+        attendance: d.features?.attendance !== false,
+        marks:      d.features?.marks      !== false,
+        songs:      d.features?.songs      !== false,
+        stats:      d.features?.stats      !== false,
+      };
       if (!STATE.loading) render();
     }),
 
@@ -690,6 +699,30 @@ function openModal(html) {
   document.getElementById('modal-overlay').classList.remove('hidden');
 }
 
+// ── Feature modules ───────────────────────────────────────────────────────────
+// Band-wide toggles configured in Band Settings. Stats depends on Marks (it's
+// built from mark data), so it's only "on" when both are enabled.
+function featureOn(name) {
+  const f = STATE.features || {};
+  switch (name) {
+    case 'attendance': return f.attendance !== false;
+    case 'marks':      return f.marks      !== false;
+    case 'songs':      return f.songs      !== false;
+    case 'stats':      return f.stats !== false && f.marks !== false;
+    default:           return true;
+  }
+}
+
+// Maps a router view to the feature it belongs to (for hiding disabled views).
+const VIEW_FEATURE = {
+  'attendance-tab': 'attendance',
+  'attendance':     'attendance',
+  'dashboard':      'marks',
+  'rehearsal':      'marks',
+  'leaderboard':    'stats',
+  'songs':          'songs',
+};
+
 // ── Render engine ─────────────────────────────────────────────────────────────
 
 function render() {
@@ -805,10 +838,19 @@ function render() {
       (_view === 'attendance' && _params.from !== 'attendance-tab' && _params.from !== 'rehearsals' && match === 'rehearsals') ||
       (_view === 'song'       && match === 'songs')
     );
-    // Hide leaderboard + dashboard tabs for students
-    if (match === 'leaderboard') t.style.display = STATE.isAdmin ? '' : 'none';
-    if (match === 'dashboard')   t.style.display = STATE.isAdmin ? '' : 'none';
+    // Hide tabs for disabled features (and the admin-only tabs for students).
+    if (match === 'attendance-tab') t.style.display = featureOn('attendance') ? '' : 'none';
+    if (match === 'songs')          t.style.display = featureOn('songs') ? '' : 'none';
+    if (match === 'leaderboard')    t.style.display = (STATE.isAdmin && featureOn('stats')) ? '' : 'none';
+    if (match === 'dashboard')      t.style.display = (STATE.isAdmin && featureOn('marks')) ? '' : 'none';
   });
+
+  // If the current view belongs to a disabled feature, bounce to a safe view.
+  const curFeature = VIEW_FEATURE[_view];
+  if (curFeature && !featureOn(curFeature)) {
+    navigate(STATE.studentNum && !STATE.isAdmin ? '' : 'rehearsals');
+    return;
+  }
 
   actions.innerHTML = '';
 
@@ -1277,6 +1319,28 @@ function showBrandSettingsModal() {
     </div>
 
     <div class="form-group">
+      <label class="form-label">Features</label>
+      <p style="font-size:.75rem;color:var(--text-muted);margin:-2px 0 8px">
+        Turn off features your band doesn’t use. Existing data is kept and
+        reappears if you turn a feature back on.
+      </p>
+      ${[
+        ['attendance', 'Attendance', 'Track who’s absent, late, or present'],
+        ['marks',      'Marks / Student Feedback', 'Log positive and mistake marks during rehearsals'],
+        ['songs',      'Songs', 'Music memorization with pass/fail tracking'],
+        ['stats',      'Stats / Leaderboard', 'Rankings built from marks (needs Marks on)'],
+      ].map(([key, label, desc]) => `
+        <label style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;cursor:pointer">
+          <input type="checkbox" id="feat-${key}" ${STATE.features?.[key] !== false ? 'checked' : ''}
+            style="margin-top:3px;width:18px;height:18px;flex-shrink:0">
+          <span>
+            <span style="font-weight:600">${label}</span>
+            <span style="display:block;font-size:.75rem;color:var(--text-muted)">${desc}</span>
+          </span>
+        </label>`).join('')}
+    </div>
+
+    <div class="form-group">
       <label class="form-label">Co-director invite code</label>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <code id="invite-code-display"
@@ -1415,9 +1479,20 @@ async function saveBrandSettings() {
   const name = document.getElementById('brand-name-input')?.value.trim() || '';
   const logo = _pendingLogoData !== null ? _pendingLogoData : STATE.bandLogo;
   _pendingLogoData = null;
+  const readFeat = (key) => {
+    const el = document.getElementById(`feat-${key}`);
+    return el ? el.checked : (STATE.features?.[key] !== false);
+  };
+  const features = {
+    attendance: readFeat('attendance'),
+    marks:      readFeat('marks'),
+    songs:      readFeat('songs'),
+    stats:      readFeat('stats'),
+  };
   STATE.bandName = name;
   STATE.bandLogo = logo;
-  await orgCol('settings').doc('presets').set({ bandName: name, bandLogo: logo }, { merge: true });
+  STATE.features = features;
+  await orgCol('settings').doc('presets').set({ bandName: name, bandLogo: logo, features }, { merge: true });
   closeModal();
   showToast('Band settings saved.');
   render();
@@ -1470,11 +1545,12 @@ function viewHome() {
                 ${r.label ? `<div class="text-muted text-sm mt-4">${esc(r.label)}</div>` : ''}
               </div>
               <div class="text-right">
+                ${featureOn('marks') ? `
                 <div class="text-sm text-muted">${cnt} tracked</div>
                 <div class="flex gap-6 mt-4" style="justify-content:flex-end">
                   ${errs>0 ? `<span class="badge badge-danger">${errs}✗</span>` : ''}
                   ${pos>0  ? `<span class="badge badge-success">${pos}✓</span>` : ''}
-                </div>
+                </div>` : ''}
               </div>
             </div>
           </div>`;
@@ -1494,7 +1570,7 @@ function startToday() {
   const r  = { id, date: today(), label: '' };
   STATE.rehearsals.unshift(r);
   orgCol('rehearsals').doc(id).set(r);
-  navigate('rehearsal', { rid: id });
+  navigate(featureOn('marks') ? 'rehearsal' : 'rehearsals', featureOn('marks') ? { rid: id } : {});
 }
 
 // ── View: Roster ──────────────────────────────────────────────────────────────
@@ -1601,8 +1677,9 @@ function rosterRows(list) {
           <div class="student-detail">${esc([fmtPos(s.column,s.row),normInstrument(s.instrument),s.section].filter(Boolean).join(' · ')) || '<em style="color:var(--text-muted)">No details set</em>'}</div>
         </div>
         <div class="student-badges">
+          ${featureOn('marks') ? `
           ${avg !== null ? `<span class="badge badge-danger">${avg}✗</span>` : ''}
-          ${pos > 0      ? `<span class="badge badge-success">${pos}✓</span>` : ''}
+          ${pos > 0      ? `<span class="badge badge-success">${pos}✓</span>` : ''}` : ''}
         </div>
       </div>`;
   }).join('');
@@ -2314,11 +2391,11 @@ function viewStudentPortal(previewMode = false) {
         <div>
           <div class="portal-name">${esc(s?.name || 'Student #' + num)}</div>
           ${metaParts.length ? `<div class="portal-meta">${metaParts.map(esc).join(' &middot; ')}</div>` : ''}
-          ${STATE.marchingLeaderboardEnabled ? `<div class="portal-animal-name">🐾 Leaderboard name: <strong>${esc(fakeAnimalName(num))}</strong></div>` : ''}
+          ${(STATE.marchingLeaderboardEnabled && featureOn('stats')) ? `<div class="portal-animal-name">🐾 Leaderboard name: <strong>${esc(fakeAnimalName(num))}</strong></div>` : ''}
         </div>
       </div>
 
-      ${hist.length > 0 ? `
+      ${(hist.length > 0 && featureOn('attendance')) ? `
         <div id="portal-sec-attendance-hdr" class="sec-hdr" onclick="toggleCollapse('portal-sec-attendance')">
           <span class="section-title" style="margin:0">Attendance</span>
           <span class="sec-chevron">▾</span>
@@ -2329,6 +2406,7 @@ function viewStudentPortal(previewMode = false) {
               <div class="portal-stat-value">${hist.length}</div>
               <div class="portal-stat-label">Rehearsals</div>
             </div>
+            ${featureOn('marks') ? `
             <div class="portal-stat">
               <div class="portal-stat-value portal-stat-mistake">${totalErr}</div>
               <div class="portal-stat-label">Mistake Marks</div>
@@ -2336,7 +2414,7 @@ function viewStudentPortal(previewMode = false) {
             <div class="portal-stat">
               <div class="portal-stat-value portal-stat-positive">${totalPos}</div>
               <div class="portal-stat-label">Positives</div>
-            </div>
+            </div>` : ''}
           </div>
           ${(() => {
             const absences = hist.filter(({entry:e}) => e.attendance === 'absent');
@@ -2363,7 +2441,7 @@ function viewStudentPortal(previewMode = false) {
         </div>
       ` : ''}
 
-      ${STATE.songs.length > 0 ? `
+      ${(STATE.songs.length > 0 && featureOn('songs')) ? `
         <div id="portal-sec-songs-hdr" class="sec-hdr" onclick="toggleCollapse('portal-sec-songs')">
           <span class="section-title" style="margin:0">Songs to Memorize</span>
           <span class="sec-chevron">▾</span>
@@ -2444,10 +2522,10 @@ function viewStudentPortal(previewMode = false) {
                 ${r.label ? `<div class="portal-rehear-label">${esc(r.label)}</div>` : ''}
               </div>
               <div class="portal-badges">
-                ${e.attendance==='absent' ? `<span class="portal-badge att-portal-badge-absent">Absent</span>` : ''}
-                ${e.attendance==='late'   ? `<span class="portal-badge att-portal-badge-late">Late</span>`   : ''}
-                ${(e.mistakes  || 0) > 0 ? `<span class="portal-badge portal-badge-mistake">✗ ${e.mistakes}</span>`  : ''}
-                ${(e.positives || 0) > 0 ? `<span class="portal-badge portal-badge-positive">✓ ${e.positives}</span>` : ''}
+                ${featureOn('attendance') && e.attendance==='absent' ? `<span class="portal-badge att-portal-badge-absent">Absent</span>` : ''}
+                ${featureOn('attendance') && e.attendance==='late'   ? `<span class="portal-badge att-portal-badge-late">Late</span>`   : ''}
+                ${featureOn('marks') && (e.mistakes  || 0) > 0 ? `<span class="portal-badge portal-badge-mistake">✗ ${e.mistakes}</span>`  : ''}
+                ${featureOn('marks') && (e.positives || 0) > 0 ? `<span class="portal-badge portal-badge-positive">✓ ${e.positives}</span>` : ''}
               </div>
               ${hasDetail ? `<span class="portal-chevron">▸</span>` : '<span class="portal-chevron" style="opacity:0">▸</span>'}
             </div>
@@ -2467,9 +2545,10 @@ function viewStudentPortal(previewMode = false) {
         </div>
       ` : `<p class="empty-state" style="padding:24px 0">No rehearsal history yet.</p>`}
 
+      ${featureOn('stats') ? `
       <button class="leaderboard-link-btn" onclick="${previewMode ? `previewLeaderboard('${esc(num)}')` : "navigate('leaderboard')"}">
         📊 View Band Stats &amp; Leaderboard
-      </button>
+      </button>` : ''}
     </div>`;
 }
 
@@ -3130,27 +3209,31 @@ function viewRehearsals() {
                   <div class="rh-status-row">
                     <span class="rh-badge rh-badge-open">Open</span>
                     ${isActive ? `<span class="rh-badge rh-badge-active">Active</span>` : ''}
-                    ${attDone ? `<span class="rh-badge rh-badge-att">Attendance ✓</span>` : ''}
+                    ${featureOn('attendance') && attDone ? `<span class="rh-badge rh-badge-att">Attendance ✓</span>` : ''}
                   </div>
                 </div>
                 <div class="flex gap-6 items-center">
+                  ${featureOn('marks') ? `
                   ${cnt > 0 ? `<span class="badge badge-neutral">${cnt} tracked</span>` : ''}
                   ${errs > 0 ? `<span class="badge badge-danger">${errs}✗</span>` : ''}
-                  ${pos  > 0 ? `<span class="badge badge-success">${pos}✓</span>` : ''}
+                  ${pos  > 0 ? `<span class="badge badge-success">${pos}✓</span>` : ''}` : ''}
                   ${menuBtn}
                 </div>
               </div>
               ${STATE.isAdmin ? `
+              ${featureOn('attendance') || featureOn('marks') ? `
               <div class="rh-card-actions">
+                ${featureOn('attendance') ? `
                 <button class="btn btn-sm ${attDone ? 'btn-success' : 'btn-primary'}"
                   onclick="navigate('attendance',{rid:'${esc(r.id)}',from:'rehearsals'})">
                   ${attDone ? '✓ Attendance Done' : '📋 Take Attendance'}
-                </button>
+                </button>` : ''}
+                ${featureOn('marks') ? `
                 <button class="btn btn-sm btn-secondary"
                   onclick="switchToFeedback('${esc(r.id)}')">
                   ✏️ Student Feedback
-                </button>
-              </div>
+                </button>` : ''}
+              </div>` : ''}
               <button class="btn btn-sm btn-danger btn-full" style="margin-top:8px"
                 onclick="confirmEndRehearsal('${esc(r.id)}')">End Rehearsal</button>` : ''}
             </div>`;
@@ -3163,13 +3246,14 @@ function viewRehearsals() {
                 ${r.label ? `<div class="text-muted text-sm mt-4">${esc(r.label)}</div>` : ''}
                 <div class="rh-status-row">
                   <span class="rh-badge rh-badge-ended">Ended</span>
-                  ${attDone ? `<span class="rh-badge rh-badge-att">Attendance ✓</span>` : ''}
+                  ${featureOn('attendance') && attDone ? `<span class="rh-badge rh-badge-att">Attendance ✓</span>` : ''}
                 </div>
               </div>
               <div class="flex gap-6 items-center">
+                ${featureOn('marks') ? `
                 ${cnt > 0 ? `<span class="badge badge-neutral">${cnt} tracked</span>` : ''}
                 ${errs > 0 ? `<span class="badge badge-danger">${errs}✗</span>` : ''}
-                ${pos  > 0 ? `<span class="badge badge-success">${pos}✓</span>` : ''}
+                ${pos  > 0 ? `<span class="badge badge-success">${pos}✓</span>` : ''}` : ''}
                 ${menuBtn}
               </div>
             </div>
@@ -3553,7 +3637,7 @@ function viewRehearsal(rid) {
   ].filter(Boolean).join(' · ') : '';
 
   const attSubmitted = r?.attendanceSubmitted;
-  const showAttBtn   = _view !== 'dashboard';
+  const showAttBtn   = _view !== 'dashboard' && featureOn('attendance');
   const dashHeading  = _view === 'dashboard' ? `
     <div class="dash-reh-heading">
       Student Feedback for ${esc(fmtDate(r.date))}${r.label ? ` — ${esc(r.label)}` : ''}
@@ -4682,7 +4766,7 @@ function saveNewRehearsal() {
   orgCol('rehearsals').doc(id).set(r);
   closeModal();
   _activeRid = id;
-  navigate('dashboard', { rid: id });
+  navigate(featureOn('marks') ? 'dashboard' : 'rehearsals', featureOn('marks') ? { rid: id } : {});
 }
 
 function showEndedRehearsalOptions(rid) {
@@ -4693,12 +4777,14 @@ function showEndedRehearsalOptions(rid) {
     <div class="modal-title">${label}</div>
     <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:20px">What would you like to view?</p>
     <div style="display:flex;flex-direction:column;gap:10px">
+      ${featureOn('attendance') ? `
       <button class="btn btn-primary btn-full" onclick="closeModal();navigate('attendance',{rid:'${esc(rid)}',from:'rehearsals'})">
         📋 View Attendance
-      </button>
+      </button>` : ''}
+      ${featureOn('marks') ? `
       <button class="btn btn-secondary btn-full" onclick="closeModal();viewHistoricalMarks('${esc(rid)}')">
         ✏️ View Marks
-      </button>
+      </button>` : ''}
     </div>
     <div class="modal-actions" style="margin-top:16px">
       <button class="btn btn-ghost btn-full" onclick="closeModal()">Cancel</button>
