@@ -4,3 +4,7 @@
 service-account.json
 **/service-account*.json
 node_modules/
+
+# Firebase emulator artifacts
+*-debug.log
+.firebase/
