@@ -881,6 +881,7 @@ function render() {
       (_view === 'song'       && match === 'songs')
     );
     // Hide tabs for disabled features (and the admin-only tabs for students).
+    if (match === 'roster')         t.style.display = STATE.isAdmin ? '' : 'none';
     if (match === 'attendance-tab') t.style.display = featureOn('attendance') ? '' : 'none';
     if (match === 'songs')          t.style.display = featureOn('songs') ? '' : 'none';
     if (match === 'leaderboard')    t.style.display = (STATE.isAdmin && featureOn('stats')) ? '' : 'none';
