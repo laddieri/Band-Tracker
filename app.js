@@ -1273,11 +1273,67 @@ function showBrandSettingsModal() {
       </p>
     </div>
 
+    <div class="form-group">
+      <label class="form-label">Directors</label>
+      <div id="directors-list" style="font-size:.9rem">Loading…</div>
+    </div>
+
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveBrandSettings()">Save</button>
     </div>
   `);
+  loadDirectorsList();
+}
+
+async function loadDirectorsList() {
+  const el = document.getElementById('directors-list');
+  if (!el || !STATE.orgId) return;
+  try {
+    const snap = await db.collection('members')
+      .where('orgId', '==', STATE.orgId)
+      .where('role', '==', 'director')
+      .get();
+    const me      = STATE.user?.uid;
+    const founder = STATE.org?.createdBy;
+    const rows = snap.docs.map(d => {
+      const uid   = d.id;
+      const email = d.data().email || uid;
+      const tags  = (uid === founder ? ' (owner)' : '') + (uid === me ? ' (you)' : '');
+      const remove = uid === founder
+        ? ''
+        : `<button class="btn btn-danger" style="padding:4px 10px;font-size:.78rem;width:auto;margin:0"
+             onclick="removeDirector('${esc(uid)}','${esc(email).replace(/'/g, "\\'")}')">Remove</button>`;
+      return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border,#eee)">
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(email)}${tags}</span>
+        ${remove}
+      </div>`;
+    }).join('');
+    el.innerHTML = rows || '<span style="color:var(--text-muted)">No directors found.</span>';
+  } catch (e) {
+    console.error('loadDirectorsList failed:', e);
+    el.innerHTML = '<span style="color:var(--text-muted)">Could not load directors.</span>';
+  }
+}
+
+async function removeDirector(uid, label) {
+  if (uid === STATE.user?.uid
+      ? !confirm('Remove yourself as a director? You will lose access to this band.')
+      : !confirm(`Remove ${label} as a director? They will lose access to this band.`)) return;
+  try {
+    await db.collection('members').doc(uid).delete();
+    if (uid === STATE.user?.uid) {
+      // We removed our own membership — re-resolve, which routes us to onboarding.
+      closeModal();
+      startListeners();
+      return;
+    }
+    showToast('Director removed.');
+    loadDirectorsList();
+  } catch (e) {
+    console.error('removeDirector failed:', e);
+    showToast('Could not remove director.');
+  }
 }
 
 async function generateInviteCode() {
