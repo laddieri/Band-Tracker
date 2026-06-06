@@ -115,6 +115,7 @@ const STATE = {
   bandName:                   '',
   bandLogo:                   '',
   activeStudentFields:        null,
+  customStudentFields:        [],
   _unsubs:      []
 };
 
@@ -271,6 +272,7 @@ async function startListeners() {
       STATE.bandName                   = d.bandName || '';
       STATE.bandLogo                   = d.bandLogo || '';
       STATE.activeStudentFields        = Array.isArray(d.activeStudentFields) ? d.activeStudentFields : null;
+      STATE.customStudentFields        = Array.isArray(d.customStudentFields)  ? d.customStudentFields  : [];
       if (!STATE.loading) render();
     }),
 
@@ -1614,7 +1616,8 @@ function rosterRows(list) {
           <div class="student-detail">${esc([
             (hasField('column')||hasField('row')) ? fmtPos(hasField('column')?s.column:'',hasField('row')?s.row:'') : '',
             hasField('instrument') ? normInstrument(s.instrument) : '',
-            hasField('section')    ? s.section : ''
+            hasField('section')    ? s.section : '',
+            ...(STATE.customStudentFields||[]).map(cf => s[cf.key] ? `${cf.label}: ${s[cf.key]}` : '')
           ].filter(Boolean).join(' · ')) || '<em style="color:var(--text-muted)">No details set</em>'}</div>
         </div>
         <div class="student-badges">
@@ -1639,6 +1642,13 @@ function showRosterOptionsModal() {
         <div>
           <div class="options-menu-label">Student Fields</div>
           <div class="options-menu-sub">Choose which fields appear in the roster and forms</div>
+        </div>
+      </button>
+      <button class="options-menu-item" onclick="closeModal();showManageCustomFieldsModal()">
+        <div class="options-menu-icon">🖊️</div>
+        <div>
+          <div class="options-menu-label">Custom Fields</div>
+          <div class="options-menu-sub">Add your own fields to student profiles</div>
         </div>
       </button>
       <button class="options-menu-item" onclick="closeModal();showAutoGenerateCodesModal()">
@@ -1720,6 +1730,93 @@ function saveStudentFields() {
   closeModal();
   showToast('Student fields updated');
   if (_view === 'roster') render();
+}
+
+function showManageCustomFieldsModal() {
+  if (!STATE.isAdmin) return;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Custom Fields</div>
+    <div class="preset-section">
+      <div id="custom-field-list">${_renderCustomFieldList()}</div>
+      <div class="preset-add-row">
+        <input class="preset-add-input" id="add-cf-input" type="text"
+               placeholder="New field name…" maxlength="40"
+               onkeydown="if(event.key==='Enter')addCustomField()">
+        <button class="preset-add-btn preset-add-btn-positive" onclick="addCustomField()">Add</button>
+      </div>
+    </div>
+    <div class="modal-actions" style="margin-top:10px">
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Done</button>
+    </div>
+  `);
+}
+
+function _renderCustomFieldList() {
+  const fields = STATE.customStudentFields || [];
+  if (!fields.length) return `<div class="preset-empty">No custom fields yet — add one below.</div>`;
+  return fields.map(cf => `
+    <div class="preset-item">
+      <span class="preset-item-text">${esc(cf.label)}</span>
+      <div class="preset-item-btns">
+        <button class="preset-btn-edit" onclick="editCustomField('${esc(cf.key)}')">Edit</button>
+        <button class="preset-btn-del"  onclick="deleteCustomField('${esc(cf.key)}')">×</button>
+      </div>
+    </div>`).join('');
+}
+
+function addCustomField() {
+  const input = document.getElementById('add-cf-input');
+  const label = input?.value.trim();
+  if (!label) return;
+  const key = 'cf_' + Date.now();
+  STATE.customStudentFields = [...(STATE.customStudentFields || []), { key, label }];
+  _saveCustomFields();
+  input.value = '';
+  document.getElementById('custom-field-list').innerHTML = _renderCustomFieldList();
+}
+
+function deleteCustomField(key) {
+  STATE.customStudentFields = (STATE.customStudentFields || []).filter(cf => cf.key !== key);
+  _saveCustomFields();
+  document.getElementById('custom-field-list').innerHTML = _renderCustomFieldList();
+}
+
+function editCustomField(key) {
+  const cf = (STATE.customStudentFields || []).find(f => f.key === key);
+  if (!cf) return;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Edit Field</div>
+    <input class="form-input" id="edit-cf-input" type="text"
+           value="${esc(cf.label)}" maxlength="40"
+           onkeydown="if(event.key==='Enter')saveEditCustomField('${esc(key)}')">
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn btn-secondary" onclick="showManageCustomFieldsModal()">Cancel</button>
+      <button class="btn btn-primary"   onclick="saveEditCustomField('${esc(key)}')">Save</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('edit-cf-input')?.focus(), 60);
+}
+
+function saveEditCustomField(key) {
+  const label = document.getElementById('edit-cf-input')?.value.trim();
+  if (!label) return;
+  STATE.customStudentFields = (STATE.customStudentFields || []).map(cf =>
+    cf.key === key ? { key, label } : cf
+  );
+  _saveCustomFields();
+  showManageCustomFieldsModal();
+}
+
+async function _saveCustomFields() {
+  try {
+    await orgCol('settings').doc('presets').set(
+      { customStudentFields: STATE.customStudentFields }, { merge: true }
+    );
+  } catch(e) {
+    showToast('Failed to save custom fields.');
+  }
 }
 
 function showMarksOptionsModal() {
@@ -2985,6 +3082,8 @@ function viewStudent(num) {
         ${fmtPos(s.column,s.row) ? `<span class="badge badge-primary" style="font-size:0.85rem;font-weight:800">${esc(fmtPos(s.column,s.row))}</span>` : ''}
         ${s.instrument ? `<span class="badge badge-primary">${esc(normInstrument(s.instrument))}</span>` : ''}
         ${s.section    ? `<span class="badge badge-neutral">${esc(s.section)}</span>` : ''}
+        ${(STATE.customStudentFields||[]).filter(cf => s[cf.key]).map(cf =>
+          `<span class="badge badge-neutral">${esc(cf.label)}: ${esc(s[cf.key])}</span>`).join('')}
       </div>
     </div>
 
@@ -4576,6 +4675,10 @@ function showAddStudentModal(prefill = '') {
       <label class="form-label">Director Notes (optional)</label>
       <textarea class="form-textarea" id="m-notes" placeholder="Any notes about this student…"></textarea>
     </div>` : ''}
+    ${(STATE.customStudentFields||[]).map(cf => `<div class="form-group">
+      <label class="form-label">${esc(cf.label)}</label>
+      <input class="form-input" id="m-cf-${cf.key}" type="text" autocomplete="off">
+    </div>`).join('')}
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveNewStudent()">Add Student</button>
@@ -4600,6 +4703,9 @@ function saveNewStudent() {
   if (hasField('section'))    student.section    = document.getElementById('m-section')?.value    || '';
   if (hasField('grade'))      student.grade      = document.getElementById('m-grade')?.value      || '';
   if (hasField('notes'))      student.notes      = document.getElementById('m-notes')?.value?.trim() || '';
+  for (const cf of (STATE.customStudentFields || [])) {
+    student[cf.key] = document.getElementById(`m-cf-${cf.key}`)?.value?.trim() || '';
+  }
 
   STATE.students[num] = student;
   orgCol('students').doc(num).set(student);
@@ -4661,6 +4767,10 @@ function showEditStudentModal(num) {
       <label class="form-label">Director Notes</label>
       <textarea class="form-textarea" id="m-notes">${esc(s.notes||'')}</textarea>
     </div>` : ''}
+    ${(STATE.customStudentFields||[]).map(cf => `<div class="form-group">
+      <label class="form-label">${esc(cf.label)}</label>
+      <input class="form-input" id="m-cf-${cf.key}" type="text" value="${esc(s[cf.key]||'')}" autocomplete="off">
+    </div>`).join('')}
     <div class="form-group">
       <label class="form-label">Student Code</label>
       <div style="display:flex;gap:8px">
@@ -4706,6 +4816,9 @@ function saveEditStudent(num) {
   if (hasField('section'))    patch.section    = document.getElementById('m-section')?.value    || '';
   if (hasField('grade'))      patch.grade      = document.getElementById('m-grade')?.value      || '';
   if (hasField('notes'))      patch.notes      = document.getElementById('m-notes')?.value?.trim() || '';
+  for (const cf of (STATE.customStudentFields || [])) {
+    patch[cf.key] = document.getElementById(`m-cf-${cf.key}`)?.value?.trim() || '';
+  }
   STATE.students[num] = { ...STATE.students[num], ...patch };
   orgCol('students').doc(num).set(patch, { merge: true });
   setStudentCodeLookup(patch.studentCode, num);
@@ -5367,11 +5480,17 @@ function showImportModal() {
             <td style="padding:5px 6px">Student's display name</td>
             <td style="padding:5px 6px;color:var(--text-muted)">Name, Student Name, Full Name, First Name, Last Name</td>
           </tr>
-          ${STUDENT_FIELD_DEFS.filter(f => hasField(f.key)).map((f, i, arr) => `
-          <tr${i < arr.length-1 ? ' style="border-bottom:1px solid var(--border)"' : ''}>
+          ${STUDENT_FIELD_DEFS.filter(f => hasField(f.key)).map(f => `
+          <tr style="border-bottom:1px solid var(--border)">
             <td style="padding:5px 6px;font-weight:700;white-space:nowrap">${f.label}</td>
             <td style="padding:5px 6px">${f.description}</td>
             <td style="padding:5px 6px;color:var(--text-muted)">${f.aliases}</td>
+          </tr>`).join('')}
+          ${(STATE.customStudentFields||[]).map((cf, i, arr) => `
+          <tr${i < arr.length-1 ? ' style="border-bottom:1px solid var(--border)"' : ''}>
+            <td style="padding:5px 6px;font-weight:700;white-space:nowrap">${esc(cf.label)}</td>
+            <td style="padding:5px 6px">Custom field</td>
+            <td style="padding:5px 6px;color:var(--text-muted)">${esc(cf.label)}</td>
           </tr>`).join('')}
         </tbody>
       </table>
@@ -5448,6 +5567,10 @@ function detectCols(headers) {
     const idx = norm.findIndex(h => aliases.includes(h));
     if (idx !== -1) map[field] = idx;
   }
+  for (const cf of (STATE.customStudentFields || [])) {
+    const idx = norm.findIndex(h => h === cf.label.toLowerCase().trim());
+    if (idx !== -1 && map[cf.key] === undefined) map[cf.key] = idx;
+  }
   return map;
 }
 
@@ -5491,7 +5614,9 @@ function renderImportPreview() {
   const dupCount  = rows.length - newCount;
   const preview   = rows.slice(0, 8);
   const LABELS    = { number:'Number', name:'Name', column:'Column', row:'Row', instrument:'Instrument', section:'Section', grade:'Grade', notes:'Notes' };
-  const fields    = Object.keys(colMap).filter(f => f === 'number' || f === 'name' || hasField(f));
+  for (const cf of (STATE.customStudentFields || [])) LABELS[cf.key] = cf.label;
+  const customKeys = new Set((STATE.customStudentFields || []).map(cf => cf.key));
+  const fields    = Object.keys(colMap).filter(f => f === 'number' || f === 'name' || hasField(f) || customKeys.has(f));
 
   document.getElementById('import-preview').innerHTML = `
     <hr class="divider">
@@ -5570,6 +5695,9 @@ async function executeImport() {
     if (colMap.section    !== undefined && hasField('section'))    incoming.section    = csvRow[colMap.section].trim();
     if (colMap.grade      !== undefined && hasField('grade'))      incoming.grade      = normalizeGrade(csvRow[colMap.grade].trim());
     if (colMap.notes      !== undefined && hasField('notes'))      incoming.notes      = csvRow[colMap.notes].trim();
+    for (const cf of (STATE.customStudentFields || [])) {
+      if (colMap[cf.key] !== undefined) incoming[cf.key] = csvRow[colMap[cf.key]]?.trim() || '';
+    }
     if (existing[num]) {
       if (strategy === 'overwrite') {
         STATE.students[num] = { ...STATE.students[num], ...incoming };
