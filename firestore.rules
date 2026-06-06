@@ -83,13 +83,16 @@ service cloud.firestore {
     }
 
     // ── Membership ────────────────────────────────────────────────────────────
-    // A user may read only their own membership. Creating a membership is how a
-    // user joins an org; the rules below ensure you can only join an org you are
-    // entitled to. Updates/deletes are not allowed from the client (managed by
-    // migration/admin tooling, and later by Functions).
+    // A user may read their own membership; directors may read (and remove)
+    // members of their own org for the Directors management UI. Creating a
+    // membership is how a user joins an org; the rules ensure you can only join
+    // an org you are entitled to.
 
     match /members/{uid} {
-      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow read: if isSignedIn() && (
+        request.auth.uid == uid
+        || isDirectorOf(resource.data.orgId)
+      );
 
       // Director join: allowed if you either created the org (create-a-band) or
       // hold a valid invite code that maps to it (co-director invite).
@@ -117,7 +120,12 @@ service cloud.firestore {
 
       allow create: if isSignedIn() && request.auth.uid == uid
                     && (directorJoin() || studentJoin());
-      allow update, delete: if false;
+      allow update: if false;
+
+      // A director may remove a member of their own org, but never the org's
+      // creator — so a band always keeps at least one director.
+      allow delete: if isDirectorOf(resource.data.orgId)
+                    && get(/databases/$(database)/documents/orgs/$(resource.data.orgId)).data.createdBy != uid;
     }
 
     // ── Student code lookup ───────────────────────────────────────────────────
