@@ -2720,3 +2720,38 @@ html, body {
   .songs-list-grid .song-cat-hdr,
   .songs-list-grid .song-cat-sec-hdr { grid-column: 1 / -1; }
 }
+
+/* ── Roster onboarding ───────────────────────────────────────────────────────── */
+.onboard-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 24px;
+  margin-bottom: 16px;
+}
+.onboard-card-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--primary);
+  margin-bottom: 6px;
+}
+.onboard-card-sub {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin-bottom: 20px;
+}
+.onboard-steps { display: flex; flex-direction: column; gap: 20px; }
+.onboard-step { display: flex; gap: 16px; align-items: flex-start; }
+.onboard-step-num {
+  flex-shrink: 0;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--primary-bg);
+  color: var(--primary);
+  font-size: 0.8rem;
+  font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+}
+.onboard-step-title { font-weight: 700; font-size: 0.95rem; margin-bottom: 4px; }
+.onboard-step-desc  { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 10px; }
+.onboard-step-btns  { display: flex; gap: 8px; flex-wrap: wrap; }
