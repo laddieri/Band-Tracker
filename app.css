@@ -2592,3 +2592,131 @@ html, body {
 .sfb-check-label:has(.sfb-checkbox:checked) { background: var(--primary-bg); border-color: var(--primary); color: var(--primary); }
 .sfb-checkbox { display: none; }
 .sfb-clear-btn { font-size: 0.8rem; color: var(--danger); background: none; border: none; padding: 0; cursor: pointer; font-family: inherit; text-decoration: underline; margin-top: 4px; }
+
+/* ── Song / rehearsal list grid wrappers (base — mobile is single column) ── */
+.songs-list-grid { padding: 8px 0; }
+
+/* ── Desktop layout (768px+) ─────────────────────────────────────────────── */
+
+@media (min-width: 768px) {
+  body { background: #d1d5db; }
+  [data-theme="dark"] body { background: #060d1a; }
+
+  /* Override 600px shadow/min-height */
+  #app {
+    max-width: none;
+    box-shadow: none;
+    min-height: unset;
+    height: 100dvh;
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    grid-template-rows: var(--header-h) 1fr;
+    grid-template-areas:
+      "sidebar header"
+      "sidebar main";
+  }
+
+  #app-header {
+    grid-area: header;
+    box-shadow: none;
+    border-bottom: 1px solid rgba(255,255,255,.12);
+  }
+
+  #main-content {
+    grid-area: main;
+    padding: 24px 32px 32px;
+  }
+
+  /* ── Sidebar nav ──────────────────────────────────────────────────────── */
+
+  #bottom-nav {
+    grid-area: sidebar;
+    flex-direction: column;
+    height: 100%;
+    width: 240px;
+    border-top: none;
+    border-right: 1px solid var(--border);
+    align-items: stretch;
+    justify-content: flex-start;
+    overflow-y: auto;
+    background: var(--surface);
+    padding: 0 0 20px;
+    gap: 2px;
+  }
+
+  #bottom-nav::before {
+    content: 'Band Marks';
+    display: block;
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: var(--primary);
+    padding: 18px 20px 14px;
+    letter-spacing: -0.02em;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 8px;
+    flex-shrink: 0;
+  }
+
+  .nav-tab {
+    flex: 0 0 auto;
+    flex-direction: row;
+    justify-content: flex-start;
+    padding: 11px 18px;
+    font-size: 0.875rem;
+    gap: 12px;
+    border-radius: var(--r-sm);
+    margin: 0 8px;
+    width: calc(100% - 16px);
+  }
+
+  .nav-tab svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+  .nav-tab.active {
+    background: var(--primary-bg);
+    color: var(--primary);
+  }
+
+  /* ── Modal: centered dialog instead of bottom sheet ──────────────────── */
+
+  #modal-overlay { align-items: center; justify-content: center; }
+
+  #modal-dialog {
+    border-radius: 16px;
+    max-width: 520px;
+    max-height: 88vh;
+    padding: 28px;
+  }
+
+  .modal-handle { display: none; }
+
+  /* ── View containers ──────────────────────────────────────────────────── */
+
+  .dash-view, .leaderboard-view, .portal-view { max-width: none; padding: 0; }
+
+  /* ── 4-column dashboard stats ─────────────────────────────────────────── */
+
+  .dash-stat-grid { grid-template-columns: repeat(4, 1fr); }
+
+  /* ── Two-column roster ────────────────────────────────────────────────── */
+
+  #roster-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  #roster-list .roster-row { margin-bottom: 0; }
+
+  /* ── Two-column rehearsal cards (open cards span full width) ──────────── */
+
+  .rh-cards-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .rh-cards-grid .card { margin-bottom: 0; }
+  .rh-cards-grid .rh-card-open { grid-column: 1 / -1; }
+
+  /* ── Two-column song list ─────────────────────────────────────────────── */
+
+  .songs-list-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 0;
+  }
+  .songs-list-grid .song-row { margin-bottom: 0; }
+  .songs-list-grid .song-cat-hdr,
+  .songs-list-grid .song-cat-sec-hdr { grid-column: 1 / -1; }
+}
