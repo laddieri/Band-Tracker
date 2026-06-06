@@ -117,8 +117,15 @@ const STATE = {
   // Band-wide feature toggles (default on; missing = on, so existing bands keep
   // everything). 'stats' also requires 'marks' — see featureOn().
   features: { attendance: true, marks: true, songs: true, stats: true },
+  activeStudentFields:        null,
+  customStudentFields:        [],
   _unsubs:      []
 };
+
+function hasField(key) {
+  const af = STATE.activeStudentFields;
+  return !af || af.includes(key);
+}
 
 // ── DB read layer (same API as before — views unchanged) ──────────────────────
 
@@ -273,6 +280,8 @@ async function startListeners() {
         songs:      d.features?.songs      !== false,
         stats:      d.features?.stats      !== false,
       };
+      STATE.activeStudentFields        = Array.isArray(d.activeStudentFields) ? d.activeStudentFields : null;
+      STATE.customStudentFields        = Array.isArray(d.customStudentFields)  ? d.customStudentFields  : [];
       if (!STATE.loading) render();
     }),
 
@@ -376,6 +385,7 @@ auth.onAuthStateChanged(user => {
 let _view   = 'rehearsals';
 let _params = {};
 let _authMode = 'signin'; // 'signin' | 'signup' — which director auth screen to show
+let _pendingVerification = false; // true after signup until email is verified
 
 function navigate(view, params = {}) {
   if (_view === 'rehearsal' && view !== 'rehearsal') {
@@ -573,7 +583,12 @@ function _rerenderForFilter(viewId) {
   const st = mc ? mc.scrollTop : 0;
   switch (viewId) {
     case 'roster':  mc.innerHTML = viewRoster(); break;
-    case 'att-tab': mc.innerHTML = viewAttendanceTab(); break;
+    case 'att-tab': {
+        const el = document.getElementById('att-tab-filtered');
+        if (el) { el.innerHTML = _attTabFilteredContent(); if (mc) mc.scrollTop = st; }
+        else mc.innerHTML = viewAttendanceTab();
+        break;
+      }
     case 'att':     mc.innerHTML = viewAttendance(_params.rid); break;
     case 'tracker': reRender(_params.rid); break;
     case 'lb':      mc.innerHTML = viewLeaderboard(); break;
@@ -763,6 +778,15 @@ function render() {
     return;
   }
 
+  if (_pendingVerification && !STATE.user.emailVerified && !STATE.user.isAnonymous) {
+    backBtn.classList.add('hidden');
+    title.textContent = 'Verify Email';
+    actions.innerHTML = '';
+    nav.style.display = 'none';
+    main.innerHTML = viewVerificationPending();
+    return;
+  }
+
   nav.style.display = '';
 
   if (STATE.loading) {
@@ -854,6 +878,11 @@ function render() {
 
   actions.innerHTML = '';
 
+  // New bands: guide admin to roster on login before any students exist
+  if (STATE.isAdmin && _view === 'rehearsals' && !Object.keys(STATE.students).length) {
+    _view = 'roster';
+  }
+
   switch (_view) {
     case 'roster':
       title.textContent = 'Student Roster';
@@ -934,12 +963,12 @@ function render() {
         _activeRid = openR.id;
         _params = { ..._params, rid: openR.id };
         title.textContent = 'Student Feedback';
-        actions.innerHTML = userBtn();
+        actions.innerHTML = optBtn('showMarksOptionsModal()') + userBtn();
         main.innerHTML = viewRehearsal(openR.id);
         if (_blockMode && !_activeNum) initBlockPinch(openR.id);
       } else {
         title.textContent = 'Rehearsal Marks';
-        actions.innerHTML = userBtn();
+        actions.innerHTML = (STATE.isAdmin ? optBtn('showMarksOptionsModal()') : '') + userBtn();
         main.innerHTML = viewDashboard();
       }
       break;
@@ -1057,6 +1086,12 @@ function viewSignup() {
                placeholder="At least 6 characters" autocomplete="new-password"
                onkeydown="if(event.key==='Enter')doSignup()">
       </div>
+      <div class="form-group">
+        <label class="form-label">Confirm Password</label>
+        <input class="form-input" id="signup-password-confirm" type="password"
+               placeholder="Re-enter your password" autocomplete="new-password"
+               onkeydown="if(event.key==='Enter')doSignup()">
+      </div>
       <button class="btn btn-primary btn-full btn-lg" onclick="doSignup()">Create Account</button>
 
       <div style="text-align:center;margin-top:16px">
@@ -1124,14 +1159,72 @@ async function doLogin() {
 }
 
 async function doSignup() {
-  const email = document.getElementById('signup-email')?.value.trim();
-  const pass  = document.getElementById('signup-password')?.value;
+  const email    = document.getElementById('signup-email')?.value.trim();
+  const pass     = document.getElementById('signup-password')?.value;
+  const passConf = document.getElementById('signup-password-confirm')?.value;
   if (!email || !pass) { showAuthError('Email and password are required.'); return; }
+  if (pass !== passConf) { showAuthError('Passwords do not match.'); return; }
   try {
-    await auth.createUserWithEmailAndPassword(email, pass);
-    // New account has no membership yet → onAuthStateChanged routes to onboarding.
+    const cred = await auth.createUserWithEmailAndPassword(email, pass);
+    await cred.user.sendEmailVerification();
+    _pendingVerification = true;
+    render();
   } catch(e) {
     showAuthError(authMsg(e.code));
+  }
+}
+
+function viewVerificationPending() {
+  const email = STATE.user?.email || 'your email address';
+  return `
+    <div class="login-view">
+      <div class="login-logo">📬</div>
+      <div class="login-title">Check your inbox</div>
+      <p style="color:var(--text-muted);font-size:.85rem;text-align:center;margin:-8px 0 20px">
+        We sent a verification link to<br><strong>${esc(email)}</strong>
+      </p>
+      <div id="verify-msg"></div>
+      <button class="btn btn-primary btn-full btn-lg" onclick="checkEmailVerified()">
+        I've verified my email
+      </button>
+      <button class="btn btn-secondary btn-full" style="margin-top:10px" onclick="resendVerification()">
+        Resend email
+      </button>
+      <div style="text-align:center;margin-top:20px">
+        <button class="btn-link" onclick="doLogout()"
+          style="background:none;border:none;color:var(--text-muted);text-decoration:underline;cursor:pointer;font-size:.85rem">
+          Sign out
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+async function checkEmailVerified() {
+  try {
+    await auth.currentUser.reload();
+    if (auth.currentUser.emailVerified) {
+      _pendingVerification = false;
+      STATE.user = auth.currentUser;
+      render();
+    } else {
+      const el = document.getElementById('verify-msg');
+      if (el) el.innerHTML = `<div class="auth-error" style="margin-bottom:12px">Email not yet verified — please click the link in the email first.</div>`;
+    }
+  } catch(e) {
+    const el = document.getElementById('verify-msg');
+    if (el) el.innerHTML = `<div class="auth-error" style="margin-bottom:12px">Could not check verification status. Please try again.</div>`;
+  }
+}
+
+async function resendVerification() {
+  try {
+    await auth.currentUser.sendEmailVerification();
+    const el = document.getElementById('verify-msg');
+    if (el) el.innerHTML = `<div style="color:var(--success);font-size:.85rem;text-align:center;margin-bottom:12px">Verification email resent.</div>`;
+  } catch(e) {
+    const el = document.getElementById('verify-msg');
+    if (el) el.innerHTML = `<div class="auth-error" style="margin-bottom:12px">Could not resend — please wait a moment and try again.</div>`;
   }
 }
 
@@ -1640,23 +1733,58 @@ function viewRoster() {
   const allStudents = Object.values(students);
   const filtered = filterAndSortStudents(allStudents, _rosterFilter);
 
+  const rosterSortOpts = [
+    {value:'name',   label:'Name'},
+    {value:'number', label:'Number'},
+    ...(hasField('instrument') ? [{value:'instrument', label:'Instrument'}] : []),
+    ...(hasField('section')    ? [{value:'section',    label:'Section'}]    : []),
+    ...(hasField('grade')      ? [{value:'grade',      label:'Grade'}]      : []),
+    ...(hasField('column')     ? [{value:'column',     label:'Column'}]     : []),
+    ...(hasField('row')        ? [{value:'row',        label:'Row'}]        : []),
+  ];
+  if (STATE.isAdmin && allStudents.length === 0) {
+    return viewRosterOnboarding();
+  }
+
   return `
-    ${renderFilterBar('roster', _rosterFilter, [
-      {value:'name',       label:'Name'},
-      {value:'number',     label:'Number'},
-      {value:'instrument', label:'Instrument'},
-      {value:'section',    label:'Section'},
-      {value:'grade',      label:'Grade'},
-      {value:'column',     label:'Column'},
-      {value:'row',        label:'Row'}
-    ])}
+    ${renderFilterBar('roster', _rosterFilter, rosterSortOpts)}
     <div id="roster-list">${rosterRows(filtered)}</div>
-    ${allStudents.length === 0 ? `
-      <div class="empty-state">
-        <div class="empty-icon">👥</div>
-        <p>No students yet.</p>
-        <p>Tap <strong>+</strong> above to add your first student,<br>or use <strong>Import from CSV</strong>.</p>
-      </div>` : ''}
+  `;
+}
+
+function viewRosterOnboarding() {
+  const bandName = STATE.bandName || 'your band';
+  return `
+    <div class="onboard-card">
+      <div class="onboard-card-title">👋 Welcome to ${esc(bandName)}!</div>
+      <div class="onboard-card-sub">Let's get your roster set up. Follow these two steps to get started.</div>
+      <div class="onboard-steps">
+
+        <div class="onboard-step">
+          <div class="onboard-step-num">1</div>
+          <div>
+            <div class="onboard-step-title">Configure your fields</div>
+            <div class="onboard-step-desc">Choose which details to track for each student — marching position, instrument, grade, and more. You can also add your own custom fields like locker number or bus route.</div>
+            <div class="onboard-step-btns">
+              <button class="btn btn-secondary" onclick="showManageFieldsModal()">Manage Fields</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="onboard-step">
+          <div class="onboard-step-num">2</div>
+          <div>
+            <div class="onboard-step-title">Add your students</div>
+            <div class="onboard-step-desc">Import your entire roster from a CSV file in seconds, or add students one at a time.</div>
+            <div class="onboard-step-btns">
+              <button class="btn btn-primary" onclick="showImportModal()">Import CSV</button>
+              <button class="btn btn-secondary" onclick="showAddStudentModal()">Add Manually</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
   `;
 }
 
@@ -1674,7 +1802,12 @@ function rosterRows(list) {
       <div class="roster-row" onclick="navigate('student',{num:'${esc(s.number)}'})">
         <div class="student-info">
           ${s.name ? `<div class="student-name">${esc(s.name)}</div>` : `<div class="student-name text-muted">#${esc(s.number)}</div>`}
-          <div class="student-detail">${esc([fmtPos(s.column,s.row),normInstrument(s.instrument),s.section].filter(Boolean).join(' · ')) || '<em style="color:var(--text-muted)">No details set</em>'}</div>
+          <div class="student-detail">${esc([
+            (hasField('column')||hasField('row')) ? fmtPos(hasField('column')?s.column:'',hasField('row')?s.row:'') : '',
+            hasField('instrument') ? normInstrument(s.instrument) : '',
+            hasField('section')    ? s.section : '',
+            ...(STATE.customStudentFields||[]).map(cf => s[cf.key] ? `${cf.label}: ${s[cf.key]}` : '')
+          ].filter(Boolean).join(' · ')) || '<em style="color:var(--text-muted)">No details set</em>'}</div>
         </div>
         <div class="student-badges">
           ${featureOn('marks') ? `
@@ -1694,6 +1827,13 @@ function showRosterOptionsModal() {
     <div class="modal-handle"></div>
     <div class="modal-title">Roster Options</div>
     <div class="options-menu">
+      <button class="options-menu-item" onclick="closeModal();showManageFieldsModal()">
+        <div class="options-menu-icon">🗃️</div>
+        <div>
+          <div class="options-menu-label">Manage Fields</div>
+          <div class="options-menu-sub">Toggle built-in fields and add custom ones</div>
+        </div>
+      </button>
       <button class="options-menu-item" onclick="closeModal();showAutoGenerateCodesModal()">
         <div class="options-menu-icon">🔑</div>
         <div>
@@ -1729,18 +1869,140 @@ function showRosterOptionsModal() {
           <div class="options-menu-sub">Reassign all animal pseudonyms</div>
         </div>
       </button>
-      <button class="options-menu-item" onclick="closeModal();showManagePresetsModal()">
-        <div class="options-menu-icon">✏️</div>
-        <div>
-          <div class="options-menu-label">Manage Mark Presets</div>
-          <div class="options-menu-sub">Edit preset comments for marks</div>
-        </div>
-      </button>
       <button class="options-menu-item options-menu-item-danger" onclick="closeModal();showDeleteRosterModal()">
         <div class="options-menu-icon">🗑</div>
         <div>
           <div class="options-menu-label">Delete Entire Roster</div>
           <div class="options-menu-sub">Permanently remove all students</div>
+        </div>
+      </button>
+    </div>
+    <div class="modal-actions" style="margin-top:8px">
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Cancel</button>
+    </div>
+  `);
+}
+
+function showManageFieldsModal() {
+  if (!STATE.isAdmin) return;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Manage Fields</div>
+    <div class="section-title" style="margin-top:0">Built-in Fields</div>
+    <div class="form-hint" style="margin:0 0 10px">Toggle which fields appear in forms, roster cards, and CSV import.</div>
+    ${STUDENT_FIELD_DEFS.map(f => `
+      <label style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer">
+        <input type="checkbox" id="sf-${f.key}" ${hasField(f.key)?'checked':''}
+               onchange="toggleBuiltinField('${f.key}')"
+               style="width:18px;height:18px;flex-shrink:0;cursor:pointer">
+        <div>
+          <div style="font-weight:600">${f.label}</div>
+          <div class="form-hint" style="margin:2px 0 0">${f.description}</div>
+        </div>
+      </label>`).join('')}
+    <div class="section-title" style="margin-top:18px">Custom Fields</div>
+    <div class="form-hint" style="margin:0 0 10px">Add your own fields to student profiles.</div>
+    <div class="preset-section">
+      <div id="custom-field-list">${_renderCustomFieldList()}</div>
+      <div class="preset-add-row">
+        <input class="preset-add-input" id="add-cf-input" type="text"
+               placeholder="New field name…" maxlength="40"
+               onkeydown="if(event.key==='Enter')addCustomField()">
+        <button class="preset-add-btn preset-add-btn-positive" onclick="addCustomField()">Add</button>
+      </div>
+    </div>
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Done</button>
+    </div>
+  `);
+}
+
+function toggleBuiltinField(key) {
+  const current = STATE.activeStudentFields ?? STUDENT_FIELD_DEFS.map(f => f.key);
+  const next = current.includes(key) ? current.filter(k => k !== key) : [...current, key];
+  STATE.activeStudentFields = next.length === STUDENT_FIELD_DEFS.length ? null : next;
+  orgCol('settings').doc('presets').set({ activeStudentFields: next }, { merge: true });
+  if (_view === 'roster') render();
+}
+
+function _renderCustomFieldList() {
+  const fields = STATE.customStudentFields || [];
+  if (!fields.length) return `<div class="preset-empty">No custom fields yet — add one below.</div>`;
+  return fields.map(cf => `
+    <div class="preset-item">
+      <span class="preset-item-text">${esc(cf.label)}</span>
+      <div class="preset-item-btns">
+        <button class="preset-btn-edit" onclick="editCustomField('${esc(cf.key)}')">Edit</button>
+        <button class="preset-btn-del"  onclick="deleteCustomField('${esc(cf.key)}')">×</button>
+      </div>
+    </div>`).join('');
+}
+
+function addCustomField() {
+  const input = document.getElementById('add-cf-input');
+  const label = input?.value.trim();
+  if (!label) return;
+  const key = 'cf_' + Date.now();
+  STATE.customStudentFields = [...(STATE.customStudentFields || []), { key, label }];
+  _saveCustomFields();
+  input.value = '';
+  document.getElementById('custom-field-list').innerHTML = _renderCustomFieldList();
+}
+
+function deleteCustomField(key) {
+  STATE.customStudentFields = (STATE.customStudentFields || []).filter(cf => cf.key !== key);
+  _saveCustomFields();
+  document.getElementById('custom-field-list').innerHTML = _renderCustomFieldList();
+}
+
+function editCustomField(key) {
+  const cf = (STATE.customStudentFields || []).find(f => f.key === key);
+  if (!cf) return;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Edit Field</div>
+    <input class="form-input" id="edit-cf-input" type="text"
+           value="${esc(cf.label)}" maxlength="40"
+           onkeydown="if(event.key==='Enter')saveEditCustomField('${esc(key)}')">
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn btn-secondary" onclick="showManageFieldsModal()">Cancel</button>
+      <button class="btn btn-primary"   onclick="saveEditCustomField('${esc(key)}')">Save</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('edit-cf-input')?.focus(), 60);
+}
+
+function saveEditCustomField(key) {
+  const label = document.getElementById('edit-cf-input')?.value.trim();
+  if (!label) return;
+  STATE.customStudentFields = (STATE.customStudentFields || []).map(cf =>
+    cf.key === key ? { key, label } : cf
+  );
+  _saveCustomFields();
+  showManageFieldsModal();
+}
+
+async function _saveCustomFields() {
+  try {
+    await orgCol('settings').doc('presets').set(
+      { customStudentFields: STATE.customStudentFields }, { merge: true }
+    );
+  } catch(e) {
+    showToast('Failed to save custom fields.');
+  }
+}
+
+function showMarksOptionsModal() {
+  if (!STATE.isAdmin) return;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Marks Settings</div>
+    <div class="options-menu">
+      <button class="options-menu-item" onclick="closeModal();showManagePresetsModal()">
+        <div class="options-menu-icon">✏️</div>
+        <div>
+          <div class="options-menu-label">Manage Mark Presets</div>
+          <div class="options-menu-sub">Edit preset comments for marks</div>
         </div>
       </button>
     </div>
@@ -2995,6 +3257,8 @@ function viewStudent(num) {
         ${fmtPos(s.column,s.row) ? `<span class="badge badge-primary" style="font-size:0.85rem;font-weight:800">${esc(fmtPos(s.column,s.row))}</span>` : ''}
         ${s.instrument ? `<span class="badge badge-primary">${esc(normInstrument(s.instrument))}</span>` : ''}
         ${s.section    ? `<span class="badge badge-neutral">${esc(s.section)}</span>` : ''}
+        ${(STATE.customStudentFields||[]).filter(cf => s[cf.key]).map(cf =>
+          `<span class="badge badge-neutral">${esc(cf.label)}: ${esc(s[cf.key])}</span>`).join('')}
       </div>
     </div>
 
@@ -3264,43 +3528,11 @@ function viewRehearsals() {
 
 // ── View: Attendance Tab ──────────────────────────────────────────────────────
 
-function viewAttendanceTab() {
+function _attTabFilteredContent() {
   const rehearsals = [...DB.getRehearsals()].sort((a,b) => b.date.localeCompare(a.date));
   const students   = Object.values(DB.getStudents()).sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  if (!rehearsals.length) return '';
 
-  if (!rehearsals.length) {
-    return `<div class="empty-state"><p>No rehearsals yet.</p></div>`;
-  }
-
-  // ── Open-rehearsal attendance CTA ─────────────────────────────────────────
-
-  const openReh = STATE.isAdmin ? getActiveRehearsal() : null;
-  let attendanceCta = '';
-  if (openReh) {
-    if (!openReh.attendanceSubmitted) {
-      attendanceCta = `<button class="start-rehearsal-btn"
-        onclick="navigate('attendance',{rid:'${esc(openReh.id)}',from:'attendance-tab'})">
-        📋 Take Attendance — ${esc(fmtDate(openReh.date))}${openReh.label ? ' · ' + esc(openReh.label) : ''}
-      </button>`;
-    } else {
-      attendanceCta = `<button class="start-rehearsal-btn att-modify-att-btn"
-        onclick="confirmModifyAttendance('${esc(openReh.id)}')">
-        ✏️ Modify Current Rehearsal Attendance
-      </button>`;
-    }
-  }
-
-  // ── Filter bar (shared across all student lists on this tab) ──────────────
-
-  const filterBar = renderFilterBar('att-tab', _attTabFilter, [
-    { value: 'absences',   label: 'Most Absent' },
-    { value: 'lates',      label: 'Most Late'   },
-    { value: 'name',       label: 'Name'        },
-    { value: 'instrument', label: 'Instrument'  },
-    { value: 'grade',      label: 'Grade'       },
-  ]);
-
-  // Helper: filter a student list by search + checkboxes (no sort — sublists keep name order)
   const filterSublist = list =>
     filterAndSortStudents(list, { ..._attTabFilter, sortField: 'name', sortDir: 'asc' }, {});
 
@@ -3369,7 +3601,6 @@ function viewAttendanceTab() {
     }
   }
 
-  // Build scoreMap for sort-by-absences/lates and apply unified filter
   const seasonScoreMap = {};
   for (const [num, d] of Object.entries(seasonMap)) seasonScoreMap[num] = { absences: d.absences, lates: d.lates };
   const seasonStudents  = Object.values(seasonMap).map(d => d.s);
@@ -3402,7 +3633,46 @@ function viewAttendanceTab() {
       }
     </div>`;
 
-  // ── Rehearsal History ─────────────────────────────────────────────────────
+  return recentSection + seasonSection;
+}
+
+function viewAttendanceTab() {
+  const rehearsals = [...DB.getRehearsals()].sort((a,b) => b.date.localeCompare(a.date));
+  const students   = Object.values(DB.getStudents()).sort((a,b) => (a.name||'').localeCompare(b.name||''));
+
+  if (!rehearsals.length) {
+    return `<div class="empty-state"><p>No rehearsals yet.</p></div>`;
+  }
+
+  // ── Open-rehearsal attendance CTA ─────────────────────────────────────────
+
+  const openReh = STATE.isAdmin ? getActiveRehearsal() : null;
+  let attendanceCta = '';
+  if (openReh) {
+    if (!openReh.attendanceSubmitted) {
+      attendanceCta = `<button class="start-rehearsal-btn"
+        onclick="navigate('attendance',{rid:'${esc(openReh.id)}',from:'attendance-tab'})">
+        📋 Take Attendance — ${esc(fmtDate(openReh.date))}${openReh.label ? ' · ' + esc(openReh.label) : ''}
+      </button>`;
+    } else {
+      attendanceCta = `<button class="start-rehearsal-btn att-modify-att-btn"
+        onclick="confirmModifyAttendance('${esc(openReh.id)}')">
+        ✏️ Modify Current Rehearsal Attendance
+      </button>`;
+    }
+  }
+
+  // ── Filter bar ────────────────────────────────────────────────────────────
+
+  const filterBar = renderFilterBar('att-tab', _attTabFilter, [
+    { value: 'absences',   label: 'Most Absent' },
+    { value: 'lates',      label: 'Most Late'   },
+    { value: 'name',       label: 'Name'        },
+    { value: 'instrument', label: 'Instrument'  },
+    { value: 'grade',      label: 'Grade'       },
+  ]);
+
+  // ── Rehearsal History (not affected by filter) ────────────────────────────
 
   const historyRows = rehearsals.map(r => {
     const entries = STATE.entries[r.id] || {};
@@ -3438,7 +3708,9 @@ function viewAttendanceTab() {
       ${historyRows}
     </div>`;
 
-  return attendanceCta + filterBar + recentSection + seasonSection + historySection;
+  return attendanceCta + filterBar
+    + `<div id="att-tab-filtered">${_attTabFilteredContent()}</div>`
+    + historySection;
 }
 
 // ── View: Rehearsal Detail ────────────────────────────────────────────────────
@@ -4541,47 +4813,52 @@ function showAddStudentModal(prefill = '') {
       <label class="form-label">Name (optional)</label>
       <input class="form-input" id="m-name" type="text" placeholder="First Last" autocomplete="off">
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="form-group" style="margin-bottom:0">
+    ${(hasField('column')||hasField('row')) ? `
+    <div style="display:grid;grid-template-columns:${hasField('column')&&hasField('row')?'1fr 1fr':'1fr'};gap:12px">
+      ${hasField('column') ? `<div class="form-group" style="margin-bottom:0">
         <label class="form-label">Column (A–L)</label>
         <select class="form-select" id="m-column">
           <option value="">—</option>
           ${COLUMNS.map(c=>`<option value="${c}">${c}</option>`).join('')}
         </select>
-      </div>
-      <div class="form-group" style="margin-bottom:0">
+      </div>` : ''}
+      ${hasField('row') ? `<div class="form-group" style="margin-bottom:0">
         <label class="form-label">Row (1–12)</label>
         <select class="form-select" id="m-row">
           <option value="">—</option>
           ${ROWS.map(r=>`<option value="${r}">${r}</option>`).join('')}
         </select>
-      </div>
-    </div>
-    <div class="form-group">
+      </div>` : ''}
+    </div>` : ''}
+    ${hasField('instrument') ? `<div class="form-group">
       <label class="form-label">Instrument</label>
       <select class="form-select" id="m-instrument">
         <option value="">— Select instrument —</option>
         ${STATE.instruments.map(i=>`<option value="${esc(i)}">${esc(i)}</option>`).join('')}
       </select>
-    </div>
-    <div class="form-group">
+    </div>` : ''}
+    ${hasField('section') ? `<div class="form-group">
       <label class="form-label">Section</label>
       <select class="form-select" id="m-section">
         <option value="">— Select section —</option>
         ${STATE.sections.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('')}
       </select>
-    </div>
-    <div class="form-group">
+    </div>` : ''}
+    ${hasField('grade') ? `<div class="form-group">
       <label class="form-label">Grade</label>
       <select class="form-select" id="m-grade">
         <option value="">— Select grade —</option>
         ${GRADE_LEVELS.map(g=>`<option value="${g}">${g} Grade</option>`).join('')}
       </select>
-    </div>
-    <div class="form-group">
+    </div>` : ''}
+    ${hasField('notes') ? `<div class="form-group">
       <label class="form-label">Director Notes (optional)</label>
       <textarea class="form-textarea" id="m-notes" placeholder="Any notes about this student…"></textarea>
-    </div>
+    </div>` : ''}
+    ${(STATE.customStudentFields||[]).map(cf => `<div class="form-group">
+      <label class="form-label">${esc(cf.label)}</label>
+      <input class="form-input" id="m-cf-${cf.key}" type="text" autocomplete="off">
+    </div>`).join('')}
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveNewStudent()">Add Student</button>
@@ -4596,16 +4873,19 @@ function saveNewStudent() {
   if (STATE.students[num]) { showToast(`Student #${num} already exists`); return; }
 
   const student = {
-    number:     num,
-    name:       document.getElementById('m-name').value.trim(),
-    column:     document.getElementById('m-column').value,
-    row:        document.getElementById('m-row').value,
-    instrument: document.getElementById('m-instrument').value,
-    section:    document.getElementById('m-section').value,
-    grade:      document.getElementById('m-grade').value,
-    notes:      document.getElementById('m-notes').value.trim(),
-    songs:      []
+    number: num,
+    name:   document.getElementById('m-name').value.trim(),
+    songs:  []
   };
+  if (hasField('column'))     student.column     = document.getElementById('m-column')?.value     || '';
+  if (hasField('row'))        student.row        = document.getElementById('m-row')?.value        || '';
+  if (hasField('instrument')) student.instrument = document.getElementById('m-instrument')?.value || '';
+  if (hasField('section'))    student.section    = document.getElementById('m-section')?.value    || '';
+  if (hasField('grade'))      student.grade      = document.getElementById('m-grade')?.value      || '';
+  if (hasField('notes'))      student.notes      = document.getElementById('m-notes')?.value?.trim() || '';
+  for (const cf of (STATE.customStudentFields || [])) {
+    student[cf.key] = document.getElementById(`m-cf-${cf.key}`)?.value?.trim() || '';
+  }
 
   STATE.students[num] = student;
   orgCol('students').doc(num).set(student);
@@ -4625,47 +4905,52 @@ function showEditStudentModal(num) {
       <label class="form-label">Name (optional)</label>
       <input class="form-input" id="m-name" type="text" value="${esc(s.name||'')}" autocomplete="off">
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="form-group" style="margin-bottom:0">
+    ${(hasField('column')||hasField('row')) ? `
+    <div style="display:grid;grid-template-columns:${hasField('column')&&hasField('row')?'1fr 1fr':'1fr'};gap:12px">
+      ${hasField('column') ? `<div class="form-group" style="margin-bottom:0">
         <label class="form-label">Column (A–L)</label>
         <select class="form-select" id="m-column">
           <option value="">—</option>
           ${COLUMNS.map(c=>`<option value="${c}" ${s.column===c?'selected':''}>${c}</option>`).join('')}
         </select>
-      </div>
-      <div class="form-group" style="margin-bottom:0">
+      </div>` : ''}
+      ${hasField('row') ? `<div class="form-group" style="margin-bottom:0">
         <label class="form-label">Row (1–12)</label>
         <select class="form-select" id="m-row">
           <option value="">—</option>
           ${ROWS.map(r=>`<option value="${r}" ${String(s.row)===String(r)?'selected':''}>${r}</option>`).join('')}
         </select>
-      </div>
-    </div>
-    <div class="form-group">
+      </div>` : ''}
+    </div>` : ''}
+    ${hasField('instrument') ? `<div class="form-group">
       <label class="form-label">Instrument</label>
       <select class="form-select" id="m-instrument">
         <option value="">— Select instrument —</option>
         ${STATE.instruments.map(i=>`<option value="${esc(i)}" ${(normInstrument(s.instrument)===i||s.instrument===i)?'selected':''}>${esc(i)}</option>`).join('')}
       </select>
-    </div>
-    <div class="form-group">
+    </div>` : ''}
+    ${hasField('section') ? `<div class="form-group">
       <label class="form-label">Section</label>
       <select class="form-select" id="m-section">
         <option value="">— Select section —</option>
         ${STATE.sections.map(sec=>`<option value="${esc(sec)}" ${s.section===sec?'selected':''}>${esc(sec)}</option>`).join('')}
       </select>
-    </div>
-    <div class="form-group">
+    </div>` : ''}
+    ${hasField('grade') ? `<div class="form-group">
       <label class="form-label">Grade</label>
       <select class="form-select" id="m-grade">
         <option value="">— Select grade —</option>
         ${GRADE_LEVELS.map(g=>`<option value="${g}" ${s.grade===g?'selected':''}>${g} Grade</option>`).join('')}
       </select>
-    </div>
-    <div class="form-group">
+    </div>` : ''}
+    ${hasField('notes') ? `<div class="form-group">
       <label class="form-label">Director Notes</label>
       <textarea class="form-textarea" id="m-notes">${esc(s.notes||'')}</textarea>
-    </div>
+    </div>` : ''}
+    ${(STATE.customStudentFields||[]).map(cf => `<div class="form-group">
+      <label class="form-label">${esc(cf.label)}</label>
+      <input class="form-input" id="m-cf-${cf.key}" type="text" value="${esc(s[cf.key]||'')}" autocomplete="off">
+    </div>`).join('')}
     <div class="form-group">
       <label class="form-label">Student Code</label>
       <div style="display:flex;gap:8px">
@@ -4702,15 +4987,18 @@ function saveEditStudent(num) {
   if (!STATE.students[num]) return;
   const patch = {
     name:         document.getElementById('m-name').value.trim(),
-    column:       document.getElementById('m-column').value,
-    row:          document.getElementById('m-row').value,
-    instrument:   document.getElementById('m-instrument').value,
-    section:      document.getElementById('m-section').value,
-    grade:        document.getElementById('m-grade').value,
-    notes:        document.getElementById('m-notes').value.trim(),
     studentCode:  document.getElementById('m-student-code').value.trim().toUpperCase(),
     studentEmail: document.getElementById('m-student-email').value.trim().toLowerCase(),
   };
+  if (hasField('column'))     patch.column     = document.getElementById('m-column')?.value     || '';
+  if (hasField('row'))        patch.row        = document.getElementById('m-row')?.value        || '';
+  if (hasField('instrument')) patch.instrument = document.getElementById('m-instrument')?.value || '';
+  if (hasField('section'))    patch.section    = document.getElementById('m-section')?.value    || '';
+  if (hasField('grade'))      patch.grade      = document.getElementById('m-grade')?.value      || '';
+  if (hasField('notes'))      patch.notes      = document.getElementById('m-notes')?.value?.trim() || '';
+  for (const cf of (STATE.customStudentFields || [])) {
+    patch[cf.key] = document.getElementById(`m-cf-${cf.key}`)?.value?.trim() || '';
+  }
   STATE.students[num] = { ...STATE.students[num], ...patch };
   orgCol('students').doc(num).set(patch, { merge: true });
   setStudentCodeLookup(patch.studentCode, num);
@@ -5354,9 +5642,40 @@ function showImportModal() {
   openModal(`
     <div class="modal-title">Import Roster from CSV</div>
     <div class="import-hint">
-      <strong>Column names recognized</strong> (header row required):<br>
-      <em>Number / Student # / ID</em> &nbsp;·&nbsp; <em>Name</em> &nbsp;·&nbsp;
-      <em>Instrument / Inst</em> &nbsp;·&nbsp; <em>Section / Part</em> &nbsp;·&nbsp; <em>Notes</em>
+      <strong>Your CSV must have a header row.</strong> The <em>Number</em> column is required; all others are optional. Headers are case-insensitive.
+      <table style="width:100%;border-collapse:collapse;font-size:0.8rem;margin-top:10px">
+        <thead>
+          <tr style="border-bottom:1.5px solid var(--border)">
+            <th style="text-align:left;padding:4px 6px 6px;font-weight:700;white-space:nowrap">Field</th>
+            <th style="text-align:left;padding:4px 6px 6px;font-weight:700">Description</th>
+            <th style="text-align:left;padding:4px 6px 6px;font-weight:700">Accepted column headers</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:5px 6px;font-weight:700;white-space:nowrap;color:var(--primary)">Number ★</td>
+            <td style="padding:5px 6px">Unique student ID used for all tracking</td>
+            <td style="padding:5px 6px;color:var(--text-muted)">Number, Student #, Student No, Student ID, ID, #, Num</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:5px 6px;font-weight:700;white-space:nowrap">Name</td>
+            <td style="padding:5px 6px">Student's display name</td>
+            <td style="padding:5px 6px;color:var(--text-muted)">Name, Student Name, Full Name, First Name, Last Name</td>
+          </tr>
+          ${STUDENT_FIELD_DEFS.filter(f => hasField(f.key)).map(f => `
+          <tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:5px 6px;font-weight:700;white-space:nowrap">${f.label}</td>
+            <td style="padding:5px 6px">${f.description}</td>
+            <td style="padding:5px 6px;color:var(--text-muted)">${f.aliases}</td>
+          </tr>`).join('')}
+          ${(STATE.customStudentFields||[]).map((cf, i, arr) => `
+          <tr${i < arr.length-1 ? ' style="border-bottom:1px solid var(--border)"' : ''}>
+            <td style="padding:5px 6px;font-weight:700;white-space:nowrap">${esc(cf.label)}</td>
+            <td style="padding:5px 6px">Custom field</td>
+            <td style="padding:5px 6px;color:var(--text-muted)">${esc(cf.label)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
     </div>
     <div class="form-group" style="margin-top:14px">
       <label class="form-label">Choose .csv File</label>
@@ -5397,6 +5716,15 @@ function parseCSV(text) {
     .split('\n').filter(l => l.trim()).map(parseCSVLine);
 }
 
+const STUDENT_FIELD_DEFS = [
+  { key: 'instrument', label: 'Instrument',  description: 'Instrument played',                        aliases: 'Instrument, Inst' },
+  { key: 'section',    label: 'Section',     description: 'Band section or ensemble group',           aliases: 'Section, Part, Group, Ensemble' },
+  { key: 'column',     label: 'Column',      description: 'Marching position — column letter (A–L)',  aliases: 'Column, Col, Letter, Column Letter, File' },
+  { key: 'row',        label: 'Row',         description: 'Marching position — row number (1–12)',    aliases: 'Row, Rank, Row Number, Set' },
+  { key: 'grade',      label: 'Grade',       description: 'Grade level (9–12)',                       aliases: 'Grade, Grade Level, Year, Class Year' },
+  { key: 'notes',      label: 'Notes',       description: 'Private director notes for the student',   aliases: 'Notes, Note, Comments, Director Notes' },
+];
+
 const COL_ALIASES = {
   number:     ['number','student number','student #','student no','student id','id','#','num','no.','no'],
   name:       ['name','student name','full name','first name','last name','student'],
@@ -5420,6 +5748,10 @@ function detectCols(headers) {
   for (const [field, aliases] of Object.entries(COL_ALIASES)) {
     const idx = norm.findIndex(h => aliases.includes(h));
     if (idx !== -1) map[field] = idx;
+  }
+  for (const cf of (STATE.customStudentFields || [])) {
+    const idx = norm.findIndex(h => h === cf.label.toLowerCase().trim());
+    if (idx !== -1 && map[cf.key] === undefined) map[cf.key] = idx;
   }
   return map;
 }
@@ -5464,7 +5796,9 @@ function renderImportPreview() {
   const dupCount  = rows.length - newCount;
   const preview   = rows.slice(0, 8);
   const LABELS    = { number:'Number', name:'Name', column:'Column', row:'Row', instrument:'Instrument', section:'Section', grade:'Grade', notes:'Notes' };
-  const fields    = Object.keys(colMap);
+  for (const cf of (STATE.customStudentFields || [])) LABELS[cf.key] = cf.label;
+  const customKeys = new Set((STATE.customStudentFields || []).map(cf => cf.key));
+  const fields    = Object.keys(colMap).filter(f => f === 'number' || f === 'name' || hasField(f) || customKeys.has(f));
 
   document.getElementById('import-preview').innerHTML = `
     <hr class="divider">
@@ -5536,13 +5870,16 @@ async function executeImport() {
     const num = csvRow[colMap.number]?.trim();
     if (!num) continue;
     const incoming = { number: num };
-    if (colMap.name       !== undefined) incoming.name       = csvRow[colMap.name].trim();
-    if (colMap.column     !== undefined) incoming.column     = csvRow[colMap.column].trim().toUpperCase();
-    if (colMap.row        !== undefined) incoming.row        = csvRow[colMap.row].trim();
-    if (colMap.instrument !== undefined) incoming.instrument = csvRow[colMap.instrument].trim();
-    if (colMap.section    !== undefined) incoming.section    = csvRow[colMap.section].trim();
-    if (colMap.grade      !== undefined) incoming.grade      = normalizeGrade(csvRow[colMap.grade].trim());
-    if (colMap.notes      !== undefined) incoming.notes      = csvRow[colMap.notes].trim();
+    if (colMap.name       !== undefined)              incoming.name       = csvRow[colMap.name].trim();
+    if (colMap.column     !== undefined && hasField('column'))     incoming.column     = csvRow[colMap.column].trim().toUpperCase();
+    if (colMap.row        !== undefined && hasField('row'))        incoming.row        = csvRow[colMap.row].trim();
+    if (colMap.instrument !== undefined && hasField('instrument')) incoming.instrument = csvRow[colMap.instrument].trim();
+    if (colMap.section    !== undefined && hasField('section'))    incoming.section    = csvRow[colMap.section].trim();
+    if (colMap.grade      !== undefined && hasField('grade'))      incoming.grade      = normalizeGrade(csvRow[colMap.grade].trim());
+    if (colMap.notes      !== undefined && hasField('notes'))      incoming.notes      = csvRow[colMap.notes].trim();
+    for (const cf of (STATE.customStudentFields || [])) {
+      if (colMap[cf.key] !== undefined) incoming[cf.key] = csvRow[colMap[cf.key]]?.trim() || '';
+    }
     if (existing[num]) {
       if (strategy === 'overwrite') {
         STATE.students[num] = { ...STATE.students[num], ...incoming };
