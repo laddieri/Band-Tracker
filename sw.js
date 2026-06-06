@@ -1,4 +1,4 @@
-const CACHE = 'band-tracker-v1';
+const CACHE = 'band-tracker-v2';
 
 const PRECACHE = [
   '/',
@@ -49,18 +49,18 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // App files — stale-while-revalidate: instant from cache, updates in background
+  // App files — network-first: always get the latest deployed code when online,
+  // fall back to cache only when offline. (Stale-while-revalidate served old
+  // code after every deploy, so fixes appeared to "not work" until a 2nd load.)
   if (request.method === 'GET') {
     e.respondWith(
-      caches.open(CACHE).then(cache =>
-        cache.match(request).then(cached => {
-          const fresh = fetch(request).then(res => {
-            cache.put(request, res.clone());
-            return res;
-          });
-          return cached || fresh;
+      fetch(request)
+        .then(res => {
+          const copy = res.clone();
+          caches.open(CACHE).then(c => c.put(request, copy));
+          return res;
         })
-      )
+        .catch(() => caches.match(request))
     );
   }
 });
