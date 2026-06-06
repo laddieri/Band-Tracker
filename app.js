@@ -132,6 +132,10 @@ function hasField(key) {
 const DB = {
   getStudents()        { return STATE.students; },
   getRehearsals()      { return STATE.rehearsals; },
+  // Feature-gated: when Songs is off this returns [], so every consumer
+  // (Stats, roster detail, student portal, etc.) shows no song data without
+  // each one needing its own check. Mutations still use STATE.songs directly.
+  getSongs()           { return featureOn('songs') ? STATE.songs : []; },
   getRehearsalEntries(rid) { return STATE.entries[rid] || {}; },
   getStudentHistory(num) {
     return STATE.rehearsals
@@ -717,6 +721,19 @@ function openModal(html) {
 // ── Feature modules ───────────────────────────────────────────────────────────
 // Band-wide toggles configured in Band Settings. Stats depends on Marks (it's
 // built from mark data), so it's only "on" when both are enabled.
+//
+// Gating strategy (keep new feature-specific UI consistent with this):
+//   • Songs has its own collection, so it's gated at the DATA layer via
+//     DB.getSongs() (returns [] when off). Read song data through DB.getSongs()
+//     in every DISPLAY site and it disappears everywhere automatically. Only
+//     song mutations use STATE.songs directly.
+//   • Marks & Attendance are fields on shared `entries` docs (no clean
+//     accessor), so they're gated per-SECTION with featureOn() in the views
+//     that blend features. Those cross-cutting surfaces are: viewLeaderboard
+//     (Stats), viewStudent (roster detail), viewStudentPortal, viewRehearsals
+//     /viewHome/viewRoster cards. If you add mark/attendance UI to any shared
+//     view, gate it here too.
+//   • Tabs + a router guard (see render) hide whole disabled views.
 function featureOn(name) {
   const f = STATE.features || {};
   switch (name) {
@@ -736,6 +753,7 @@ const VIEW_FEATURE = {
   'rehearsal':      'marks',
   'leaderboard':    'stats',
   'songs':          'songs',
+  'song':           'songs',
 };
 
 // ── Render engine ─────────────────────────────────────────────────────────────
@@ -2703,7 +2721,7 @@ function viewStudentPortal(previewMode = false) {
         </div>
       ` : ''}
 
-      ${(STATE.songs.length > 0 && featureOn('songs')) ? `
+      ${DB.getSongs().length > 0 ? `
         <div id="portal-sec-songs-hdr" class="sec-hdr" onclick="toggleCollapse('portal-sec-songs')">
           <span class="section-title" style="margin:0">Songs to Memorize</span>
           <span class="sec-chevron">▾</span>
@@ -3053,7 +3071,7 @@ function viewLeaderboard() {
 
   // ── Songs ─────────────────────────────────────────────────────────────────
 
-  const songRows = STATE.songs.map(song => {
+  const songRows = DB.getSongs().map(song => {
     const passed    = Object.values(song.statuses || {}).filter(s => s.status === 'passed').length;
     const remaining = Math.max(0, totalStudents - passed);
     const pct       = totalStudents ? Math.round(passed / totalStudents * 100) : 0;
@@ -3065,6 +3083,7 @@ function viewLeaderboard() {
   return `
     <div class="leaderboard-view">
 
+      ${featureOn('attendance') ? `
       <div id="lb-sec-attendance-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('lb-sec-attendance')">
         <span class="section-title" style="margin:0">Band Attendance Data</span>
         <span class="sec-chevron">▾</span>
@@ -3101,7 +3120,7 @@ function viewLeaderboard() {
             <div class="lb-stat-val">${seasonAvg !== '—' ? `${seasonAvg} / rehearsal` : '—'}</div>
           </div>
         </div>
-      </div>
+      </div>` : ''}
 
       ${songRows.length ? `
         <div id="lb-sec-songs-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('lb-sec-songs')">
@@ -3166,14 +3185,15 @@ function viewLeaderboard() {
 
       ${(STATE.marchingLeaderboardEnabled || STATE.isAdmin) ? (() => {
         const allScored = Object.entries(STATE.students).map(([docId, s]) => {
-          const songPoints = STATE.songs.reduce((sum, song) => {
+          const songPoints = DB.getSongs().reduce((sum, song) => {
             return sum + (song.statuses?.[String(s.number)]?.status === 'passed' ? 1 : 0);
           }, 0);
           const score = songPoints + Object.values(STATE.entries).reduce((sum, rehEntries) => {
             const e = rehEntries[String(s.number)];
-            return sum + (e ? (e.positives || 0) - (e.mistakes || 0)
-                              - (e.attendance === 'absent' ? 1 : 0)
-                              - (e.attendance === 'late'   ? 0.5 : 0) : 0);
+            if (!e) return sum;
+            return sum + (e.positives || 0) - (e.mistakes || 0)
+                      - (featureOn('attendance') && e.attendance === 'absent' ? 1 : 0)
+                      - (featureOn('attendance') && e.attendance === 'late'   ? 0.5 : 0);
           }, 0);
           return { docId, s, score, name: fakeAnimalName(docId), positives: Object.values(STATE.entries).reduce((sum, re) => sum + (re[String(s.number)]?.positives || 0), 0), mistakes: Object.values(STATE.entries).reduce((sum, re) => sum + (re[String(s.number)]?.mistakes || 0), 0) };
         });
@@ -3267,6 +3287,7 @@ function viewStudent(num) {
         <div class="stat-value">${hist.length}</div>
         <div class="stat-label">Rehearsals</div>
       </div>
+      ${featureOn('marks') ? `
       <div class="stat-block">
         <div class="stat-value" style="color:var(--danger)">${avgE}</div>
         <div class="stat-label">Avg Mistakes</div>
@@ -3274,7 +3295,7 @@ function viewStudent(num) {
       <div class="stat-block">
         <div class="stat-value" style="color:var(--success)">${avgP}</div>
         <div class="stat-label">Avg Positives</div>
-      </div>
+      </div>` : ''}
     </div>
 
     ${s.notes ? `
@@ -3283,7 +3304,7 @@ function viewStudent(num) {
         <div style="font-size:0.9rem;white-space:pre-wrap;color:var(--text-muted)">${esc(s.notes)}</div>
       </div>` : ''}
 
-    ${(() => {
+    ${featureOn('attendance') ? (() => {
       const absences = hist.filter(({entry:e}) => e.attendance === 'absent');
       const lates    = hist.filter(({entry:e}) => e.attendance === 'late');
       if (!absences.length && !lates.length) return '';
@@ -3321,12 +3342,12 @@ function viewStudent(num) {
           </div>
         </div>
       `;
-    })()}
+    })() : ''}
 
-    ${STATE.songs.length ? `
+    ${DB.getSongs().length ? `
       <div class="section-title">Songs to Memorize</div>
       <div class="card mb-12" style="padding:8px 12px">
-        ${STATE.songs.map(song => {
+        ${DB.getSongs().map(song => {
           const st         = song.statuses?.[String(num)]?.status || 'not_attempted';
           const statusData = song.statuses?.[String(num)];
           const metaParts  = [];
@@ -3370,12 +3391,13 @@ function viewStudent(num) {
           <div class="history-info" onclick="navigate('rehearsal',{rid:'${esc(r.id)}'})">
             <div class="history-date">${fmtDate(r.date)}</div>
             ${r.label ? `<div class="history-label">${esc(r.label)}</div>` : ''}
-            ${e.attendance==='absent' ? `<div class="history-note att-absent-note">✗ Absent</div>` : ''}
-            ${e.attendance==='late'   ? `<div class="history-note att-late-note">◷ Late</div>`   : ''}
+            ${featureOn('attendance') && e.attendance==='absent' ? `<div class="history-note att-absent-note">✗ Absent</div>` : ''}
+            ${featureOn('attendance') && e.attendance==='late'   ? `<div class="history-note att-late-note">◷ Late</div>`   : ''}
             ${e.notes  ? `<div class="history-note">${esc(e.notes)}</div>` : ''}
-            ${mn.length ? `<div class="history-note" style="color:var(--danger)">✗ ${mn.join(' &middot; ')}</div>` : ''}
-            ${pn.length ? `<div class="history-note" style="color:var(--success)">✓ ${pn.join(' &middot; ')}</div>` : ''}
+            ${featureOn('marks') && mn.length ? `<div class="history-note" style="color:var(--danger)">✗ ${mn.join(' &middot; ')}</div>` : ''}
+            ${featureOn('marks') && pn.length ? `<div class="history-note" style="color:var(--success)">✓ ${pn.join(' &middot; ')}</div>` : ''}
           </div>
+          ${featureOn('marks') ? `
           <div class="flex gap-6" style="flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">
             <div class="flex gap-6">
               ${e.mistakes  > 0 ? `<span class="badge badge-danger">${e.mistakes}✗</span>`  : '<span class="badge badge-neutral">0✗</span>'}
@@ -3387,7 +3409,7 @@ function viewStudent(num) {
               <button class="ssb ssb-pass" style="width:28px;height:28px;font-size:.85rem"
                       onclick="showMarkModal('${esc(r.id)}','${esc(num)}','positive')">✓</button>
             </div>
-          </div>
+          </div>` : ''}
         </div>`;
       }).join('')}
     ` : `
