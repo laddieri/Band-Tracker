@@ -600,10 +600,33 @@ function _rerenderForFilter(viewId) {
   if (mc) mc.scrollTop = st;
 }
 
+// Partial update of just the results list for a view, leaving the filter bar
+// (and its focused search input) untouched. Used while typing in search so the
+// keyboard/focus isn't lost to a full re-render. Returns false if the view has
+// no dedicated list container (caller should fall back to a full re-render).
+function _refreshFilterList(viewId) {
+  const lists = {
+    roster:    ['roster-list',       () => rosterRows(filterAndSortStudents(Object.values(DB.getStudents()), _rosterFilter))],
+    'att-tab': ['att-tab-filtered',  () => _attTabFilteredContent()],
+  };
+  const entry = lists[viewId];
+  if (!entry) return false;
+  const el = document.getElementById(entry[0]);
+  if (!el) return false;
+  const mc = document.getElementById('main-content');
+  const st = mc ? mc.scrollTop : 0;
+  el.innerHTML = entry[1]();
+  if (mc) mc.scrollTop = st;
+  return true;
+}
+
 function updateFilter(viewId, field, value) {
   const f = _getFilterObj(viewId);
   if (!f) return;
   f[field] = value;
+  // While typing in search, update only the list so the input keeps focus
+  // (a full re-render would replace the input and dismiss the keyboard).
+  if (field === 'search' && _refreshFilterList(viewId)) return;
   _rerenderForFilter(viewId);
 }
 
