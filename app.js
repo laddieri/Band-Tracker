@@ -892,12 +892,12 @@ function render() {
         _activeRid = openR.id;
         _params = { ..._params, rid: openR.id };
         title.textContent = 'Student Feedback';
-        actions.innerHTML = userBtn();
+        actions.innerHTML = optBtn('showMarksOptionsModal()') + userBtn();
         main.innerHTML = viewRehearsal(openR.id);
         if (_blockMode && !_activeNum) initBlockPinch(openR.id);
       } else {
         title.textContent = 'Rehearsal Marks';
-        actions.innerHTML = userBtn();
+        actions.innerHTML = (STATE.isAdmin ? optBtn('showMarksOptionsModal()') : '') + userBtn();
         main.innerHTML = viewDashboard();
       }
       break;
@@ -1652,18 +1652,31 @@ function showRosterOptionsModal() {
           <div class="options-menu-sub">Reassign all animal pseudonyms</div>
         </div>
       </button>
-      <button class="options-menu-item" onclick="closeModal();showManagePresetsModal()">
-        <div class="options-menu-icon">✏️</div>
-        <div>
-          <div class="options-menu-label">Manage Mark Presets</div>
-          <div class="options-menu-sub">Edit preset comments for marks</div>
-        </div>
-      </button>
       <button class="options-menu-item options-menu-item-danger" onclick="closeModal();showDeleteRosterModal()">
         <div class="options-menu-icon">🗑</div>
         <div>
           <div class="options-menu-label">Delete Entire Roster</div>
           <div class="options-menu-sub">Permanently remove all students</div>
+        </div>
+      </button>
+    </div>
+    <div class="modal-actions" style="margin-top:8px">
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Cancel</button>
+    </div>
+  `);
+}
+
+function showMarksOptionsModal() {
+  if (!STATE.isAdmin) return;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Marks Settings</div>
+    <div class="options-menu">
+      <button class="options-menu-item" onclick="closeModal();showManagePresetsModal()">
+        <div class="options-menu-icon">✏️</div>
+        <div>
+          <div class="options-menu-label">Manage Mark Presets</div>
+          <div class="options-menu-sub">Edit preset comments for marks</div>
         </div>
       </button>
     </div>
