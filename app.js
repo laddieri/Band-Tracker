@@ -826,6 +826,11 @@ function render() {
 
   actions.innerHTML = '';
 
+  // New bands: guide admin to roster on login before any students exist
+  if (STATE.isAdmin && _view === 'rehearsals' && !Object.keys(STATE.students).length) {
+    _view = 'roster';
+  }
+
   switch (_view) {
     case 'roster':
       title.textContent = 'Student Roster';
@@ -1587,15 +1592,49 @@ function viewRoster() {
     ...(hasField('column')     ? [{value:'column',     label:'Column'}]     : []),
     ...(hasField('row')        ? [{value:'row',        label:'Row'}]        : []),
   ];
+  if (STATE.isAdmin && allStudents.length === 0) {
+    return viewRosterOnboarding();
+  }
+
   return `
     ${renderFilterBar('roster', _rosterFilter, rosterSortOpts)}
     <div id="roster-list">${rosterRows(filtered)}</div>
-    ${allStudents.length === 0 ? `
-      <div class="empty-state">
-        <div class="empty-icon">👥</div>
-        <p>No students yet.</p>
-        <p>Tap <strong>+</strong> above to add your first student,<br>or use <strong>Import from CSV</strong>.</p>
-      </div>` : ''}
+  `;
+}
+
+function viewRosterOnboarding() {
+  const bandName = STATE.bandName || 'your band';
+  return `
+    <div class="onboard-card">
+      <div class="onboard-card-title">👋 Welcome to ${esc(bandName)}!</div>
+      <div class="onboard-card-sub">Let's get your roster set up. Follow these two steps to get started.</div>
+      <div class="onboard-steps">
+
+        <div class="onboard-step">
+          <div class="onboard-step-num">1</div>
+          <div>
+            <div class="onboard-step-title">Configure your fields</div>
+            <div class="onboard-step-desc">Choose which details to track for each student — marching position, instrument, grade, and more. You can also add your own custom fields like locker number or bus route.</div>
+            <div class="onboard-step-btns">
+              <button class="btn btn-secondary" onclick="showManageFieldsModal()">Manage Fields</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="onboard-step">
+          <div class="onboard-step-num">2</div>
+          <div>
+            <div class="onboard-step-title">Add your students</div>
+            <div class="onboard-step-desc">Import your entire roster from a CSV file in seconds, or add students one at a time.</div>
+            <div class="onboard-step-btns">
+              <button class="btn btn-primary" onclick="showImportModal()">Import CSV</button>
+              <button class="btn btn-secondary" onclick="showAddStudentModal()">Add Manually</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
   `;
 }
 
