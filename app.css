@@ -2017,13 +2017,19 @@ html, body {
 /* ── Songs list view ─────────────────────────────────────────────────────────── */
 
 .song-cat-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--text-muted);
   padding: 14px 4px 4px;
+  cursor: pointer;
+  user-select: none;
 }
+.song-cat-hdr:not(.sec-hdr-open) .sec-chevron { transform: rotate(-90deg); }
 .song-cat-sec-hdr {
   font-size: 0.72rem;
   font-weight: 700;
@@ -2724,6 +2730,8 @@ html, body {
   .songs-list-grid .song-row { margin-bottom: 0; }
   .songs-list-grid .song-cat-hdr,
   .songs-list-grid .song-cat-sec-hdr { grid-column: 1 / -1; }
+  .songs-list-grid .song-cat-body { display: contents; }
+  .songs-list-grid .song-cat-body.sec-collapsed { display: none; }
 }
 
 /* ── Roster onboarding ───────────────────────────────────────────────────────── */
