@@ -600,14 +600,7 @@ function _rerenderForFilter(viewId) {
     case 'att':     mc.innerHTML = viewAttendance(_params.rid); break;
     case 'tracker': reRender(_params.rid); break;
     case 'lb':      mc.innerHTML = viewLeaderboard(); break;
-    case 'song': {
-      const el = document.getElementById('song-student-list');
-      if (el) {
-        const song = STATE.songs.find(s => s.id === _params.sid);
-        if (song) { el.innerHTML = songStudentRows(_params.sid, Object.values(DB.getStudents()), song.statuses || {}); if (mc) mc.scrollTop = st; }
-      }
-      break;
-    }
+    case 'song':    mc.innerHTML = viewSong(_params.sid); break;
   }
   if (mc) mc.scrollTop = st;
 }
@@ -620,6 +613,10 @@ function _refreshFilterList(viewId) {
   const lists = {
     roster:    ['roster-list',       () => rosterRows(filterAndSortStudents(Object.values(DB.getStudents()), _rosterFilter))],
     'att-tab': ['att-tab-filtered',  () => _attTabFilteredContent()],
+    song:      ['song-student-list', () => {
+      const song = STATE.songs.find(s => s.id === _params.sid);
+      return song ? songStudentRows(_params.sid, Object.values(DB.getStudents()), song.statuses || {}) : '';
+    }],
   };
   const entry = lists[viewId];
   if (!entry) return false;
