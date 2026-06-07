@@ -500,7 +500,9 @@ html, body {
 }
 
 .modal-title { font-size: 1.15rem; font-weight: 700; margin-bottom: 20px; }
-.modal-handle { width: 40px; height: 4px; background: var(--border); border-radius: 4px; margin: -8px auto 16px; }
+.modal-top-row { display: flex; align-items: center; justify-content: center; position: relative; margin: -8px 0 16px; }
+.modal-handle { width: 40px; height: 4px; background: var(--border); border-radius: 4px; }
+.modal-close-btn { position: absolute; right: -4px; top: 50%; transform: translateY(-50%); background: none; border: none; font-size: 1rem; color: var(--text-muted); cursor: pointer; padding: 4px 8px; line-height: 1; }
 
 .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
 .modal-actions .btn { flex: 1; }
