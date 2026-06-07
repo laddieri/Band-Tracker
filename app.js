@@ -286,6 +286,8 @@ async function startListeners() {
       };
       STATE.activeStudentFields        = Array.isArray(d.activeStudentFields) ? d.activeStudentFields : null;
       STATE.customStudentFields        = Array.isArray(d.customStudentFields)  ? d.customStudentFields  : [];
+      STATE.hideNegativeFromPortal     = !!d.hideNegativeFromPortal;
+      STATE.countNegativeInScore       = d.countNegativeInScore !== false;
       if (!STATE.loading) render();
     }),
 
@@ -1501,6 +1503,26 @@ function showBrandSettingsModal() {
     </div>
 
     <div class="form-group">
+      <label class="form-label">Negative Marks</label>
+      <p style="font-size:.75rem;color:var(--text-muted);margin:-2px 0 8px">
+        Controls how mistake marks (marching feedback) appear to students.
+        Does not affect attendance.
+      </p>
+      ${[
+        ['neg-show-portal',  !STATE.hideNegativeFromPortal, 'Show in student portal',        'Students can see their negative marks and feedback notes'],
+        ['neg-count-score',  STATE.countNegativeInScore,    'Count in leaderboard score',     'Subtract negative marks from students\' leaderboard scores'],
+      ].map(([id, checked, label, desc]) => `
+        <label style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;cursor:pointer">
+          <input type="checkbox" id="${id}" ${checked ? 'checked' : ''}
+            style="margin-top:3px;width:18px;height:18px;flex-shrink:0">
+          <span>
+            <span style="font-weight:600">${label}</span>
+            <span style="display:block;font-size:.75rem;color:var(--text-muted)">${desc}</span>
+          </span>
+        </label>`).join('')}
+    </div>
+
+    <div class="form-group">
       <label class="form-label">Co-director invite code</label>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <code id="invite-code-display"
@@ -1649,10 +1671,17 @@ async function saveBrandSettings() {
     songs:      readFeat('songs'),
     stats:      readFeat('stats'),
   };
-  STATE.bandName = name;
-  STATE.bandLogo = logo;
-  STATE.features = features;
-  await orgCol('settings').doc('presets').set({ bandName: name, bandLogo: logo, features }, { merge: true });
+  const hideNegativeFromPortal = !(document.getElementById('neg-show-portal')?.checked ?? true);
+  const countNegativeInScore   = !!(document.getElementById('neg-count-score')?.checked ?? true);
+  STATE.bandName               = name;
+  STATE.bandLogo               = logo;
+  STATE.features               = features;
+  STATE.hideNegativeFromPortal = hideNegativeFromPortal;
+  STATE.countNegativeInScore   = countNegativeInScore;
+  await orgCol('settings').doc('presets').set(
+    { bandName: name, bandLogo: logo, features, hideNegativeFromPortal, countNegativeInScore },
+    { merge: true }
+  );
   closeModal();
   showToast('Band settings saved.');
   render();
@@ -2792,10 +2821,11 @@ function viewStudentPortal(previewMode = false) {
               <div class="portal-stat-label">Rehearsals</div>
             </div>
             ${featureOn('marks') ? `
+            ${!STATE.hideNegativeFromPortal ? `
             <div class="portal-stat">
               <div class="portal-stat-value portal-stat-mistake">${totalErr}</div>
               <div class="portal-stat-label">Mistake Marks</div>
-            </div>
+            </div>` : ''}
             <div class="portal-stat">
               <div class="portal-stat-value portal-stat-positive">${totalPos}</div>
               <div class="portal-stat-label">Positives</div>
@@ -2912,14 +2942,14 @@ function viewStudentPortal(previewMode = false) {
               <div class="portal-badges">
                 ${featureOn('attendance') && e.attendance==='absent' ? `<span class="portal-badge att-portal-badge-absent">Absent</span>` : ''}
                 ${featureOn('attendance') && e.attendance==='late'   ? `<span class="portal-badge att-portal-badge-late">Late</span>`   : ''}
-                ${featureOn('marks') && (e.mistakes  || 0) > 0 ? `<span class="portal-badge portal-badge-mistake">✗ ${e.mistakes}</span>`  : ''}
+                ${featureOn('marks') && !STATE.hideNegativeFromPortal && (e.mistakes || 0) > 0 ? `<span class="portal-badge portal-badge-mistake">✗ ${e.mistakes}</span>` : ''}
                 ${featureOn('marks') && (e.positives || 0) > 0 ? `<span class="portal-badge portal-badge-positive">✓ ${e.positives}</span>` : ''}
               </div>
               ${hasDetail ? `<span class="portal-chevron">▸</span>` : '<span class="portal-chevron" style="opacity:0">▸</span>'}
             </div>
             <div class="portal-rehearsal-detail">
               ${e.notes ? `<div class="portal-entry-note">${esc(e.notes)}</div>` : ''}
-              ${noteEvts.map(ev => `
+              ${noteEvts.filter(ev => !STATE.hideNegativeFromPortal || ev.type !== 'mistake').map(ev => `
                 <div class="portal-event-row ${ev.sectionMark ? 'is-section-mark' : ''}">
                   <span class="event-note-type ${ev.type === 'mistake' ? 'is-mistake' : 'is-positive'}">${ev.type === 'mistake' ? '✗' : '✓'}</span>
                   ${ev.sectionMark ? `<span class="section-mark-badge">§ ${esc(ev.section||'Section')}</span>` : ''}
@@ -3392,7 +3422,7 @@ function viewLeaderboard() {
           const score = songPoints + Object.values(STATE.entries).reduce((sum, rehEntries) => {
             const e = rehEntries[String(s.number)];
             if (!e) return sum;
-            return sum + (e.positives || 0) - (e.mistakes || 0)
+            return sum + (e.positives || 0) - (STATE.countNegativeInScore ? (e.mistakes || 0) : 0)
                       - (featureOn('attendance') && e.attendance === 'absent' ? 1 : 0)
                       - (featureOn('attendance') && e.attendance === 'late'   ? 0.5 : 0);
           }, 0);
