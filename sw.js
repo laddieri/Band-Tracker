@@ -1,4 +1,4 @@
-const CACHE = 'band-tracker-v2';
+const CACHE = 'band-tracker-v3';
 
 const PRECACHE = [
   '/',
@@ -49,12 +49,15 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // App files — network-first: always get the latest deployed code when online,
-  // fall back to cache only when offline. (Stale-while-revalidate served old
-  // code after every deploy, so fixes appeared to "not work" until a 2nd load.)
+  // App files — network-first, bypassing the HTTP cache. `cache: 'no-store'`
+  // is essential: GitHub Pages serves these with Cache-Control max-age=600, so
+  // a plain fetch() would return a stale copy from the browser's HTTP cache for
+  // ~10 min after a deploy (changes wouldn't show without clearing browser
+  // data). We always pull fresh from the server when online, and fall back to
+  // the SW cache only when offline.
   if (request.method === 'GET') {
     e.respondWith(
-      fetch(request)
+      fetch(request, { cache: 'no-store' })
         .then(res => {
           const copy = res.clone();
           caches.open(CACHE).then(c => c.put(request, copy));
