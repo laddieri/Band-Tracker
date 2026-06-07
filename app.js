@@ -3692,46 +3692,61 @@ function viewStudent(num) {
       `;
     })() : ''}
 
-    ${DB.getSongs().length ? `
+    ${DB.getSongs().length ? (() => {
+      const allSongs   = DB.getSongs();
+      const remaining  = allSongs.filter(song => song.statuses?.[String(num)]?.status !== 'passed');
+      const completed  = allSongs.filter(song => song.statuses?.[String(num)]?.status === 'passed');
+
+      const songRow = (song, showPassBtn = true) => {
+        const st         = song.statuses?.[String(num)]?.status || 'not_attempted';
+        const statusData = song.statuses?.[String(num)];
+        const metaParts  = [];
+        if (statusData && st !== 'not_attempted') {
+          if (statusData.updatedAt) metaParts.push(fmtDateFromTs(statusData.updatedAt));
+          if (statusData.updatedBy) metaParts.push(`by ${dirLabel(statusData.updatedBy)}`);
+        }
+        const meta     = metaParts.join(' ');
+        const failNote = st === 'failed' ? (statusData?.note || '') : '';
+        const overdue  = song.dueDate && song.dueDate < today() && st !== 'passed';
+        return `
+        <div class="stu-song-row">
+          <div class="song-stu-info">
+            <span class="song-stu-name">${esc(song.title)}</span>
+            ${song.dueDate ? `<span class="song-row-due ${overdue ? 'song-overdue' : ''}" style="font-size:.72rem">${overdue ? '⚠ ' : ''}Due ${fmtDate(song.dueDate)}</span>` : ''}
+            <span class="song-stu-status ${st === 'passed' ? 'sss-pass' : st === 'failed' ? 'sss-fail' : 'sss-na'}">
+              ${st === 'passed' ? '✓ Passed' : st === 'failed' ? '✗ Failed' : '— Not Attempted'}
+            </span>
+            ${meta ? `<span class="song-stu-meta">${esc(meta)}</span>` : ''}
+            ${failNote ? `<span class="song-stu-fail-note">${esc(failNote)}</span>` : ''}
+          </div>
+          <div class="song-stu-btns">
+            ${showPassBtn ? `<button class="ssb ${st === 'passed' ? 'ssb-on-pass' : 'ssb-pass'}"
+                    onclick="setSongStatus('${esc(song.id)}','${esc(String(num))}','passed')">✓</button>` : ''}
+            <button class="ssb ${st === 'failed' ? 'ssb-on-fail' : 'ssb-fail'}"
+                    onclick="setSongStatus('${esc(song.id)}','${esc(String(num))}','failed')">✗</button>
+          </div>
+        </div>`;
+      };
+
+      return `
       <div id="stu-songs-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('stu-songs-sec')">
         <span class="section-title" style="margin:0">Songs to Memorize</span>
         <span class="sec-chevron">▾</span>
       </div>
       <div id="stu-songs-sec">
-      <div class="card mb-12" style="padding:8px 12px">
-        ${DB.getSongs().map(song => {
-          const st         = song.statuses?.[String(num)]?.status || 'not_attempted';
-          const statusData = song.statuses?.[String(num)];
-          const metaParts  = [];
-          if (statusData && st !== 'not_attempted') {
-            if (statusData.updatedAt) metaParts.push(fmtDateFromTs(statusData.updatedAt));
-            if (statusData.updatedBy) metaParts.push(`by ${dirLabel(statusData.updatedBy)}`);
-          }
-          const meta     = metaParts.join(' ');
-          const failNote = st === 'failed' ? (statusData?.note || '') : '';
-          const overdue = song.dueDate && song.dueDate < today() && st !== 'passed';
-          return `
-          <div class="stu-song-row">
-            <div class="song-stu-info">
-              <span class="song-stu-name">${esc(song.title)}</span>
-              ${song.dueDate ? `<span class="song-row-due ${overdue ? 'song-overdue' : ''}" style="font-size:.72rem">${overdue ? '⚠ ' : ''}Due ${fmtDate(song.dueDate)}</span>` : ''}
-              <span class="song-stu-status ${st === 'passed' ? 'sss-pass' : st === 'failed' ? 'sss-fail' : 'sss-na'}">
-                ${st === 'passed' ? '✓ Passed' : st === 'failed' ? '✗ Failed' : '— Not Attempted'}
-              </span>
-              ${meta ? `<span class="song-stu-meta">${esc(meta)}</span>` : ''}
-              ${failNote ? `<span class="song-stu-fail-note">${esc(failNote)}</span>` : ''}
-            </div>
-            <div class="song-stu-btns">
-              <button class="ssb ${st === 'passed' ? 'ssb-on-pass' : 'ssb-pass'}"
-                      onclick="setSongStatus('${esc(song.id)}','${esc(String(num))}','passed')">✓</button>
-              <button class="ssb ${st === 'failed' ? 'ssb-on-fail' : 'ssb-fail'}"
-                      onclick="setSongStatus('${esc(song.id)}','${esc(String(num))}','failed')">✗</button>
-            </div>
-          </div>`;
-        }).join('')}
-      </div>
-      </div>
-    ` : ''}
+        ${remaining.length
+          ? `<div class="card mb-12" style="padding:8px 12px">${remaining.map(s => songRow(s)).join('')}</div>`
+          : `<p class="empty-state" style="padding:12px 0;font-size:0.88rem">All songs memorized! 🎉</p>`}
+        ${completed.length ? `
+          <div id="stu-songs-done-hdr" class="song-cat-hdr" onclick="toggleCollapse('stu-songs-done')" style="margin-top:4px">
+            <span>Songs Completed (${completed.length})</span>
+            <span class="sec-chevron">▾</span>
+          </div>
+          <div id="stu-songs-done" class="sec-collapsed">
+            <div class="card mb-12" style="padding:8px 12px">${completed.map(s => songRow(s, false)).join('')}</div>
+          </div>` : ''}
+      </div>`;
+    })() : ''}
 
     ${hist.length ? `
       <div id="stu-hist-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('stu-hist-sec')">
