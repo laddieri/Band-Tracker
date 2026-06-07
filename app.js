@@ -402,6 +402,8 @@ window.addEventListener('popstate', e => {
     overlay.classList.add('hidden');
     return;
   }
+  // Sentinel-only entry (modal was closed before back fired) — skip it.
+  if (e.state?.modal) return;
   const { view = 'rehearsals', params = {} } = e.state || {};
   navigate(view, params, true); // true = don't push another entry
 });
@@ -435,7 +437,13 @@ function navigate(view, params = {}, _fromHistory = false) {
   }
   _view   = view;
   _params = params;
-  if (!_fromHistory) history.pushState({ view, params }, '');
+  if (!_fromHistory) {
+    // If the current history entry is a modal sentinel, replace it so pressing
+    // back skips cleanly to the view before the modal rather than landing on an
+    // orphaned sentinel with no view state.
+    if (history.state?.modal) history.replaceState({ view, params }, '');
+    else                      history.pushState   ({ view, params }, '');
+  }
   render();
   document.getElementById('main-content').scrollTop = 0;
 }
@@ -755,8 +763,6 @@ function handleModalClick(e) {
 
 function closeModal() {
   document.getElementById('modal-overlay').classList.add('hidden');
-  // Pop the modal sentinel so the next back press navigates rather than re-closes.
-  if (history.state?.modal) history.back();
 }
 
 function openModal(html) {
