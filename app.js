@@ -432,6 +432,7 @@ function navigate(view, params = {}) {
 let _activeNum  = null;
 let _numSearch  = '';
 let _songHidePassedFilter    = false;
+let _songCatCollapsed        = new Set(); // category names that are currently collapsed
 let _dashRid        = null; // null = all rehearsals
 let _activeRid      = null; // which open rehearsal is currently being marked
 let _dashForceHistory = false; // force dashboard into historical view even when rehearsal is open
@@ -2225,15 +2226,30 @@ function viewSongs() {
     else uncategorized.push(song);
   });
 
+  const catSection = (catKey, label, rows, idx) => {
+    const id          = `song-cat-${idx}`;
+    const isCollapsed = _songCatCollapsed.has(catKey);
+    return `
+      <div id="${id}-hdr" class="song-cat-hdr ${isCollapsed ? '' : 'sec-hdr-open'}"
+           onclick="toggleSongCat('${esc(catKey)}','${id}')">
+        <span>${esc(label)}</span>
+        <span class="sec-chevron">▾</span>
+      </div>
+      <div id="${id}" class="song-cat-body ${isCollapsed ? 'sec-collapsed' : ''}">
+        ${rows.map(songRow).join('')}
+      </div>`;
+  };
+
   let html = '<div class="songs-list-grid">';
+  let idx = 0;
   cats.forEach(cat => {
     if (!grouped[cat].length) return;
-    html += `<div class="song-cat-hdr">${esc(cat)}</div>`;
-    html += grouped[cat].map(songRow).join('');
+    html += catSection(cat, cat, grouped[cat], idx++);
   });
   if (uncategorized.length) {
-    if (songs.length > uncategorized.length) html += `<div class="song-cat-hdr">Other</div>`;
-    html += uncategorized.map(songRow).join('');
+    const label = songs.length > uncategorized.length ? 'Other' : '';
+    if (label) html += catSection('\x00other', label, uncategorized, idx++);
+    else html += uncategorized.map(songRow).join('');
   }
   html += '</div>';
   return html;
@@ -2335,6 +2351,12 @@ function toggleSongHidePassed(sid) {
     if (btn.textContent.trim() === 'Not Passed Only')
       btn.classList.toggle('inst-active', _songHidePassedFilter);
   });
+}
+
+function toggleSongCat(catKey, id) {
+  if (_songCatCollapsed.has(catKey)) _songCatCollapsed.delete(catKey);
+  else _songCatCollapsed.add(catKey);
+  toggleCollapse(id);
 }
 
 function setSongStatus(sid, num, newStatus) {
