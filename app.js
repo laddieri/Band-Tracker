@@ -3668,8 +3668,8 @@ function _attTabFilteredContent() {
 
   const stuMiniRow = s => {
     const meta = [fmtPos(s.column, s.row), normInstrument(s.instrument)].filter(Boolean).join(' · ');
-    return `<div class="att-summary-stu-row">
-      <span class="att-stu-name">${esc(s.name || `#${s.number}`)}</span>
+    return `<div class="att-summary-stu-row" onclick="navigate('student',{num:'${esc(s.number)}'})" style="cursor:pointer">
+      <span class="att-stu-name att-stu-link">${esc(s.name || `#${s.number}`)}</span>
       ${meta ? `<div class="att-stu-meta">${esc(meta)}</div>` : ''}
     </div>`;
   };
@@ -3739,9 +3739,9 @@ function _attTabFilteredContent() {
           : filteredSeason.map(s => {
               const { absences, lates } = seasonMap[s.number];
               const meta = [fmtPos(s.column, s.row), normInstrument(s.instrument)].filter(Boolean).join(' · ');
-              return `<div class="att-season-row">
+              return `<div class="att-season-row" onclick="navigate('student',{num:'${esc(s.number)}'})" style="cursor:pointer">
                 <div class="att-stu-info">
-                  <span class="att-stu-name">${esc(s.name || `#${s.number}`)}</span>
+                  <span class="att-stu-name att-stu-link">${esc(s.name || `#${s.number}`)}</span>
                   ${meta ? `<div class="att-stu-meta">${esc(meta)}</div>` : ''}
                 </div>
                 <div class="att-season-chips">

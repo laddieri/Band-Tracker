@@ -2487,6 +2487,7 @@ html, body {
 .att-stu-info { flex: 1; min-width: 0; }
 .att-stu-num  { font-size: 0.8rem; font-weight: 700; color: var(--primary); margin-right: 6px; }
 .att-stu-name { font-size: 0.9rem; font-weight: 600; }
+.att-stu-link { color: var(--primary); }
 .att-stu-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 1px; }
 
 .att-stu-btns { display: flex; gap: 5px; flex-shrink: 0; }
