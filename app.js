@@ -391,7 +391,17 @@ let _params = {};
 let _authMode = 'signin'; // 'signin' | 'signup' — which director auth screen to show
 let _pendingVerification = false; // true after signup until email is verified
 
-function navigate(view, params = {}) {
+// Stamp the initial history entry so popstate always has a valid state to restore.
+history.replaceState({ view: _view, params: _params }, '');
+
+// Browser back gesture / button — restore the state that was pushed when the
+// user originally navigated to that view.
+window.addEventListener('popstate', e => {
+  const { view = 'rehearsals', params = {} } = e.state || {};
+  navigate(view, params, true); // true = don't push another entry
+});
+
+function navigate(view, params = {}, _fromHistory = false) {
   if (_view === 'rehearsal' && view !== 'rehearsal') {
     _activeNum     = null;
     _numSearch     = '';
@@ -423,6 +433,7 @@ function navigate(view, params = {}) {
   }
   _view   = view;
   _params = params;
+  if (!_fromHistory) history.pushState({ view, params }, '');
   render();
   document.getElementById('main-content').scrollTop = 0;
 }
@@ -887,18 +898,7 @@ function render() {
   const studentOnLeaderboard = _view === 'leaderboard' && STATE.studentNum && !STATE.isAdmin;
   const isTop = ['roster','rehearsals','songs','attendance-tab','leaderboard','dashboard'].includes(_view) && !studentOnLeaderboard;
   backBtn.classList.toggle('hidden', isTop);
-  backBtn.onclick = () => {
-    if (_view === 'student')    navigate('roster');
-    else if (_view === 'rehearsal')  navigate('rehearsals');
-    else if (_view === 'attendance') {
-      if (_params.from === 'attendance-tab') navigate('attendance-tab');
-      else if (_params.from === 'rehearsals') navigate('rehearsals');
-      else navigate('rehearsal', { rid: _params.rid });
-    }
-    else if (_view === 'song')  navigate('songs');
-    else if (studentOnLeaderboard) navigate(''); // back to student portal
-    else navigate('rehearsals');
-  };
+  backBtn.onclick = () => history.back();
 
   tabs.forEach(t => {
     const match = t.dataset.view;
