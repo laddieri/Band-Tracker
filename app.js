@@ -3711,7 +3711,8 @@ function viewStudent(num) {
         return `
         <div class="stu-song-row">
           <div class="song-stu-info">
-            <span class="song-stu-name">${esc(song.title)}</span>
+            <span class="song-stu-name song-stu-name-link" style="cursor:pointer"
+                  onclick="navigate('song',{sid:'${esc(song.id)}'});event.stopPropagation()">${esc(song.title)}</span>
             ${song.dueDate ? `<span class="song-row-due ${overdue ? 'song-overdue' : ''}" style="font-size:.72rem">${overdue ? '⚠ ' : ''}Due ${fmtDate(song.dueDate)}</span>` : ''}
             <span class="song-stu-status ${st === 'passed' ? 'sss-pass' : st === 'failed' ? 'sss-fail' : 'sss-na'}">
               ${st === 'passed' ? '✓ Passed' : st === 'failed' ? '✗ Failed' : '— Not Attempted'}
