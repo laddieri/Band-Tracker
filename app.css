@@ -1424,6 +1424,12 @@ html, body {
 .lb-count-rem  { font-size: 0.75rem; color: var(--text-muted); }
 
 /* Marching leaderboard */
+.leaderboard-view .sec-hdr .section-title {
+  font-size: 1rem;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text);
+}
 .lb-marching-hdr {
   display: flex;
   align-items: center;
