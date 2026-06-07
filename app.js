@@ -400,9 +400,8 @@ function navigate(view, params = {}) {
     _trackerFilter = _mkFilter('name', 'asc');
   }
   if (_view === 'song' && view !== 'song') {
-    _songSectionFilter    = '';
+    _songFilter           = _mkFilter('name', 'asc');
     _songHidePassedFilter = false;
-    _songSearch           = '';
   }
   if (_view === 'leaderboard' && view !== 'leaderboard') {
     _lbFilter = _mkFilter('score', 'desc');
@@ -432,9 +431,7 @@ function navigate(view, params = {}) {
 
 let _activeNum  = null;
 let _numSearch  = '';
-let _songSectionFilter       = '';
 let _songHidePassedFilter    = false;
-let _songSearch              = '';
 let _dashRid        = null; // null = all rehearsals
 let _activeRid      = null; // which open rehearsal is currently being marked
 let _dashForceHistory = false; // force dashboard into historical view even when rehearsal is open
@@ -457,6 +454,7 @@ let _trackerFilter = _mkFilter('name',     'asc');
 let _attFilter     = _mkFilter('name',     'asc');
 let _attTabFilter  = _mkFilter('absences', 'desc');
 let _lbFilter      = _mkFilter('score',    'desc');
+let _songFilter    = _mkFilter('name',     'asc');
 
 // ── Debounce store for note fields ────────────────────────────────────────────
 
@@ -506,6 +504,12 @@ function filterAndSortStudents(students, f, scoreMap) {
         const order = { absent: 0, late: 1, present: 2, undefined: 2 };
         va = order[scoreMap?.[a.number]?.att] ?? 2;
         vb = order[scoreMap?.[b.number]?.att] ?? 2;
+        break;
+      }
+      case 'songStatus': {
+        const order = { passed: 0, failed: 1, not_attempted: 2 };
+        va = order[scoreMap?.[a.number]?.status] ?? 2;
+        vb = order[scoreMap?.[b.number]?.status] ?? 2;
         break;
       }
       default: va = (a.name||'').toLowerCase(); vb = (b.name||'').toLowerCase();
@@ -579,7 +583,7 @@ function renderFilterBar(viewId, f, sortOptions) {
 // ── Filter event handlers ─────────────────────────────────────────────────────
 
 function _getFilterObj(viewId) {
-  return { roster: _rosterFilter, tracker: _trackerFilter, att: _attFilter, 'att-tab': _attTabFilter, lb: _lbFilter }[viewId];
+  return { roster: _rosterFilter, tracker: _trackerFilter, att: _attFilter, 'att-tab': _attTabFilter, lb: _lbFilter, song: _songFilter }[viewId];
 }
 
 function _rerenderForFilter(viewId) {
@@ -596,6 +600,14 @@ function _rerenderForFilter(viewId) {
     case 'att':     mc.innerHTML = viewAttendance(_params.rid); break;
     case 'tracker': reRender(_params.rid); break;
     case 'lb':      mc.innerHTML = viewLeaderboard(); break;
+    case 'song': {
+      const el = document.getElementById('song-student-list');
+      if (el) {
+        const song = STATE.songs.find(s => s.id === _params.sid);
+        if (song) { el.innerHTML = songStudentRows(_params.sid, Object.values(DB.getStudents()), song.statuses || {}); if (mc) mc.scrollTop = st; }
+      }
+      break;
+    }
   }
   if (mc) mc.scrollTop = st;
 }
@@ -2244,7 +2256,14 @@ function viewSong(sid) {
   const passed  = students.filter(s => getStatus(s.number) === 'passed').length;
   const failed  = students.filter(s => getStatus(s.number) === 'failed').length;
   const notAtt  = students.filter(s => getStatus(s.number) === 'not_attempted').length;
-  const sections = sectionsInRoster();
+  const songSortOpts = [
+    {value:'name',       label:'Name'},
+    {value:'number',     label:'Number'},
+    {value:'songStatus', label:'Status'},
+    ...(hasField('instrument') ? [{value:'instrument', label:'Instrument'}] : []),
+    ...(hasField('section')    ? [{value:'section',    label:'Section'}]    : []),
+    ...(hasField('grade')      ? [{value:'grade',      label:'Grade'}]      : []),
+  ];
 
   return `
     <div class="song-detail-view">
@@ -2258,16 +2277,11 @@ function viewSong(sid) {
         <div class="song-stat song-stat-na">  <div class="song-stat-val">${notAtt}</div><div class="song-stat-lbl">Not Attempted</div></div>
       </div>
 
-      ${sections.length ? instrumentFilterChips(_songSectionFilter, 'filterSongSection', sid) : ''}
+      ${renderFilterBar('song', _songFilter, songSortOpts)}
       <div class="inst-filter-row" style="padding-top:4px">
         <button class="inst-chip ${_songHidePassedFilter ? 'inst-active' : ''}"
                 onclick="toggleSongHidePassed('${esc(sid)}')">Not Passed Only</button>
       </div>
-
-      <input class="song-search-input" type="text" placeholder="Search by name…"
-             value="${esc(_songSearch)}"
-             autocomplete="off" autocorrect="off" autocapitalize="off"
-             oninput="onSongSearch('${esc(sid)}',this.value)">
 
       <div id="song-student-list">
         ${songStudentRows(sid, students, statuses)}
@@ -2282,15 +2296,13 @@ function songStudentRows(sid, students, statuses) {
     if (!s || s.status === 'not_attempted') return '';
     return [s.updatedBy ? dirLabel(s.updatedBy) : '', s.updatedAt ? fmtTime(s.updatedAt) : ''].filter(Boolean).join(' · ');
   };
-  const q = _songSearch.trim().toLowerCase();
-  const filtered = students
-    .filter(s => !_songSectionFilter || normInstrument(s.instrument) === _songSectionFilter)
-    .filter(s => !_songHidePassedFilter || getStatus(s.number) !== 'passed')
-    .filter(s => !q || (s.name || '').toLowerCase().includes(q));
+  const scoreMap = {};
+  for (const s of students) scoreMap[s.number] = { status: getStatus(s.number) };
 
-  if (!filtered.length) return `<div class="empty-state" style="padding:24px"><p>No students match the current filter.</p></div>`;
+  const pool = _songHidePassedFilter ? students.filter(s => getStatus(s.number) !== 'passed') : students;
+  const sorted = filterAndSortStudents(pool, _songFilter, scoreMap);
 
-  const sorted = [...filtered].sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  if (!sorted.length) return `<div class="empty-state" style="padding:24px"><p>No students match the current filter.</p></div>`;
 
   return sorted.map(s => {
     const status    = getStatus(s.number);
@@ -2316,23 +2328,18 @@ function songStudentRows(sid, students, statuses) {
   }).join('');
 }
 
-function onSongSearch(sid, val) {
-  _songSearch = val;
-  const song = STATE.songs.find(s => s.id === sid);
-  if (!song) return;
-  const students = Object.values(DB.getStudents()).sort((a,b) => (a.name||'').localeCompare(b.name||''));
-  const listEl = document.getElementById('song-student-list');
-  if (listEl) listEl.innerHTML = songStudentRows(sid, students, song.statuses || {});
-}
-
-function filterSongSection(sid, section) {
-  _songSectionFilter = section;
-  document.getElementById('main-content').innerHTML = viewSong(sid);
-}
-
 function toggleSongHidePassed(sid) {
   _songHidePassedFilter = !_songHidePassedFilter;
-  document.getElementById('main-content').innerHTML = viewSong(sid);
+  const el = document.getElementById('song-student-list');
+  if (el) {
+    const song = STATE.songs.find(s => s.id === sid);
+    if (song) el.innerHTML = songStudentRows(sid, Object.values(DB.getStudents()), song.statuses || {});
+  }
+  // Refresh the toggle chip appearance
+  document.querySelectorAll('.inst-filter-row .inst-chip').forEach(btn => {
+    if (btn.textContent.trim() === 'Not Passed Only')
+      btn.classList.toggle('inst-active', _songHidePassedFilter);
+  });
 }
 
 function setSongStatus(sid, num, newStatus) {
