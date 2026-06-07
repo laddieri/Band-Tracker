@@ -2271,6 +2271,93 @@ html, body {
 .portal-song-fail-note { font-size: 0.78rem; color: var(--text-muted); margin-top: 4px; font-style: italic; }
 .portal-fail-note-preview { font-size: 0.9rem; background: var(--bg); border-left: 3px solid var(--danger); padding: 8px 12px; border-radius: 0 var(--r-sm) var(--r-sm) 0; color: var(--text); margin: 0; white-space: pre-wrap; word-break: break-word; }
 
+/* ── Songs page student progress roster ─────────────────────────────────────── */
+
+.songs-prog-hdr-title {
+  font-size: 1rem;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text);
+}
+.song-roster-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: background .15s;
+}
+.song-roster-row:active { background: var(--hover-bg); }
+.song-roster-info { flex: 1; min-width: 0; }
+.song-roster-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.song-roster-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.song-roster-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.song-roster-prog { width: 80px; margin: 0; }
+.song-roster-counts {
+  display: flex;
+  gap: 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.src-passed  { color: var(--success); }
+.src-missing { color: var(--text-muted); }
+
+/* ── Student song progress modal ────────────────────────────────────────────── */
+
+.ssp-cat-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--text-muted);
+  margin: 14px 0 6px;
+}
+.ssp-song-list { display: flex; flex-direction: column; gap: 6px; }
+.ssp-song-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg);
+  border-radius: var(--r-sm);
+}
+.ssp-song-info { flex: 1; min-width: 0; }
+.ssp-song-title {
+  font-size: 0.88rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ssp-fail-note {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-top: 2px;
+}
+
 /* ── Attendance ──────────────────────────────────────────────────────────────── */
 
 .attendance-row {

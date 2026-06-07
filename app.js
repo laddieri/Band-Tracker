@@ -479,7 +479,8 @@ let _trackerFilter = _mkFilter('name',     'asc');
 let _attFilter     = _mkFilter('name',     'asc');
 let _attTabFilter  = _mkFilter('absences', 'desc');
 let _lbFilter      = _mkFilter('score',    'desc');
-let _songFilter    = _mkFilter('name',     'asc');
+let _songFilter       = _mkFilter('name',     'asc');
+let _songRosterFilter = _mkFilter('passed',   'desc');
 
 // ── Debounce store for note fields ────────────────────────────────────────────
 
@@ -518,7 +519,7 @@ function filterAndSortStudents(students, f, scoreMap) {
       case 'grade':      va = GRADE_LEVELS.indexOf(a.grade||'');   vb = GRADE_LEVELS.indexOf(b.grade||''); break;
       case 'column':     va = (a.column||'').toUpperCase();        vb = (b.column||'').toUpperCase(); break;
       case 'row':        va = +a.row||0;                           vb = +b.row||0; break;
-      case 'score': case 'positives': case 'mistakes': {
+      case 'score': case 'positives': case 'mistakes': case 'passed': case 'missing': {
         va = scoreMap?.[a.number]?.[f.sortField] ?? -1;
         vb = scoreMap?.[b.number]?.[f.sortField] ?? -1;
         break;
@@ -611,7 +612,7 @@ function renderFilterBar(viewId, f, sortOptions) {
 // ── Filter event handlers ─────────────────────────────────────────────────────
 
 function _getFilterObj(viewId) {
-  return { roster: _rosterFilter, tracker: _trackerFilter, att: _attFilter, 'att-tab': _attTabFilter, lb: _lbFilter, song: _songFilter }[viewId];
+  return { roster: _rosterFilter, tracker: _trackerFilter, att: _attFilter, 'att-tab': _attTabFilter, lb: _lbFilter, song: _songFilter, 'song-roster': _songRosterFilter }[viewId];
 }
 
 function _rerenderForFilter(viewId) {
@@ -622,8 +623,9 @@ function _rerenderForFilter(viewId) {
     case 'att-tab': mc.innerHTML = viewAttendanceTab(); break;
     case 'att':     mc.innerHTML = viewAttendance(_params.rid); break;
     case 'tracker': reRender(_params.rid); break;
-    case 'lb':      mc.innerHTML = viewLeaderboard(); break;
-    case 'song':    mc.innerHTML = viewSong(_params.sid); break;
+    case 'lb':           mc.innerHTML = viewLeaderboard(); break;
+    case 'song':         mc.innerHTML = viewSong(_params.sid); break;
+    case 'song-roster':  mc.innerHTML = viewSongs(); break;
   }
   if (mc) mc.scrollTop = st;
 }
@@ -636,8 +638,9 @@ function _refreshFilterList(viewId) {
   const lists = {
     roster:    ['roster-list',       () => rosterRows(filterAndSortStudents(Object.values(DB.getStudents()), _rosterFilter))],
     'att-tab': ['att-tab-filtered',  () => _attTabFilteredContent()],
-    lb:        ['lb-rank-list',      () => _buildLbRankRows()],
-    song:      ['song-student-list', () => {
+    lb:           ['lb-rank-list',      () => _buildLbRankRows()],
+    'song-roster':['song-roster-list', () => _buildSongRosterRows()],
+    song:         ['song-student-list', () => {
       const song = STATE.songs.find(s => s.id === _params.sid);
       return song ? songStudentRows(_params.sid, Object.values(DB.getStudents()), song.statuses || {}) : '';
     }],
@@ -2224,6 +2227,99 @@ async function deleteRoster() {
 
 // ── View: Songs ───────────────────────────────────────────────────────────────
 
+function _buildSongRosterRows() {
+  const songs    = STATE.songs;
+  const students = Object.values(DB.getStudents());
+  const total    = songs.length;
+
+  const scoreMap = {};
+  students.forEach(s => {
+    const passed  = songs.filter(song => song.statuses?.[String(s.number)]?.status === 'passed').length;
+    const missing = total - passed;
+    scoreMap[s.number] = { passed, missing };
+  });
+
+  const sorted = filterAndSortStudents(students, _songRosterFilter, scoreMap);
+  if (!sorted.length)
+    return `<div class="empty-state" style="padding:24px"><p>No students match the current filter.</p></div>`;
+
+  return sorted.map(s => {
+    const { passed, missing } = scoreMap[s.number];
+    const pct = total ? Math.round(passed / total * 100) : 0;
+    const meta = [normInstrument(s.instrument), s.section].filter(Boolean).map(esc).join(' · ');
+    return `
+    <div class="song-roster-row" onclick="showStudentSongProgress('${esc(s.number)}')">
+      <div class="song-roster-info">
+        <div class="song-roster-name">${esc(s.name || `#${s.number}`)}</div>
+        ${meta ? `<div class="song-roster-meta">${meta}</div>` : ''}
+      </div>
+      <div class="song-roster-right">
+        <div class="song-prog-wrap song-roster-prog">
+          <div class="song-prog-bar"><div class="song-prog-fill" style="width:${pct}%"></div></div>
+        </div>
+        <div class="song-roster-counts">
+          <span class="src-passed">${passed} ✓</span>
+          <span class="src-missing">${missing} left</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function showStudentSongProgress(num) {
+  const s     = STATE.students[String(num)];
+  const songs = STATE.songs;
+  const cats  = STATE.songCategories;
+  const name  = s?.name || `#${num}`;
+
+  const songRow = song => {
+    const entry    = song.statuses?.[String(num)];
+    const status   = entry?.status || 'not_attempted';
+    const failNote = status === 'failed' ? (entry?.note || '') : '';
+    return `
+    <div class="ssp-song-row">
+      <div class="ssp-song-info">
+        <div class="ssp-song-title">${esc(song.title)}</div>
+        ${failNote ? `<div class="ssp-fail-note">📝 ${esc(failNote)}</div>` : ''}
+      </div>
+      <span class="portal-song-status ${status === 'passed' ? 'pss-pass' : status === 'failed' ? 'pss-fail' : 'pss-na'}">
+        ${status === 'passed' ? '✓ Passed' : status === 'failed' ? '✗ Failed' : '— Not Attempted'}
+      </span>
+    </div>`;
+  };
+
+  let body;
+  if (!cats.length) {
+    body = `<div class="ssp-song-list">${songs.map(songRow).join('')}</div>`;
+  } else {
+    const grouped = {};
+    const uncategorized = [];
+    cats.forEach(c => { grouped[c] = []; });
+    songs.forEach(song => {
+      if (song.category && grouped[song.category] !== undefined) grouped[song.category].push(song);
+      else uncategorized.push(song);
+    });
+    body = '';
+    cats.forEach(cat => {
+      if (!grouped[cat].length) return;
+      body += `<div class="ssp-cat-label">${esc(cat)}</div>
+               <div class="ssp-song-list">${grouped[cat].map(songRow).join('')}</div>`;
+    });
+    if (uncategorized.length) {
+      const label = songs.length > uncategorized.length ? 'Other' : '';
+      if (label) body += `<div class="ssp-cat-label">${esc(label)}</div>`;
+      body += `<div class="ssp-song-list">${uncategorized.map(songRow).join('')}</div>`;
+    }
+  }
+
+  openModal(`
+    <div class="modal-title">${esc(name)}</div>
+    ${body}
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+    </div>`);
+}
+
 function viewSongs() {
   const songs = STATE.songs;
   const total = Object.keys(STATE.students).length;
@@ -2260,8 +2356,29 @@ function viewSongs() {
     </div>`;
   };
 
+  const rosterSection = !STATE.isAdmin ? '' : `
+    <div id="songs-prog-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('songs-prog-sec')" style="margin-top:24px">
+      <span class="section-title songs-prog-hdr-title">Student Progress</span>
+      <span class="sec-chevron">▾</span>
+    </div>
+    <div id="songs-prog-sec">
+      ${renderFilterBar('song-roster', _songRosterFilter, [
+        {value:'passed',     label:'Most Passed'},
+        {value:'missing',    label:'Most Missing'},
+        {value:'name',       label:'Name'},
+        {value:'instrument', label:'Instrument'},
+        {value:'grade',      label:'Grade'},
+      ])}
+      <div id="song-roster-list">
+        ${_buildSongRosterRows()}
+      </div>
+    </div>`;
+
   if (!cats.length) {
-    return `<div class="songs-list-grid">${songs.map(songRow).join('')}</div>`;
+    return `<div class="songs-page">
+      <div class="songs-list-grid">${songs.map(songRow).join('')}</div>
+      ${rosterSection}
+    </div>`;
   }
 
   // Group songs by category
@@ -2287,7 +2404,7 @@ function viewSongs() {
       </div>`;
   };
 
-  let html = '<div class="songs-list-grid">';
+  let html = '<div class="songs-page"><div class="songs-list-grid">';
   let idx = 0;
   cats.forEach(cat => {
     if (!grouped[cat].length) return;
@@ -2298,7 +2415,7 @@ function viewSongs() {
     if (label) html += catSection('\x00other', label, uncategorized, idx++);
     else html += uncategorized.map(songRow).join('');
   }
-  html += '</div>';
+  html += `</div>${rosterSection}</div>`;
   return html;
 }
 
