@@ -636,6 +636,7 @@ function _refreshFilterList(viewId) {
   const lists = {
     roster:    ['roster-list',       () => rosterRows(filterAndSortStudents(Object.values(DB.getStudents()), _rosterFilter))],
     'att-tab': ['att-tab-filtered',  () => _attTabFilteredContent()],
+    lb:        ['lb-rank-list',      () => _buildLbRankRows()],
     song:      ['song-student-list', () => {
       const song = STATE.songs.find(s => s.id === _params.sid);
       return song ? songStudentRows(_params.sid, Object.values(DB.getStudents()), song.statuses || {}) : '';
@@ -3281,6 +3282,49 @@ function showStudentMarksModal(num, rid) {
   `);
 }
 
+function _buildLbRankRows() {
+  const myDocId = STATE.studentNum;
+  const allScored = Object.entries(STATE.students).map(([docId, s]) => {
+    const songPoints = DB.getSongs().reduce((sum, song) => {
+      return sum + (song.statuses?.[String(s.number)]?.status === 'passed' ? 1 : 0);
+    }, 0);
+    const score = songPoints + Object.values(STATE.entries).reduce((sum, rehEntries) => {
+      const e = rehEntries[String(s.number)];
+      if (!e) return sum;
+      return sum + (e.positives || 0) - (STATE.countNegativeInScore ? (e.mistakes || 0) : 0)
+                - (featureOn('attendance') && e.attendance === 'absent' ? 1 : 0)
+                - (featureOn('attendance') && e.attendance === 'late'   ? 0.5 : 0);
+    }, 0);
+    return { docId, s, score, name: fakeAnimalName(docId),
+      positives: Object.values(STATE.entries).reduce((sum, re) => sum + (re[String(s.number)]?.positives || 0), 0),
+      mistakes:  Object.values(STATE.entries).reduce((sum, re) => sum + (re[String(s.number)]?.mistakes  || 0), 0) };
+  });
+
+  const lbScoreMap = {};
+  allScored.forEach(({ s, score, positives, mistakes }) => {
+    lbScoreMap[s.number] = { score, positives, mistakes };
+  });
+
+  const filteredLbStudents = filterAndSortStudents(allScored.map(({ s }) => s), _lbFilter, lbScoreMap);
+  const scored = filteredLbStudents.map(s => allScored.find(a => a.s === s)).filter(Boolean);
+
+  if (scored.length === 0)
+    return `<div class="lb-stat-row"><div class="lb-stat-label">No students match this filter.</div></div>`;
+  return scored.map(({ docId, s, name, score }, i) => {
+    const isMe = docId === myDocId;
+    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
+    return `
+    <div class="lb-rank-row ${isMe ? 'lb-rank-me' : ''} ${i % 2 === 1 ? 'lb-stat-row-alt' : ''}">
+      <span class="lb-rank-medal">${medal}</span>
+      <span class="lb-rank-name">
+        ${esc(name)}${isMe ? ' <span class="lb-you-badge">you</span>' : ''}
+        ${STATE.isAdmin ? `<span class="lb-real-name">${esc(s.name || `#${s.number}`)}</span>` : ''}
+      </span>
+      <span class="lb-rank-score ${score > 0 ? 'lb-val-ok' : score < 0 ? 'lb-val-warn' : ''}">${score > 0 ? '+' : ''}${score}</span>
+    </div>`;
+  }).join('');
+}
+
 function viewLeaderboard() {
   const rehearsals    = [...STATE.rehearsals].sort((a,b) => b.date.localeCompare(a.date));
   const totalStudents = Object.keys(STATE.students).length;
@@ -3414,37 +3458,7 @@ function viewLeaderboard() {
         </div>
       ` : ''}
 
-      ${(STATE.marchingLeaderboardEnabled || STATE.isAdmin) ? (() => {
-        const allScored = Object.entries(STATE.students).map(([docId, s]) => {
-          const songPoints = DB.getSongs().reduce((sum, song) => {
-            return sum + (song.statuses?.[String(s.number)]?.status === 'passed' ? 1 : 0);
-          }, 0);
-          const score = songPoints + Object.values(STATE.entries).reduce((sum, rehEntries) => {
-            const e = rehEntries[String(s.number)];
-            if (!e) return sum;
-            return sum + (e.positives || 0) - (STATE.countNegativeInScore ? (e.mistakes || 0) : 0)
-                      - (featureOn('attendance') && e.attendance === 'absent' ? 1 : 0)
-                      - (featureOn('attendance') && e.attendance === 'late'   ? 0.5 : 0);
-          }, 0);
-          return { docId, s, score, name: fakeAnimalName(docId), positives: Object.values(STATE.entries).reduce((sum, re) => sum + (re[String(s.number)]?.positives || 0), 0), mistakes: Object.values(STATE.entries).reduce((sum, re) => sum + (re[String(s.number)]?.mistakes || 0), 0) };
-        });
-
-        // Build scoreMap for filterAndSortStudents
-        const lbScoreMap = {};
-        allScored.forEach(({ s, score, positives, mistakes }) => {
-          lbScoreMap[s.number] = { score, positives, mistakes };
-        });
-
-        // Apply filter+sort via unified system
-        const lbStudents = allScored.map(({ s }) => s);
-        // Override sortField 'score' since filterAndSortStudents handles it via scoreMap
-        const filteredLbStudents = filterAndSortStudents(lbStudents, _lbFilter, lbScoreMap);
-        // Map back to scored objects in filtered+sorted order
-        const scored = filteredLbStudents.map(s => allScored.find(a => a.docId === (s._id || String(s.number)) || a.s === s)).filter(Boolean);
-
-        const myDocId = STATE.studentNum;
-
-        return `
+      ${(STATE.marchingLeaderboardEnabled || STATE.isAdmin) ? `
           <div id="lb-sec-ranking-hdr" class="sec-hdr sec-hdr-open lb-marching-hdr" onclick="toggleCollapse('lb-sec-ranking')">
             <span class="section-title" style="margin:0">Marching Leaderboard</span>
             <div style="display:flex;align-items:center;gap:8px" onclick="event.stopPropagation()">
@@ -3468,25 +3482,10 @@ function viewLeaderboard() {
               {value:'positives',  label:'Positives'},
               {value:'mistakes',   label:'Mistakes'}
             ])}
-            <div class="card mb-12" style="padding:0;overflow:hidden">
-              ${scored.length === 0
-                ? `<div class="lb-stat-row"><div class="lb-stat-label">No students match this filter.</div></div>`
-                : scored.map(({ docId, s, name, score }, i) => {
-                    const isMe = docId === myDocId;
-                    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
-                    return `
-                    <div class="lb-rank-row ${isMe ? 'lb-rank-me' : ''} ${i % 2 === 1 ? 'lb-stat-row-alt' : ''}">
-                      <span class="lb-rank-medal">${medal}</span>
-                      <span class="lb-rank-name">
-                        ${esc(name)}${isMe ? ' <span class="lb-you-badge">you</span>' : ''}
-                        ${STATE.isAdmin ? `<span class="lb-real-name">${esc(s.name || `#${s.number}`)}</span>` : ''}
-                      </span>
-                      <span class="lb-rank-score ${score > 0 ? 'lb-val-ok' : score < 0 ? 'lb-val-warn' : ''}">${score > 0 ? '+' : ''}${score}</span>
-                    </div>`;
-                  }).join('')}
+            <div id="lb-rank-list" class="card mb-12" style="padding:0;overflow:hidden">
+              ${_buildLbRankRows()}
             </div>
-          </div>`;
-      })() : ''}
+          </div>` : ''}
 
     </div>`;
 }
