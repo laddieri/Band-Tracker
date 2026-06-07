@@ -2875,6 +2875,45 @@ function togglePortalRehearsal(rid) {
   if (chevron) chevron.style.transform = opening ? 'rotate(90deg)' : '';
 }
 
+function showMarkStudentsModal(note, type) {
+  const tally = {};
+  const scan = entries => {
+    for (const [num, e] of Object.entries(entries)) {
+      for (const evt of (e.events || [])) {
+        if (evt.type === type && evt.note?.trim() === note) {
+          tally[num] = (tally[num] || 0) + 1;
+        }
+      }
+    }
+  };
+  if (_dashRid) {
+    scan(STATE.entries[_dashRid] || {});
+  } else {
+    for (const entries of Object.values(STATE.entries)) scan(entries);
+  }
+  const rows = Object.entries(tally)
+    .map(([num, count]) => ({ num, name: STATE.students[num]?.name || `#${num}`, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  const typeCls = type === 'positive' ? 'dash-val-pos' : 'dash-val-mis';
+  const typeIcon = type === 'positive' ? '✓' : '✗';
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">${typeIcon} ${esc(note)}</div>
+    <div class="form-hint" style="margin:0 0 12px">${rows.length} student${rows.length !== 1 ? 's' : ''} received this mark</div>
+    <div class="card" style="padding:0;overflow:hidden">
+      ${rows.map(s => `
+        <div class="dash-stu-row" onclick="closeModal();navigate('student',{num:'${esc(s.num)}'})">
+          <span class="dash-stu-name">${esc(s.name)}</span>
+          ${s.count > 1 ? `<span class="dash-stu-val ${typeCls}">×${s.count}</span>` : ''}
+          <span class="dash-stu-chevron">›</span>
+        </div>`).join('')}
+    </div>
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Done</button>
+    </div>
+  `);
+}
+
 // ── Rehearsal Marks Dashboard ─────────────────────────────────────────────────
 
 function setDashboardRehearsal(rid) {
@@ -2948,9 +2987,10 @@ function viewDashboard() {
     </div>`;
 
   const noteRow = (note, count, type) => `
-    <div class="dash-note-row">
+    <div class="dash-note-row" onclick="showMarkStudentsModal('${esc(note)}','${type}')">
       <span class="dash-note-text">${esc(note)}</span>
       <span class="dash-note-count ${type === 'positive' ? 'dash-count-pos' : 'dash-count-mis'}">${count}</span>
+      <span class="dash-stu-chevron">›</span>
     </div>`;
 
   const stuRow = (s, valKey, cls) => `
