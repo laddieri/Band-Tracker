@@ -2169,6 +2169,7 @@ html, body {
 
 .song-stu-info { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .song-stu-name { font-size: 0.9rem; font-weight: 600; }
+.song-stu-name-link { color: var(--primary); cursor: pointer; }
 .song-stu-status {
   font-size: 0.72rem;
   font-weight: 700;

@@ -2338,7 +2338,7 @@ function songStudentRows(sid, students, statuses) {
     return `
       <div class="song-stu-row">
         <div class="song-stu-info">
-          <span class="song-stu-name">${esc(s.name || `#${s.number}`)}</span>
+          <span class="song-stu-name song-stu-name-link" onclick="navigate('student',{num:'${esc(s.number)}'});event.stopPropagation()">${esc(s.name || `#${s.number}`)}</span>
           <span class="song-stu-status ${status === 'passed' ? 'sss-pass' : status === 'failed' ? 'sss-fail' : 'sss-na'}">
             ${status === 'passed' ? '✓ Passed' : status === 'failed' ? '✗ Failed' : '— Not Attempted'}
           </span>
