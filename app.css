@@ -1284,7 +1284,9 @@ html, body {
   padding: 6px 10px;
   border-top: 1px solid var(--border);
   font-size: 0.78rem;
+  cursor: pointer;
 }
+.dash-note-row:hover { background: var(--hover-bg); }
 .dash-note-text  { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dash-note-count {
   font-size: 0.72rem;
