@@ -1247,6 +1247,8 @@ html, body {
   padding: 14px 12px;
   text-align: center;
 }
+.dash-stat-clickable { cursor: pointer; transition: background .15s; }
+.dash-stat-clickable:active { background: var(--hover-bg); }
 .dash-stat-val {
   font-size: 1.7rem;
   font-weight: 700;
@@ -2709,7 +2711,7 @@ html, body {
 
   /* ── 4-column dashboard stats ─────────────────────────────────────────── */
 
-  .dash-stat-grid { grid-template-columns: repeat(4, 1fr); }
+  .dash-stat-grid { grid-template-columns: repeat(3, 1fr); }
 
   /* ── Two-column roster ────────────────────────────────────────────────── */
 

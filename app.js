@@ -2909,6 +2909,60 @@ function togglePortalRehearsal(rid) {
   if (chevron) chevron.style.transform = opening ? 'rotate(90deg)' : '';
 }
 
+function showDashStatModal(statKey) {
+  // Build scoped student list (same logic as viewDashboard)
+  const scopeMap = _dashRid
+    ? (STATE.entries[_dashRid] || {})
+    : Object.values(STATE.entries).reduce((acc, re) => {
+        for (const [num, e] of Object.entries(re)) {
+          if (!acc[num]) acc[num] = { positives: 0, mistakes: 0 };
+          acc[num].positives += e.positives || 0;
+          acc[num].mistakes  += e.mistakes  || 0;
+        }
+        return acc;
+      }, {});
+
+  const stuList = Object.entries(scopeMap).map(([num, e]) => ({
+    num,
+    name: STATE.students[num]?.name || `#${num}`,
+    pos: e.positives || 0,
+    mis: e.mistakes  || 0,
+  }));
+
+  let rows, title, cls, valFn;
+  if (statKey === 'positives') {
+    rows   = stuList.filter(s => s.pos > 0).sort((a, b) => b.pos - a.pos || a.name.localeCompare(b.name));
+    title  = '✓ Positives';
+    cls    = 'dash-val-pos';
+    valFn  = s => `+${s.pos}`;
+  } else if (statKey === 'mistakes') {
+    rows   = stuList.filter(s => s.mis > 0).sort((a, b) => b.mis - a.mis || a.name.localeCompare(b.name));
+    title  = '✗ Mistakes';
+    cls    = 'dash-val-mis';
+    valFn  = s => `${s.mis}`;
+  } else {
+    rows   = stuList.filter(s => s.pos + s.mis > 0).sort((a, b) => (b.pos + b.mis) - (a.pos + a.mis) || a.name.localeCompare(b.name));
+    title  = 'Students Marked';
+    cls    = '';
+    valFn  = s => `${s.pos + s.mis}`;
+  }
+
+  if (!rows.length) {
+    openModal(`<div class="modal-title">${title}</div><p style="color:var(--text-muted)">No students to show.</p>`);
+    return;
+  }
+
+  openModal(`
+    <div class="modal-title">${title}</div>
+    ${rows.map(s => `
+      <div class="dash-stu-row" onclick="closeModal();navigate('student',{num:'${esc(s.num)}'})">
+        <span class="dash-stu-name">${esc(s.name)}</span>
+        <span class="dash-stu-val ${cls}">${valFn(s)}</span>
+        <span class="dash-stu-chevron">›</span>
+      </div>`).join('')}
+  `);
+}
+
 function showMarkStudentsModal(note, type) {
   const tally = {};
   const scan = entries => {
@@ -3013,8 +3067,8 @@ function viewDashboard() {
     ? fmtDate(selectedR.date) + (selectedR.label ? ` — ${selectedR.label}` : '')
     : `All Rehearsals (${rehearsals.length} total)`;
 
-  const statCard = (label, value, sub, cls) => `
-    <div class="dash-stat">
+  const statCard = (label, value, sub, cls, onclick) => `
+    <div class="dash-stat${onclick ? ' dash-stat-clickable' : ''}" ${onclick ? `onclick="${onclick}"` : ''}>
       <div class="dash-stat-val ${cls || ''}">${value}</div>
       <div class="dash-stat-lbl">${label}</div>
       ${sub ? `<div class="dash-stat-sub">${sub}</div>` : ''}
@@ -3048,10 +3102,9 @@ function viewDashboard() {
       </div>
 
       <div class="dash-stat-grid">
-        ${statCard('Positives', totalPos, null, 'dash-val-pos')}
-        ${statCard('Mistakes',  totalMis, null, 'dash-val-mis')}
-        ${statCard('Students Marked', `${marked}`, totalStudents ? `of ${totalStudents}` : null)}
-        ${statCard('Absences', totalAbsent, _dashRid ? null : 'across all rehearsals')}
+        ${statCard('Positives',       totalPos, null,                                  'dash-val-pos', "showDashStatModal('positives')")}
+        ${statCard('Mistakes',        totalMis, null,                                  'dash-val-mis', "showDashStatModal('mistakes')")}
+        ${statCard('Students Marked', marked,   totalStudents ? `of ${totalStudents}` : null, '',     "showDashStatModal('marked')")}
       </div>
 
       ${topPos.length || topMis.length ? `
