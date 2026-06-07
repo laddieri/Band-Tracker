@@ -391,22 +391,24 @@ let _params = {};
 let _authMode = 'signin'; // 'signin' | 'signup' — which director auth screen to show
 let _pendingVerification = false; // true after signup until email is verified
 
-// Stamp the initial history entry so popstate always has a valid state to restore.
+// Stamp the initial history entry so popstate always has a valid state.
 history.replaceState({ view: _view, params: _params }, '');
 
-// Browser back gesture / button — restore the state that was pushed when the
-// user originally navigated to that view.
+// OS back gesture / hardware back button.
 window.addEventListener('popstate', e => {
+  // If a modal is open, this back press should close it — not navigate.
+  const overlay = document.getElementById('modal-overlay');
+  if (overlay && !overlay.classList.contains('hidden')) {
+    overlay.classList.add('hidden');
+    return;
+  }
   const { view = 'rehearsals', params = {} } = e.state || {};
   navigate(view, params, true); // true = don't push another entry
 });
 
 function navigate(view, params = {}, _fromHistory = false) {
   if (_view === 'rehearsal' && view !== 'rehearsal') {
-    _activeNum     = null;
-    _numSearch     = '';
-    _blockMode     = false;
-    _blockPath     = [];
+    _activeNum = null; _numSearch = ''; _blockMode = false; _blockPath = [];
     _trackerFilter = _mkFilter('name', 'asc');
   }
   if (_view === 'song' && view !== 'song') {
@@ -753,11 +755,19 @@ function handleModalClick(e) {
 
 function closeModal() {
   document.getElementById('modal-overlay').classList.add('hidden');
+  // Pop the modal sentinel so the next back press navigates rather than re-closes.
+  if (history.state?.modal) history.back();
 }
 
 function openModal(html) {
-  document.getElementById('modal-body').innerHTML = `<div class="modal-handle"></div>${html}`;
+  document.getElementById('modal-body').innerHTML = `
+    <div class="modal-top-row">
+      <div class="modal-handle"></div>
+      <button class="modal-close-btn" onclick="closeModal()" aria-label="Close">✕</button>
+    </div>
+    ${html}`;
   document.getElementById('modal-overlay').classList.remove('hidden');
+  history.pushState({ modal: true }, '');
 }
 
 // ── Feature modules ───────────────────────────────────────────────────────────
@@ -3658,8 +3668,8 @@ function _attTabFilteredContent() {
 
   const stuMiniRow = s => {
     const meta = [fmtPos(s.column, s.row), normInstrument(s.instrument)].filter(Boolean).join(' · ');
-    return `<div class="att-summary-stu-row">
-      <span class="att-stu-name">${esc(s.name || `#${s.number}`)}</span>
+    return `<div class="att-summary-stu-row" onclick="navigate('student',{num:'${esc(s.number)}'})" style="cursor:pointer">
+      <span class="att-stu-name att-stu-link">${esc(s.name || `#${s.number}`)}</span>
       ${meta ? `<div class="att-stu-meta">${esc(meta)}</div>` : ''}
     </div>`;
   };
@@ -3729,9 +3739,9 @@ function _attTabFilteredContent() {
           : filteredSeason.map(s => {
               const { absences, lates } = seasonMap[s.number];
               const meta = [fmtPos(s.column, s.row), normInstrument(s.instrument)].filter(Boolean).join(' · ');
-              return `<div class="att-season-row">
+              return `<div class="att-season-row" onclick="navigate('student',{num:'${esc(s.number)}'})" style="cursor:pointer">
                 <div class="att-stu-info">
-                  <span class="att-stu-name">${esc(s.name || `#${s.number}`)}</span>
+                  <span class="att-stu-name att-stu-link">${esc(s.name || `#${s.number}`)}</span>
                   ${meta ? `<div class="att-stu-meta">${esc(meta)}</div>` : ''}
                 </div>
                 <div class="att-season-chips">

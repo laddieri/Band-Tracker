@@ -500,7 +500,9 @@ html, body {
 }
 
 .modal-title { font-size: 1.15rem; font-weight: 700; margin-bottom: 20px; }
-.modal-handle { width: 40px; height: 4px; background: var(--border); border-radius: 4px; margin: -8px auto 16px; }
+.modal-top-row { display: flex; align-items: center; justify-content: center; position: relative; margin: -8px 0 16px; }
+.modal-handle { width: 40px; height: 4px; background: var(--border); border-radius: 4px; }
+.modal-close-btn { position: absolute; right: -4px; top: 50%; transform: translateY(-50%); background: none; border: none; font-size: 1rem; color: var(--text-muted); cursor: pointer; padding: 4px 8px; line-height: 1; }
 
 .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
 .modal-actions .btn { flex: 1; }
@@ -2485,6 +2487,7 @@ html, body {
 .att-stu-info { flex: 1; min-width: 0; }
 .att-stu-num  { font-size: 0.8rem; font-weight: 700; color: var(--primary); margin-right: 6px; }
 .att-stu-name { font-size: 0.9rem; font-weight: 600; }
+.att-stu-link { color: var(--primary); }
 .att-stu-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 1px; }
 
 .att-stu-btns { display: flex; gap: 5px; flex-shrink: 0; }
