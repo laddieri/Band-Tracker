@@ -541,10 +541,13 @@ function renderFilterBar(viewId, f, sortOptions) {
             </label>`).join('')}
         </div>
       </div>`;
+    const groups = [
+      checkGroup('Instrument', instruments, f.instruments, 'instruments'),
+      checkGroup('Grade',      grades,      f.grades,      'grades'),
+      checkGroup('Section',    sections,    f.sections,    'sections'),
+    ].join('');
     return `<div class="sfb-panel">
-      ${checkGroup('Instrument', instruments, f.instruments, 'instruments')}
-      ${checkGroup('Grade',      grades,      f.grades,      'grades')}
-      ${checkGroup('Section',    sections,    f.sections,    'sections')}
+      ${groups || '<p class="sfb-empty-msg">No filter options yet — add instrument, section, or grade to students to enable filters.</p>'}
       ${activeCount ? `<button class="sfb-clear-btn" onclick="clearFilter('${viewId}')">Clear all filters</button>` : ''}
     </div>`;
   })() : '';
@@ -591,12 +594,7 @@ function _rerenderForFilter(viewId) {
   const st = mc ? mc.scrollTop : 0;
   switch (viewId) {
     case 'roster':  mc.innerHTML = viewRoster(); break;
-    case 'att-tab': {
-        const el = document.getElementById('att-tab-filtered');
-        if (el) { el.innerHTML = _attTabFilteredContent(); if (mc) mc.scrollTop = st; }
-        else mc.innerHTML = viewAttendanceTab();
-        break;
-      }
+    case 'att-tab': mc.innerHTML = viewAttendanceTab(); break;
     case 'att':     mc.innerHTML = viewAttendance(_params.rid); break;
     case 'tracker': reRender(_params.rid); break;
     case 'lb':      mc.innerHTML = viewLeaderboard(); break;

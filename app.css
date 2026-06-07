@@ -2596,6 +2596,7 @@ html, body {
 .sfb-check-label:has(.sfb-checkbox:checked) { background: var(--primary-bg); border-color: var(--primary); color: var(--primary); }
 .sfb-checkbox { display: none; }
 .sfb-clear-btn { font-size: 0.8rem; color: var(--danger); background: none; border: none; padding: 0; cursor: pointer; font-family: inherit; text-decoration: underline; margin-top: 4px; }
+.sfb-empty-msg { font-size: 0.82rem; color: var(--text-muted); margin: 0; }
 
 /* ── Song / rehearsal list grid wrappers (base — mobile is single column) ── */
 .songs-list-grid { padding: 8px 0; }
