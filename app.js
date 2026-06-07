@@ -3618,6 +3618,7 @@ function viewStudent(num) {
   const avgP = hist.length ? (pos/hist.length).toFixed(1)  : '—';
 
   return `
+    <div class="student-view">
     <div class="card mb-12" style="text-align:center">
       <div style="font-size:1.4rem;font-weight:800;color:var(--primary);line-height:1;margin-bottom:8px">${esc(s.name || `#${s.number}`)}</div>
       <div class="flex gap-6" style="justify-content:center;flex-wrap:wrap">
@@ -3692,7 +3693,11 @@ function viewStudent(num) {
     })() : ''}
 
     ${DB.getSongs().length ? `
-      <div class="section-title">Songs to Memorize</div>
+      <div id="stu-songs-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('stu-songs-sec')">
+        <span class="section-title" style="margin:0">Songs to Memorize</span>
+        <span class="sec-chevron">▾</span>
+      </div>
+      <div id="stu-songs-sec">
       <div class="card mb-12" style="padding:8px 12px">
         ${DB.getSongs().map(song => {
           const st         = song.statuses?.[String(num)]?.status || 'not_attempted';
@@ -3725,10 +3730,15 @@ function viewStudent(num) {
           </div>`;
         }).join('')}
       </div>
+      </div>
     ` : ''}
 
     ${hist.length ? `
-      <div class="section-title">Rehearsal History</div>
+      <div id="stu-hist-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('stu-hist-sec')">
+        <span class="section-title" style="margin:0">Rehearsal History</span>
+        <span class="sec-chevron">▾</span>
+      </div>
+      <div id="stu-hist-sec">
       ${hist.map(({rehearsal:r, entry:e}) => {
         const evts = e.events || [];
         const mn = evts.filter(ev=>ev.type==='mistake' &&ev.note.trim()).map(ev=>(ev.sectionMark?`<span class="section-mark-badge">§ ${esc(ev.section||'Section')}</span> `:'')+(ev.segment?`<span class="event-seg">${esc(ev.segment)}</span> `:'') +esc(ev.note)+(ev.by&&ev.by!=='system'?` <em style="opacity:.6">(${esc(dirLabel(ev.by))})</em>`:''));
@@ -3759,10 +3769,12 @@ function viewStudent(num) {
           </div>` : ''}
         </div>`;
       }).join('')}
+      </div>
     ` : `
       <div class="empty-state" style="padding:24px">
         <p>No rehearsal data recorded yet.</p>
       </div>`}
+    </div>
   `;
 }
 

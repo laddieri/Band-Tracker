@@ -1423,8 +1423,9 @@ html, body {
 .lb-count-pass { font-size: 0.78rem; font-weight: 700; color: var(--success); }
 .lb-count-rem  { font-size: 0.75rem; color: var(--text-muted); }
 
-/* Marching leaderboard */
-.leaderboard-view .sec-hdr .section-title {
+/* Larger section headings on stats tab and student detail page */
+.leaderboard-view .sec-hdr .section-title,
+.student-view .sec-hdr .section-title {
   font-size: 1rem;
   text-transform: none;
   letter-spacing: 0;
