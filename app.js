@@ -2397,6 +2397,19 @@ function setSongStatus(sid, num, newStatus) {
     return;
   }
 
+  // Require confirmation before removing a failed mark
+  if (curStatus === 'failed' && status === 'not_attempted') {
+    const s = STATE.students[String(num)];
+    const name = s?.name || `#${num}`;
+    showConfirmModal(
+      `Remove failed mark for ${name}?`,
+      `This will unmark "${esc(song.title)}" as failed and reset it to Not Attempted.`,
+      () => _applySongStatus(sid, num, song, status),
+      'Remove', 'btn-danger'
+    );
+    return;
+  }
+
   // Offer a comment when marking as failed
   if (status === 'failed') {
     showSongFailNoteModal(sid, num, song);
