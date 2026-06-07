@@ -465,6 +465,7 @@ let _pendingStudentCode = ''; // code being verified for anonymous student login
 let _pendingMarkAllFilter = null; // { instruments:[], grades:[] } snapshot for multi-select mark-all
 let _pendingLogoData   = null; // null=no change, ''=clear, dataURL=new logo
 let _pendingConfirm    = null; // callback for generic confirmation modal
+let _pendingSongFail   = null; // { sid, num, note } held while showing the portal-warning confirmation
 
 // ── Unified filter state ──────────────────────────────────────────────────────
 
@@ -2431,6 +2432,33 @@ function showSongFailNoteModal(sid, num, song) {
 function confirmSongFail(sid, num) {
   const note = document.getElementById('fail-note-input')?.value.trim() || '';
   const song = STATE.songs.find(s => s.id === sid);
+  if (!song) { closeModal(); return; }
+
+  if (note) {
+    // Warn the director that the comment will be visible to the student.
+    _pendingSongFail = { sid, num, note };
+    openModal(`
+      <div class="modal-title" style="font-size:1rem">Share comment with student?</div>
+      <p style="font-size:0.88rem;color:var(--text-muted);margin-bottom:8px">Your comment:</p>
+      <p class="portal-fail-note-preview">${esc(note)}</p>
+      <p style="font-size:0.88rem;color:var(--text-muted);margin:12px 0 20px">
+        Students will be able to see this note in their portal.
+      </p>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-mistake"   onclick="_applyPendingSongFail()">✗ Fail &amp; Share</button>
+      </div>
+    `);
+  } else {
+    closeModal();
+    _applySongStatus(sid, num, song, 'failed', '');
+  }
+}
+
+function _applyPendingSongFail() {
+  const { sid, num, note } = _pendingSongFail || {};
+  _pendingSongFail = null;
+  const song = STATE.songs.find(s => s.id === sid);
   closeModal();
   if (song) _applySongStatus(sid, num, song, 'failed', note);
 }
@@ -2794,13 +2822,16 @@ function viewStudentPortal(previewMode = false) {
           ${(() => {
             const cats = STATE.songCategories;
             const portalSongRow = song => {
-              const status  = song.statuses?.[String(num)]?.status || 'not_attempted';
-              const overdue = song.dueDate && song.dueDate < today() && status !== 'passed';
+              const entry    = song.statuses?.[String(num)];
+              const status   = entry?.status || 'not_attempted';
+              const failNote = status === 'failed' ? (entry?.note || '') : '';
+              const overdue  = song.dueDate && song.dueDate < today() && status !== 'passed';
               return `
               <div class="portal-song-row">
                 <div class="portal-song-info">
                   <div class="portal-song-title">${esc(song.title)}</div>
                   ${song.dueDate ? `<div class="portal-song-due ${overdue ? 'song-overdue' : ''}">Due ${fmtDate(song.dueDate)}</div>` : ''}
+                  ${failNote ? `<div class="portal-song-fail-note">📝 ${esc(failNote)}</div>` : ''}
                 </div>
                 <span class="portal-song-status ${status === 'passed' ? 'pss-pass' : status === 'failed' ? 'pss-fail' : 'pss-na'}">
                   ${status === 'passed' ? '✓ Passed' : status === 'failed' ? '✗ Failed' : '— Not Attempted'}
