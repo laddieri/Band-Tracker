@@ -7101,7 +7101,7 @@ function _drillChartHtml() {
     : null;
 
   const navLabel    = sets
-    ? `Set ${navSetNum + 1} <span style="font-weight:400;color:var(--text-muted)">of ${sets.length}</span>`
+    ? `Set ${navSetNum + 1} <span style="font-weight:400;color:var(--text-muted)">of ${sets.length}</span> <span style="font-weight:400;font-size:0.78em;color:var(--text-muted)">(count ${sets[navSetNum]})</span>`
     : `Count ${setIdx + 1} <span style="font-weight:400;color:var(--text-muted)">/ ${_drillPages.length}</span>`;
   const prevDisabled = sets ? navSetNum <= 0               : setIdx <= 0;
   const nextDisabled = sets ? navSetNum >= sets.length - 1 : setIdx >= _drillPages.length - 1;
@@ -7150,10 +7150,15 @@ function _drillChartHtml() {
 
   // Performers
   let dots = '';
+  let visibleCount = 0;
+  let xRawMin = Infinity, xRawMax = -Infinity, yRawMin = Infinity, yRawMax = -Infinity;
   for (const {seqNum, x, y} of positions) {
+    if (x < xRawMin) xRawMin = x; if (x > xRawMax) xRawMax = x;
+    if (y < yRawMin) yRawMin = y; if (y > yRawMax) yRawMax = y;
     const stepsX = (x - 118) * 4;
     const stepsY = y * 4;
     if (stepsX < -8 || stepsX > 168 || stepsY < 0 || stepsY > 100) continue;
+    visibleCount++;
     const sx  = fx(stepsX), sy = fy(stepsY);
     const col = colorMap[seqNum] || '#888';
     const sel = _drillChecked.has(seqNum);
@@ -7164,6 +7169,9 @@ function _drillChartHtml() {
     }
     dots += `<circle cx="${sx}" cy="${sy}" r="${sel?'4.5':'3'}" fill="${col}" pointer-events="none"/>`;
   }
+  const diagMsg = positions.length > 0
+    ? `<div style="font-size:0.7rem;color:${visibleCount===0?'var(--warning)':'var(--text-muted)'};text-align:center;margin:4px 0">${visibleCount===0?'No performers in bounds — ':''}raw x: ${xRawMin}–${xRawMax}, y: ${yRawMin}–${yRawMax}</div>`
+    : '';
 
   // Section legend
   let legend = '';
@@ -7190,6 +7198,7 @@ function _drillChartHtml() {
         <text x="${(ML-3)}" y="${fy(84)}" text-anchor="end" fill="#777" font-size="7" font-family="sans-serif" dominant-baseline="middle">B</text>
       </svg>
     </div>
+    ${diagMsg}
     ${legend ? `<div class="drill-chart-legend">${legend}</div>` : ''}
     <div class="modal-actions" style="margin-top:8px">
       <button class="btn btn-secondary" onclick="showDrillPickModal()">&#8592; List</button>
