@@ -126,6 +126,7 @@ const STATE = {
   customStudentFields:        [],
   autoMarks:                  null,
   lbWeights:                  {},
+  pywareMapping:              {},
   _unsubs:      []
 };
 
@@ -297,6 +298,7 @@ async function startListeners() {
       STATE.countNegativeInScore       = d.countNegativeInScore !== false;
       STATE.autoMarks                  = Array.isArray(d.autoMarks) ? d.autoMarks : null;
       STATE.lbWeights                  = d.lbWeights || {};
+      STATE.pywareMapping              = d.pywareMapping || {};
       if (!STATE.loading) render();
     }),
 
@@ -421,7 +423,7 @@ window.addEventListener('popstate', e => {
 
 function navigate(view, params = {}, _fromHistory = false) {
   if (_view === 'rehearsal' && view !== 'rehearsal') {
-    _activeNum = null; _trackerFilter = _mkFilter('name', 'asc'); _blockMode = false; _blockPath = [];
+    _activeNum = null; _trackerFilter = _mkFilter('name', 'asc'); _blockMode = false; _blockPath = []; _drillSelectedNums = [];
     _trackerFilter = _mkFilter('name', 'asc');
   }
   if (_view === 'song' && view !== 'song') {
@@ -432,7 +434,7 @@ function navigate(view, params = {}, _fromHistory = false) {
     _lbFilter = _mkFilter('score', 'desc');
   }
   if (_view === 'dashboard' && view !== 'dashboard') {
-    _activeNum = null; _trackerFilter = _mkFilter('name', 'asc'); _blockMode = false; _blockPath = [];
+    _activeNum = null; _trackerFilter = _mkFilter('name', 'asc'); _blockMode = false; _blockPath = []; _drillSelectedNums = [];
     _trackerFilter = _mkFilter('name', 'asc');
     _dashRid = null; _dashForceHistory = false;
   }
@@ -470,6 +472,8 @@ let _dashForceHistory = false; // force dashboard into historical view even when
 let _attModifyMode           = false; // true = show edit UI even when attendance is submitted
 let _blockMode  = false;
 let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
+let _drillData  = null; // parsed Pyware drill sections (session-only)
+let _drillSelectedNums = []; // student numbers selected via drill
 let _pendingSegment    = ''; // currently selected rehearsal segment in mark modal
 let _pendingStudentCode = ''; // code being verified for anonymous student login
 let _pendingMarkAllFilter = null; // { instruments:[], grades:[] } snapshot for multi-select mark-all
@@ -4465,17 +4469,37 @@ function viewRehearsal(rid) {
                 <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
                 <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
               </svg>
+            </button>
+            <button class="inst-chip tracker-drill-btn${_drillSelectedNums.length ? ' tracker-drill-btn--active' : ''}" title="Load Pyware Drill" onclick="openDrillPicker()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;display:block">
+                <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
+              </svg>
             </button>` })}
+          ${_drillSelectedNums.length ? `
+            <div class="drill-selection-banner">
+              <span class="drill-selection-label">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+                ${_drillSelectedNums.length} student${_drillSelectedNums.length !== 1 ? 's' : ''} from drill
+              </span>
+              <button class="drill-clear-btn" onclick="clearDrillSelection('${esc(rid)}')">Clear</button>
+            </div>` : ''}
           <button class="mark-all-btn" onclick="showMarkAllModal('${esc(rid)}')">
             Mark All${activeFilterLabel ? ` (${esc(activeFilterLabel)})` : ''}
           </button>
           <div id="tracker-suggestions" class="student-suggestions">
-            ${isNameSearch ? suggestions.map(s => `
+            ${_drillSelectedNums.length ? _drillSelectedNums.map(num => {
+              const s = students[num];
+              return `<div class="suggestion-row" onclick="pickStudent('${esc(num)}','${esc(rid)}')">
+                <span class="suggestion-name">${esc(s?.name || `#${num}`)}</span>
+                <span class="suggestion-detail">${esc([fmtPos(s?.column,s?.row),normInstrument(s?.instrument)].filter(Boolean).join(' · '))}</span>
+              </div>`;
+            }).join('') : ''}
+            ${!_drillSelectedNums.length && isNameSearch ? suggestions.map(s => `
               <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
                 <span class="suggestion-name">${esc(s.name || `#${s.number}`)}</span>
                 <span class="suggestion-detail">${esc([fmtPos(s.column,s.row),normInstrument(s.instrument)].filter(Boolean).join(' · '))}</span>
               </div>`).join('') : ''}
-            ${showAllForFilter ? allFiltered.map(s => `
+            ${!_drillSelectedNums.length && showAllForFilter ? allFiltered.map(s => `
               <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
                 <span class="suggestion-name">${esc(s.name || `#${s.number}`)}</span>
                 <span class="suggestion-detail">${esc(fmtPos(s.column,s.row))}</span>
@@ -6759,6 +6783,308 @@ function buildAttendanceReportHTML(rehearsals, periodLabel) {
   ${detailSections ? `<h2>Detail by Rehearsal</h2>${detailSections}` : ''}
 </body>
 </html>`;
+}
+
+// ── Pyware 3D Drill Integration ───────────────────────────────────────────────
+
+function _pywareFindBlock(u8, tag) {
+  const c = [tag.charCodeAt(0), tag.charCodeAt(1), tag.charCodeAt(2), tag.charCodeAt(3)];
+  for (let i = 0; i < u8.length - 4; i++) {
+    if (u8[i]===c[0] && u8[i+1]===c[1] && u8[i+2]===c[2] && u8[i+3]===c[3]) return i + 4;
+  }
+  return -1;
+}
+
+function _parsePyware3dj(buffer) {
+  const u8   = new Uint8Array(buffer);
+  const view = new DataView(buffer);
+
+  if (u8[0]!==0x33||u8[1]!==0x44||u8[2]!==0x4A||u8[3]!==0x56)
+    throw new Error('File does not appear to be a Pyware .3dj file (invalid header).');
+
+  const sel1 = _pywareFindBlock(u8, 'SEL1');
+  if (sel1 < 0) throw new Error('No performer section data (SEL1) found in this file.');
+
+  // SEL1 layout (after the 4-byte tag):
+  //   [4 bytes BE: block length] [1 byte: group count]
+  //   per group: [1B name_len][name_len B name][1B tool_len][tool_len B tool]
+  //              [2B zeros][1B performer_count][count × 2B BE performer_index]
+  let pos = sel1 + 4 + 1; // skip BE length + group count byte... wait, we need count
+  const numGroups = u8[sel1 + 4];
+  pos = sel1 + 5; // entries start here
+
+  const sections = {};
+  for (let g = 0; g < numGroups; g++) {
+    const nameLen = u8[pos++];
+    let name = '';
+    for (let i = 0; i < nameLen; i++) name += String.fromCharCode(u8[pos++]);
+    const toolLen = u8[pos++];
+    pos += toolLen + 2; // skip tool string + 2 zero bytes
+
+    const count = u8[pos++];
+    if (count > 32) { pos += count * 2; continue; } // skip combined/all group
+
+    const letter = name[0] || '?';
+    if (!sections[letter]) sections[letter] = { letter, performers: [] };
+    for (let i = 0; i < count; i++) {
+      const idx = view.getUint16(pos, false); pos += 2; // big-endian
+      if (!sections[letter].performers.includes(idx)) sections[letter].performers.push(idx);
+    }
+  }
+
+  return Object.values(sections).sort((a, b) => a.letter.localeCompare(b.letter));
+}
+
+function openDrillPicker() {
+  if (!STATE.isAdmin) return;
+  let inp = document.getElementById('drill-file-input');
+  if (!inp) {
+    inp = document.createElement('input');
+    inp.type = 'file';
+    inp.id   = 'drill-file-input';
+    inp.accept = '.3dj';
+    inp.style.display = 'none';
+    inp.onchange = e => { if (e.target.files[0]) _onDrillFileLoaded(e.target.files[0]); e.target.value = ''; };
+    document.body.appendChild(inp);
+  }
+  // If we already have parsed drill data, show the pick modal directly
+  if (_drillData) { showDrillPickModal(); return; }
+  inp.click();
+}
+
+function _onDrillFileLoaded(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      _drillData = _parsePyware3dj(e.target.result);
+      if (!_drillData.length) throw new Error('No performer sections found in this file.');
+      showDrillPickModal();
+    } catch (err) {
+      showToast(err.message || 'Failed to read drill file.');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+let _drillActiveSection = 0;
+let _drillChecked = new Set(); // selected performer indices
+
+function showDrillPickModal() {
+  if (!_drillData) return;
+  _drillChecked = new Set();
+
+  const sections = _drillData;
+  const mapping  = STATE.pywareMapping || {};
+  const unmappedCount = sections.flatMap(s => s.performers).filter(idx => !mapping[String(idx)]).length;
+
+  const renderSectionTabs = () => sections.map((s, i) =>
+    `<button class="drill-tab${i === _drillActiveSection ? ' drill-tab--active' : ''}" onclick="drillSetSection(${i})">${esc(s.letter)}</button>`
+  ).join('');
+
+  const renderPerformerGrid = () => {
+    const sec = sections[_drillActiveSection];
+    return sec.performers.map((idx, pos) => {
+      const studentNum = mapping[String(idx)];
+      const student    = studentNum ? STATE.students[studentNum] : null;
+      const checked    = _drillChecked.has(idx);
+      const label      = student ? (student.name || `#${studentNum}`) : `Position ${pos + 1}`;
+      const sub        = student ? (normInstrument(student.instrument) || '') : '<em>Not mapped</em>';
+      return `
+        <label class="drill-perf-row${checked ? ' drill-perf-row--checked' : ''}${!studentNum ? ' drill-perf-row--unmapped' : ''}">
+          <input type="checkbox" style="display:none" ${checked ? 'checked' : ''}
+            onchange="drillTogglePerformer(${idx}, this.checked)">
+          <div class="drill-perf-check">${checked ? '✓' : ''}</div>
+          <div class="drill-perf-info">
+            <div class="drill-perf-name">${esc(label)}</div>
+            <div class="drill-perf-sub">${sub}</div>
+          </div>
+        </label>`;
+    }).join('');
+  };
+
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Select from Drill</div>
+    ${unmappedCount > 0 ? `
+      <div class="drill-map-hint">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        ${unmappedCount} position${unmappedCount !== 1 ? 's' : ''} not yet linked to students.
+        <button class="link-btn" onclick="showDrillMappingModal()">Set up mapping</button>
+      </div>` : ''}
+    <div class="drill-tabs" id="drill-tabs">${renderSectionTabs()}</div>
+    <div class="drill-perf-list" id="drill-perf-list">${renderPerformerGrid()}</div>
+    <div style="display:flex;gap:8px;padding:4px 0;margin-top:4px">
+      <button class="btn btn-sm btn-secondary" style="flex:1" onclick="drillSelectAll()">Select All</button>
+      <button class="btn btn-sm btn-secondary" style="flex:1" onclick="drillClearAll()">Clear</button>
+    </div>
+    <div style="display:flex;justify-content:center;margin:4px 0 2px">
+      <button class="drill-reload-btn" onclick="drillLoadNewFile()">Load different file</button>
+    </div>
+    <div class="modal-actions" style="margin-top:4px">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="drill-apply-btn" onclick="applyDrillSelection()">Apply to Tracker</button>
+    </div>
+  `);
+}
+
+function drillLoadNewFile() {
+  _drillData = null;
+  closeModal();
+  setTimeout(() => {
+    const inp = document.getElementById('drill-file-input');
+    if (inp) inp.click();
+    else openDrillPicker();
+  }, 150);
+}
+
+function drillSetSection(idx) {
+  _drillActiveSection = idx;
+  const sections = _drillData;
+  const tabsEl   = document.getElementById('drill-tabs');
+  const listEl   = document.getElementById('drill-perf-list');
+  if (!tabsEl || !listEl) return;
+  tabsEl.querySelectorAll('.drill-tab').forEach((t, i) =>
+    t.classList.toggle('drill-tab--active', i === idx));
+  const mapping = STATE.pywareMapping || {};
+  listEl.innerHTML = sections[idx].performers.map((perfIdx, pos) => {
+    const studentNum = mapping[String(perfIdx)];
+    const student    = studentNum ? STATE.students[studentNum] : null;
+    const checked    = _drillChecked.has(perfIdx);
+    const label      = student ? (student.name || `#${studentNum}`) : `Position ${pos + 1}`;
+    const sub        = student ? (normInstrument(student.instrument) || '') : '<em>Not mapped</em>';
+    return `
+      <label class="drill-perf-row${checked ? ' drill-perf-row--checked' : ''}${!studentNum ? ' drill-perf-row--unmapped' : ''}">
+        <input type="checkbox" style="display:none" ${checked ? 'checked' : ''}
+          onchange="drillTogglePerformer(${perfIdx}, this.checked)">
+        <div class="drill-perf-check">${checked ? '✓' : ''}</div>
+        <div class="drill-perf-info">
+          <div class="drill-perf-name">${esc(label)}</div>
+          <div class="drill-perf-sub">${sub}</div>
+        </div>
+      </label>`;
+  }).join('');
+}
+
+function drillTogglePerformer(idx, checked) {
+  if (checked) _drillChecked.add(idx); else _drillChecked.delete(idx);
+  // Update the row's visual state without full re-render
+  const listEl = document.getElementById('drill-perf-list');
+  if (listEl) {
+    const rows = listEl.querySelectorAll('.drill-perf-row');
+    const performers = _drillData[_drillActiveSection].performers;
+    const rowIdx = performers.indexOf(idx);
+    if (rowIdx >= 0 && rows[rowIdx]) {
+      rows[rowIdx].classList.toggle('drill-perf-row--checked', checked);
+      rows[rowIdx].querySelector('.drill-perf-check').textContent = checked ? '✓' : '';
+    }
+  }
+  const applyBtn = document.getElementById('drill-apply-btn');
+  if (applyBtn) applyBtn.disabled = _drillChecked.size === 0;
+}
+
+function drillSelectAll() {
+  if (!_drillData) return;
+  _drillData[_drillActiveSection].performers.forEach(idx => _drillChecked.add(idx));
+  drillSetSection(_drillActiveSection);
+}
+
+function drillClearAll() {
+  if (!_drillData) return;
+  _drillData[_drillActiveSection].performers.forEach(idx => _drillChecked.delete(idx));
+  drillSetSection(_drillActiveSection);
+}
+
+function applyDrillSelection() {
+  const mapping = STATE.pywareMapping || {};
+  const unmapped = [];
+  const studentNums = [];
+  for (const idx of _drillChecked) {
+    const num = mapping[String(idx)];
+    if (num && STATE.students[num]) studentNums.push(num);
+    else unmapped.push(idx);
+  }
+  if (!studentNums.length && !unmapped.length) {
+    showToast('Select at least one position.');
+    return;
+  }
+  if (unmapped.length && !studentNums.length) {
+    showToast('Selected positions are not mapped to students yet. Set up the mapping first.');
+    return;
+  }
+  if (unmapped.length) {
+    showToast(`${unmapped.length} unmapped position${unmapped.length !== 1 ? 's' : ''} skipped.`);
+  }
+  _drillSelectedNums = studentNums;
+  closeModal();
+  const rid = _params.rid;
+  if (rid) reRender(rid);
+}
+
+function clearDrillSelection(rid) {
+  _drillSelectedNums = [];
+  if (rid) reRender(rid);
+}
+
+// ── Pyware Mapping Modal ──────────────────────────────────────────────────────
+
+let _drillMappingSection = 0;
+
+function showDrillMappingModal() {
+  if (!_drillData) return;
+  _drillMappingSection = 0;
+  _renderDrillMappingModal();
+}
+
+function _renderDrillMappingModal() {
+  if (!STATE.isAdmin) return;
+  const sections = _drillData;
+  const mapping  = STATE.pywareMapping || {};
+  const students = Object.values(STATE.students).sort((a, b) =>
+    (a.name || '').localeCompare(b.name || ''));
+
+  const studentOptions = `<option value="">— Not mapped —</option>` +
+    students.map(s => `<option value="${esc(s.number)}">${esc(s.name || `#${s.number}`)}${s.instrument ? ` (${esc(normInstrument(s.instrument))})` : ''}</option>`).join('');
+
+  const renderSectionTabs = () => sections.map((s, i) =>
+    `<button class="drill-tab${i === _drillMappingSection ? ' drill-tab--active' : ''}"
+       onclick="drillMappingSetSection(${i})">${esc(s.letter)}</button>`).join('');
+
+  const sec = sections[_drillMappingSection];
+  const rows = sec.performers.map((idx, pos) => {
+    const currentNum = mapping[String(idx)] || '';
+    return `
+      <div class="drill-map-row">
+        <div class="drill-map-pos">Position ${pos + 1}</div>
+        <select class="drill-map-select form-input" data-idx="${idx}"
+          onchange="drillMappingChange(${idx}, this.value)">
+          ${studentOptions.replace(`value="${esc(currentNum)}"`, `value="${esc(currentNum)}" selected`)}
+        </select>
+      </div>`;
+  }).join('');
+
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Drill Position Mapping</div>
+    <p class="modal-sub" style="margin:0 0 10px">Link each drill position to a student in your roster. Saved automatically.</p>
+    <div class="drill-tabs">${renderSectionTabs()}</div>
+    <div class="drill-map-list" id="drill-map-list">${rows}</div>
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn btn-secondary btn-full" onclick="showDrillPickModal()">← Back to Selection</button>
+    </div>
+  `);
+}
+
+function drillMappingSetSection(idx) {
+  _drillMappingSection = idx;
+  _renderDrillMappingModal();
+}
+
+function drillMappingChange(perfIdx, studentNum) {
+  const mapping = { ...STATE.pywareMapping };
+  if (studentNum) mapping[String(perfIdx)] = studentNum;
+  else delete mapping[String(perfIdx)];
+  STATE.pywareMapping = mapping;
+  orgCol('settings').doc('presets').set({ pywareMapping: mapping }, { merge: true });
 }
 
 // ── Rehearsal card dropdown menu ──────────────────────────────────────────────
