@@ -3436,14 +3436,14 @@ function _buildLbRankRows() {
     const score = songPoints * w.song + Object.values(STATE.entries).reduce((sum, rehEntries) => {
       const e = rehEntries[String(s.number)];
       if (!e) return sum;
-      return sum + (e.positives || 0) * w.positive
-                 - (STATE.countNegativeInScore ? (e.mistakes || 0) * w.negative : 0)
+      return sum + (featureOn('marks') ? (e.positives || 0) * w.positive : 0)
+                 - (featureOn('marks') && STATE.countNegativeInScore ? (e.mistakes || 0) * w.negative : 0)
                  - (featureOn('attendance') && e.attendance === 'absent' ? w.absent : 0)
                  - (featureOn('attendance') && e.attendance === 'late'   ? w.late   : 0);
     }, 0);
     return { docId, s, score, name: fakeAnimalName(docId),
-      positives: Object.values(STATE.entries).reduce((sum, re) => sum + (re[String(s.number)]?.positives || 0), 0),
-      mistakes:  Object.values(STATE.entries).reduce((sum, re) => sum + (re[String(s.number)]?.mistakes  || 0), 0) };
+      positives: featureOn('marks') ? Object.values(STATE.entries).reduce((sum, re) => sum + (re[String(s.number)]?.positives || 0), 0) : 0,
+      mistakes:  featureOn('marks') ? Object.values(STATE.entries).reduce((sum, re) => sum + (re[String(s.number)]?.mistakes  || 0), 0) : 0 };
   });
 
   const lbScoreMap = {};
