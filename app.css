@@ -309,6 +309,12 @@ html, body {
   margin-top: 6px;
 }
 
+.att-chart-card { padding: 14px 16px 10px; }
+.att-chart-title { font-size: 0.85rem; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+.att-chart-legend { display: flex; gap: 16px; margin-top: 8px; justify-content: center; }
+.att-chart-legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.78rem; color: var(--text-muted); }
+.att-chart-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+
 /* ── Buttons ────────────────────────────────────────────────────────────── */
 
 .btn {
