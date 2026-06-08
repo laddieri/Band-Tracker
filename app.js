@@ -1763,7 +1763,7 @@ function startToday() {
   const r  = { id, date: today(), label: '' };
   STATE.rehearsals.unshift(r);
   orgCol('rehearsals').doc(id).set(r);
-  navigate(featureOn('marks') ? 'rehearsal' : 'rehearsals', featureOn('marks') ? { rid: id } : {});
+  navigate('attendance-tab');
 }
 
 // ── View: Roster ──────────────────────────────────────────────────────────────
@@ -5519,7 +5519,7 @@ function saveNewRehearsal() {
   orgCol('rehearsals').doc(id).set(r);
   closeModal();
   _activeRid = id;
-  navigate(featureOn('marks') ? 'dashboard' : 'rehearsals', featureOn('marks') ? { rid: id } : {});
+  navigate('attendance-tab');
 }
 
 function showEndedRehearsalOptions(rid) {
