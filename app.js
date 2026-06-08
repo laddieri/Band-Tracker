@@ -3978,7 +3978,7 @@ function viewRehearsals() {
   const MONTHS = ['January','February','March','April','May','June',
                   'July','August','September','October','November','December'];
 
-  return startBtn + Object.entries(grouped).map(([key, group]) => {
+  return `<div class="rh-view">` + startBtn + Object.entries(grouped).map(([key, group]) => {
     const [y, m] = key.split('-').map(Number);
     return `
       <div class="section-title">${MONTHS[m-1]} ${y}</div>
@@ -4062,7 +4062,7 @@ function viewRehearsals() {
             </div>
           </div>`;
       }).join('')}</div>`;
-  }).join('');
+  }).join('') + `</div>`;
 }
 
 // ── View: Attendance Tab ──────────────────────────────────────────────────────

@@ -240,6 +240,7 @@ html, body {
 .att-modify-att-btn:hover { background: #fffbeb; }
 
 /* ── Rehearsal list cards ────────────────────────────────────────────────── */
+.rh-view { width: 100%; }
 .rh-card { border-left: 4px solid transparent; padding-left: 12px; }
 .rh-card-open  { border-left-color: var(--primary); }
 .rh-card-ended { border-left-color: var(--border); }
@@ -2842,6 +2843,7 @@ html, body {
 
   /* ── Two-column rehearsal cards (open cards span full width) ──────────── */
 
+  .rh-view { max-width: 860px; margin: 0 auto; }
   .rh-cards-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .rh-cards-grid .card { margin-bottom: 0; }
   .rh-cards-grid .rh-card-open { grid-column: 1 / -1; }
