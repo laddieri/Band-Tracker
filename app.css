@@ -2846,7 +2846,6 @@ html, body {
   .rh-view { max-width: 860px; margin: 0 auto; }
   .rh-cards-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .rh-cards-grid .card { margin-bottom: 0; }
-  .rh-cards-grid .rh-card-open { grid-column: 1 / -1; }
 
   /* ── Two-column song list ─────────────────────────────────────────────── */
 
