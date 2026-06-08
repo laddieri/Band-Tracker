@@ -2930,3 +2930,10 @@ html, body {
 .drill-map-row { display:flex; align-items:center; gap:8px; }
 .drill-map-pos { font-size:0.82rem; font-weight:600; color:var(--text-muted); min-width:72px; flex-shrink:0; }
 .drill-map-select { flex:1; font-size:0.85rem; }
+
+/* Drill field chart */
+.drill-chart-nav { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px; }
+.drill-chart-setlabel { font-size:0.9rem; font-weight:700; text-align:center; flex:1; }
+.drill-chart-wrap { overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; margin-bottom:6px; border-radius:var(--r-sm); }
+.drill-chart-legend { display:flex; flex-wrap:wrap; gap:4px 12px; margin:4px 0 2px; }
+.drill-chart-leg-item { display:flex; align-items:center; gap:4px; font-size:0.78rem; color:var(--text-muted); }
