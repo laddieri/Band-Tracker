@@ -557,7 +557,7 @@ function filterAndSortStudents(students, f, scoreMap) {
 
 // ── Filter bar renderer ───────────────────────────────────────────────────────
 
-function renderFilterBar(viewId, f, sortOptions) {
+function renderFilterBar(viewId, f, sortOptions, { hideSearch = false } = {}) {
   const activeCount = f.instruments.length + f.sections.length + f.grades.length;
   const instruments = instrumentsInRoster();
   const sections    = sectionsInRoster();
@@ -589,14 +589,14 @@ function renderFilterBar(viewId, f, sortOptions) {
 
   return `
     <div class="sfb-wrap">
-      <div class="search-wrap" style="margin-bottom:8px">
+      ${hideSearch ? '' : `<div class="search-wrap" style="margin-bottom:8px">
         <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
         <input class="search-input" type="search" placeholder="Search by name or number…"
                value="${esc(f.search)}"
                oninput="updateFilter('${viewId}','search',this.value)" autocomplete="off">
-      </div>
+      </div>`}
       <div class="sfb-row">
         <div class="sfb-sort-wrap">
           <select class="sfb-sort-select" onchange="updateFilter('${viewId}','sortField',this.value)">
@@ -4435,7 +4435,7 @@ function viewRehearsal(rid) {
                 {value:'instrument', label:'Instrument'},
                 {value:'section',    label:'Section'},
                 {value:'grade',      label:'Grade'}
-              ])}
+              ], { hideSearch: true })}
             </div>
             <button class="inst-chip tracker-grid-btn" title="Open Block Grid" onclick="toggleBlockMode('${esc(rid)}')" style="flex-shrink:0;margin-bottom:12px">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;display:block">
