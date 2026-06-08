@@ -421,7 +421,7 @@ window.addEventListener('popstate', e => {
 
 function navigate(view, params = {}, _fromHistory = false) {
   if (_view === 'rehearsal' && view !== 'rehearsal') {
-    _activeNum = null; _numSearch = ''; _blockMode = false; _blockPath = [];
+    _activeNum = null; _trackerFilter = _mkFilter('name', 'asc'); _blockMode = false; _blockPath = [];
     _trackerFilter = _mkFilter('name', 'asc');
   }
   if (_view === 'song' && view !== 'song') {
@@ -432,7 +432,7 @@ function navigate(view, params = {}, _fromHistory = false) {
     _lbFilter = _mkFilter('score', 'desc');
   }
   if (_view === 'dashboard' && view !== 'dashboard') {
-    _activeNum = null; _numSearch = ''; _blockMode = false; _blockPath = [];
+    _activeNum = null; _trackerFilter = _mkFilter('name', 'asc'); _blockMode = false; _blockPath = [];
     _trackerFilter = _mkFilter('name', 'asc');
     _dashRid = null; _dashForceHistory = false;
   }
@@ -462,7 +462,6 @@ function navigate(view, params = {}, _fromHistory = false) {
 // ── Rehearsal state ───────────────────────────────────────────────────────────
 
 let _activeNum  = null;
-let _numSearch  = '';
 let _songHidePassedFilter    = false;
 let _songCatCollapsed        = new Set(); // category names that are currently collapsed
 let _dashRid        = null; // null = all rehearsals
@@ -557,7 +556,7 @@ function filterAndSortStudents(students, f, scoreMap) {
 
 // ── Filter bar renderer ───────────────────────────────────────────────────────
 
-function renderFilterBar(viewId, f, sortOptions, { hideSearch = false } = {}) {
+function renderFilterBar(viewId, f, sortOptions, { hideSearch = false, extra = '' } = {}) {
   const activeCount = f.instruments.length + f.sections.length + f.grades.length;
   const instruments = instrumentsInRoster();
   const sections    = sectionsInRoster();
@@ -613,6 +612,7 @@ function renderFilterBar(viewId, f, sortOptions, { hideSearch = false } = {}) {
           </svg>
           Filters${activeCount ? ` (${activeCount})` : ''}
         </button>
+        ${extra}
       </div>
       ${panel}
     </div>`;
@@ -669,6 +669,32 @@ function updateFilter(viewId, field, value) {
   const f = _getFilterObj(viewId);
   if (!f) return;
   f[field] = value;
+  // Tracker search drives student lookup: numbers auto-select, names show suggestions.
+  if (viewId === 'tracker' && field === 'search') {
+    const rid = _params.rid;
+    const trimmed = value.trim();
+    if (!trimmed || /^\d+$/.test(trimmed)) {
+      _activeNum = trimmed || null;
+      reRender(rid);
+    } else {
+      _activeNum = null;
+      const el = document.getElementById('tracker-suggestions');
+      if (el) {
+        const matches = studentSuggestions(trimmed, _trackerFilter.instruments[0] || '', _trackerFilter.grades[0] || '');
+        el.innerHTML = matches.length
+          ? matches.map(s => `
+              <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
+                <span class="suggestion-num">#${esc(s.number)}</span>
+                <span class="suggestion-name">${esc(s.name || '—')}</span>
+                <span class="suggestion-detail">${esc([fmtPos(s.column,s.row),s.instrument].filter(Boolean).join(' · '))}</span>
+              </div>`).join('')
+          : `<div class="tracker-hint">No students match "${esc(trimmed)}".</div>`;
+      } else {
+        reRender(rid);
+      }
+    }
+    return;
+  }
   // While typing in search, update only the list so the input keeps focus
   // (a full re-render would replace the input and dismiss the keyboard).
   if (field === 'search' && _refreshFilterList(viewId)) return;
@@ -4410,11 +4436,12 @@ function viewRehearsal(rid) {
         ${activeCard}
       </div>`;
   } else {
-    const isNameSearch = _numSearch.trim() && !/^\d+$/.test(_numSearch.trim());
-    const suggestions  = isNameSearch ? studentSuggestions(_numSearch, _trackerFilter.instruments[0] || '', _trackerFilter.grades[0] || '') : [];
+    const searchVal    = _trackerFilter.search;
+    const isNameSearch = searchVal.trim() && !/^\d+$/.test(searchVal.trim());
+    const suggestions  = isNameSearch ? studentSuggestions(searchVal, _trackerFilter.instruments[0] || '', _trackerFilter.grades[0] || '') : [];
     const activeFilterCount = _trackerFilter.instruments.length + _trackerFilter.grades.length + _trackerFilter.sections.length;
     // Only show the full student list when a filter is active — not by default
-    const showAllForFilter = !_numSearch.trim() && activeFilterCount > 0;
+    const showAllForFilter = !searchVal.trim() && activeFilterCount > 0;
     const allFiltered = showAllForFilter
       ? filterAndSortStudents(Object.values(students), _trackerFilter)
       : [];
@@ -4427,32 +4454,21 @@ function viewRehearsal(rid) {
       <div class="tracker-card">
         ${!_activeNum ? `
           <div class="tracker-label">Track a Student</div>
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-            <div style="flex:1">
-              ${renderFilterBar('tracker', _trackerFilter, [
-                {value:'name',       label:'Name'},
-                {value:'number',     label:'Number'},
-                {value:'instrument', label:'Instrument'},
-                {value:'section',    label:'Section'},
-                {value:'grade',      label:'Grade'}
-              ], { hideSearch: true })}
-            </div>
-            <button class="inst-chip tracker-grid-btn" title="Open Block Grid" onclick="toggleBlockMode('${esc(rid)}')" style="flex-shrink:0;margin-bottom:12px">
+          ${renderFilterBar('tracker', _trackerFilter, [
+            {value:'name',       label:'Name'},
+            {value:'number',     label:'Number'},
+            {value:'instrument', label:'Instrument'},
+            {value:'section',    label:'Section'},
+            {value:'grade',      label:'Grade'}
+          ], { extra: `<button class="inst-chip tracker-grid-btn" title="Open Block Grid" onclick="toggleBlockMode('${esc(rid)}')">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;display:block">
                 <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
                 <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
               </svg>
-            </button>
-          </div>
+            </button>` })}
           <button class="mark-all-btn" onclick="showMarkAllModal('${esc(rid)}')">
             Mark All${activeFilterLabel ? ` (${esc(activeFilterLabel)})` : ''}
           </button>
-          <input class="num-input" type="text" inputmode="text"
-                 id="num-input" placeholder="Search by name or number…"
-                 value="${esc(_numSearch)}"
-                 autocomplete="off" autocorrect="off" autocapitalize="off"
-                 oninput="onNumInput(this.value,'${esc(rid)}')"
-                 onkeydown="onNumKey(event,'${esc(rid)}')">
           <div id="tracker-suggestions" class="student-suggestions">
             ${isNameSearch ? suggestions.map(s => `
               <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
@@ -4541,60 +4557,16 @@ function viewRehearsal(rid) {
   `;
 }
 
-function onNumInput(val, rid) {
-  _numSearch = val;
-  const trimmed = val.trim();
-  if (!trimmed) {
-    _activeNum = null;
-    reRender(rid);
-  } else if (/^\d+$/.test(trimmed)) {
-    // Pure number: direct select — full re-render to show/update student card
-    _activeNum = trimmed;
-    reRender(rid);
-  } else {
-    // Name search: update only the suggestions list so the input keeps focus
-    _activeNum = null;
-    const el = document.getElementById('tracker-suggestions');
-    if (el) {
-      const matches = studentSuggestions(trimmed, _trackerFilter.instruments[0] || '', _trackerFilter.grades[0] || '');
-      el.innerHTML = matches.map(s => `
-        <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
-          <span class="suggestion-num">#${esc(s.number)}</span>
-          <span class="suggestion-name">${esc(s.name || '—')}</span>
-          <span class="suggestion-detail">${esc([fmtPos(s.column,s.row),s.instrument].filter(Boolean).join(' · '))}</span>
-        </div>`).join('');
-    } else {
-      reRender(rid); // fallback if container not found
-    }
-  }
-}
-
-function onNumKey(e, rid) {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    const num = _numSearch.trim();
-    if (num) {
-      _activeNum = num;
-      _numSearch = STATE.students[num]?.name || _numSearch;
-      reRender(rid);
-    }
-  }
-}
-
 function pickStudent(num, rid) {
   _activeNum = num;
-  _numSearch = STATE.students[num]?.name || '';
+  _trackerFilter.search = '';
   document.getElementById('main-content').scrollTop = 0;
   reRender(rid);
 }
 
 function clearActive() {
   _activeNum = null;
-  _numSearch = '';
-  if (!_blockMode) {
-    const inp = document.getElementById('num-input');
-    if (inp) inp.value = '';
-  }
+  _trackerFilter.search = '';
   reRender(_params.rid);
 }
 
@@ -5240,7 +5212,7 @@ function findStudentAtPos(col, row, students) {
 function toggleBlockMode(rid) {
   _blockMode = !_blockMode;
   _blockPath = [];
-  if (_blockMode) { _activeNum = null; _numSearch = ''; }
+  if (_blockMode) { _activeNum = null; _trackerFilter.search = ''; }
   reRender(rid);
 }
 
