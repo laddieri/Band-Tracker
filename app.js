@@ -7101,7 +7101,7 @@ function _drillChartHtml() {
     : null;
 
   const navLabel    = sets
-    ? `Set ${navSetNum + 1} <span style="font-weight:400;color:var(--text-muted)">of ${sets.length}</span>`
+    ? `Set ${navSetNum + 1} <span style="font-weight:400;color:var(--text-muted)">of ${sets.length}</span> <span style="font-weight:400;font-size:0.78em;color:var(--text-muted)">(count ${sets[navSetNum]})</span>`
     : `Count ${setIdx + 1} <span style="font-weight:400;color:var(--text-muted)">/ ${_drillPages.length}</span>`;
   const prevDisabled = sets ? navSetNum <= 0               : setIdx <= 0;
   const nextDisabled = sets ? navSetNum >= sets.length - 1 : setIdx >= _drillPages.length - 1;
@@ -7169,8 +7169,8 @@ function _drillChartHtml() {
     }
     dots += `<circle cx="${sx}" cy="${sy}" r="${sel?'4.5':'3'}" fill="${col}" pointer-events="none"/>`;
   }
-  const diagMsg = visibleCount === 0 && positions.length > 0
-    ? `<div style="font-size:0.7rem;color:var(--warning);text-align:center;margin:4px 0">Performers outside field bounds — raw x: ${xRawMin}–${xRawMax}, y: ${yRawMin}–${yRawMax}</div>`
+  const diagMsg = positions.length > 0
+    ? `<div style="font-size:0.7rem;color:${visibleCount===0?'var(--warning)':'var(--text-muted)'};text-align:center;margin:4px 0">${visibleCount===0?'No performers in bounds — ':''}raw x: ${xRawMin}–${xRawMax}, y: ${yRawMin}–${yRawMax}</div>`
     : '';
 
   // Section legend
