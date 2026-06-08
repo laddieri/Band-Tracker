@@ -474,6 +474,7 @@ let _blockMode  = false;
 let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
 let _drillData       = null; // parsed Pyware drill sections (session-only)
 let _drillPages      = null; // parsed PAGE position data: [{seqNum,x,y}][]
+let _drillSets       = null; // indices into _drillPages for each set page
 let _drillCurrentSet = 0;    // currently viewed set in chart modal
 let _drillSelectedNums = []; // student numbers selected via drill
 let _pendingSegment    = ''; // currently selected rehearsal segment in mark modal
@@ -6844,7 +6845,8 @@ function _parsePyware3dj(buffer) {
 function _parsePywarePages(buffer) {
   const u8   = new Uint8Array(buffer);
   const view = new DataView(buffer);
-  const pages = [];
+  const pages   = [];
+  const b2b3Arr = []; // track per-page "constant" bytes to detect set boundaries
   for (let i = 0; i < u8.length - 10; i++) {
     // Look for 'PAGE' tag
     if (u8[i]!==0x50||u8[i+1]!==0x41||u8[i+2]!==0x47||u8[i+3]!==0x45) continue;
@@ -6852,6 +6854,7 @@ function _parsePywarePages(buffer) {
     if (count !== 144) continue; // only accept full 144-performer sets
     const base0 = i + 10;
     if (base0 + 144 * 20 > u8.length) continue; // bounds check
+    b2b3Arr.push((u8[base0 + 2] << 8) | u8[base0 + 3]); // first entry's b2b3
     const positions = [];
     for (let e = 0; e < 144; e++) {
       const b = base0 + e * 20;
@@ -6864,7 +6867,15 @@ function _parsePywarePages(buffer) {
     pages.push(positions);
     i += 2889; // skip past this block; outer loop adds 1
   }
-  return pages;
+
+  // Detect set pages: b2b3 is constant within each PAGE but changes at set boundaries
+  const setIndices = [0];
+  for (let i = 1; i < b2b3Arr.length; i++) {
+    if (b2b3Arr[i] !== b2b3Arr[i - 1]) setIndices.push(i);
+  }
+  // Only trust detection if it yields a plausible set count (2–50)
+  const sets = setIndices.length >= 2 && setIndices.length <= 50 ? setIndices : null;
+  return { pages, sets };
 }
 
 function openDrillPicker() {
@@ -6890,7 +6901,9 @@ function _onDrillFileLoaded(file) {
     try {
       _drillData  = _parsePyware3dj(e.target.result);
       if (!_drillData.length) throw new Error('No performer sections found in this file.');
-      _drillPages = _parsePywarePages(e.target.result);
+      const parsed = _parsePywarePages(e.target.result);
+      _drillPages = parsed.pages;
+      _drillSets  = parsed.sets;
       showDrillPickModal();
     } catch (err) {
       showToast(err.message || 'Failed to read drill file.');
@@ -6964,6 +6977,7 @@ function showDrillPickModal() {
 function drillLoadNewFile() {
   _drillData = null;
   _drillPages = null;
+  _drillSets  = null;
   closeModal();
   setTimeout(() => {
     const inp = document.getElementById('drill-file-input');
@@ -7077,9 +7091,20 @@ function showDrillChartModal() {
 }
 
 function _drillChartHtml() {
-  const totalSets = _drillPages.length;
   const setIdx    = _drillCurrentSet;
   const positions = _drillPages[setIdx];
+  const sets      = _drillSets; // array of PAGE indices for each drill set, or null
+
+  // Current set number (0-based): the last set page at or before setIdx
+  const navSetNum = sets
+    ? sets.reduce((best, s, i) => (s <= setIdx ? i : best), 0)
+    : null;
+
+  const navLabel    = sets
+    ? `Set ${navSetNum + 1} <span style="font-weight:400;color:var(--text-muted)">of ${sets.length}</span>`
+    : `Count ${setIdx + 1} <span style="font-weight:400;color:var(--text-muted)">/ ${_drillPages.length}</span>`;
+  const prevDisabled = sets ? navSetNum <= 0               : setIdx <= 0;
+  const nextDisabled = sets ? navSetNum >= sets.length - 1 : setIdx >= _drillPages.length - 1;
 
   // Field SVG: 100 yards wide (160 steps) × 84 steps deep
   // x formula: steps_from_west_goal = (x_raw - 118) * 4
@@ -7152,9 +7177,9 @@ function _drillChartHtml() {
   return `
     <div class="modal-title" style="margin-bottom:6px">Field Chart</div>
     <div class="drill-chart-nav">
-      <button class="btn btn-sm btn-secondary" onclick="drillChartNav(-1)"${setIdx===0?' disabled':''}>&#8592;</button>
-      <span class="drill-chart-setlabel">Set ${setIdx+1} <span style="font-weight:400;color:var(--text-muted)">/ ${totalSets}</span></span>
-      <button class="btn btn-sm btn-secondary" onclick="drillChartNav(1)"${setIdx>=totalSets-1?' disabled':''}>&#8594;</button>
+      <button class="btn btn-sm btn-secondary" onclick="drillChartNav(-1)"${prevDisabled?' disabled':''}>&#8592;</button>
+      <span class="drill-chart-setlabel">${navLabel}</span>
+      <button class="btn btn-sm btn-secondary" onclick="drillChartNav(1)"${nextDisabled?' disabled':''}>&#8594;</button>
     </div>
     <div class="drill-chart-wrap">
       <svg viewBox="0 0 ${SW} ${SH}" xmlns="http://www.w3.org/2000/svg" style="display:block;width:${SW}px;max-width:100%">
@@ -7173,8 +7198,14 @@ function _drillChartHtml() {
 }
 
 function drillChartNav(delta) {
-  const total = _drillPages ? _drillPages.length : 0;
-  _drillCurrentSet = Math.max(0, Math.min(total - 1, _drillCurrentSet + delta));
+  if (_drillSets) {
+    const cur = _drillSets.reduce((best, s, i) => (s <= _drillCurrentSet ? i : best), 0);
+    const next = Math.max(0, Math.min(_drillSets.length - 1, cur + delta));
+    _drillCurrentSet = _drillSets[next];
+  } else {
+    const total = _drillPages ? _drillPages.length : 0;
+    _drillCurrentSet = Math.max(0, Math.min(total - 1, _drillCurrentSet + delta));
+  }
   const root = document.getElementById('drill-chart-root');
   if (root) root.innerHTML = _drillChartHtml();
 }
