@@ -7155,7 +7155,10 @@ function _drillChartHtml() {
   for (const {seqNum, x, y} of positions) {
     if (x < xRawMin) xRawMin = x; if (x > xRawMax) xRawMax = x;
     if (y < yRawMin) yRawMin = y; if (y > yRawMax) yRawMax = y;
-    const stepsX = (x - 118) * 4;
+    // Two coordinate encodings exist in .3dj files:
+    // "Animation" pages (x_raw ≈ 118–160): stepsX = (x - 118) * 4
+    // "Set definition" pages (x_raw ≈ 0–20):  stepsX = x * 8  (5-yard units)
+    const stepsX = x < 50 ? x * 8 : (x - 118) * 4;
     const stepsY = y * 4;
     if (stepsX < -8 || stepsX > 168 || stepsY < 0 || stepsY > 100) continue;
     visibleCount++;
