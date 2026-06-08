@@ -125,6 +125,7 @@ const STATE = {
   activeStudentFields:        null,
   customStudentFields:        [],
   autoMarks:                  null,
+  lbWeights:                  {},
   _unsubs:      []
 };
 
@@ -295,6 +296,7 @@ async function startListeners() {
       STATE.hideNegativeFromPortal     = !!d.hideNegativeFromPortal;
       STATE.countNegativeInScore       = d.countNegativeInScore !== false;
       STATE.autoMarks                  = Array.isArray(d.autoMarks) ? d.autoMarks : null;
+      STATE.lbWeights                  = d.lbWeights || {};
       if (!STATE.loading) render();
     }),
 
@@ -1033,7 +1035,7 @@ function render() {
 
     case 'leaderboard':
       title.textContent = 'Band Stats';
-      actions.innerHTML = (STATE.isAdmin ? userBtn() : '');
+      actions.innerHTML = (STATE.isAdmin ? optBtn('showLeaderboardSettingsModal()') : '') + userBtn();
       main.innerHTML = viewLeaderboard();
       break;
 
@@ -3413,22 +3415,35 @@ function showStudentMarksModal(num, rid) {
   `);
 }
 
+function _lbW() {
+  const w = STATE.lbWeights || {};
+  return {
+    positive: w.positive ?? 1,
+    negative: w.negative ?? 1,
+    absent:   w.absent   ?? 1,
+    late:     w.late     ?? 0.5,
+    song:     w.song     ?? 1,
+  };
+}
+
 function _buildLbRankRows() {
   const myDocId = STATE.studentNum;
+  const w = _lbW();
   const allScored = Object.entries(STATE.students).map(([docId, s]) => {
     const songPoints = DB.getSongs().reduce((sum, song) => {
       return sum + (song.statuses?.[String(s.number)]?.status === 'passed' ? 1 : 0);
     }, 0);
-    const score = songPoints + Object.values(STATE.entries).reduce((sum, rehEntries) => {
+    const score = songPoints * w.song + Object.values(STATE.entries).reduce((sum, rehEntries) => {
       const e = rehEntries[String(s.number)];
       if (!e) return sum;
-      return sum + (e.positives || 0) - (STATE.countNegativeInScore ? (e.mistakes || 0) : 0)
-                - (featureOn('attendance') && e.attendance === 'absent' ? 1 : 0)
-                - (featureOn('attendance') && e.attendance === 'late'   ? 0.5 : 0);
+      return sum + (featureOn('marks') ? (e.positives || 0) * w.positive : 0)
+                 - (featureOn('marks') && STATE.countNegativeInScore ? (e.mistakes || 0) * w.negative : 0)
+                 - (featureOn('attendance') && e.attendance === 'absent' ? w.absent : 0)
+                 - (featureOn('attendance') && e.attendance === 'late'   ? w.late   : 0);
     }, 0);
     return { docId, s, score, name: fakeAnimalName(docId),
-      positives: Object.values(STATE.entries).reduce((sum, re) => sum + (re[String(s.number)]?.positives || 0), 0),
-      mistakes:  Object.values(STATE.entries).reduce((sum, re) => sum + (re[String(s.number)]?.mistakes  || 0), 0) };
+      positives: featureOn('marks') ? Object.values(STATE.entries).reduce((sum, re) => sum + (re[String(s.number)]?.positives || 0), 0) : 0,
+      mistakes:  featureOn('marks') ? Object.values(STATE.entries).reduce((sum, re) => sum + (re[String(s.number)]?.mistakes  || 0), 0) : 0 };
   });
 
   const lbScoreMap = {};
@@ -3619,6 +3634,87 @@ function viewLeaderboard() {
           </div>` : ''}
 
     </div>`;
+}
+
+// ── Leaderboard Score Settings ────────────────────────────────────────────────
+
+function showLeaderboardSettingsModal() {
+  if (!STATE.isAdmin) return;
+  const w = _lbW();
+
+  const weightRow = (id, label, desc, val, step = '0.5') => `
+    <div class="lb-weight-row">
+      <div class="lb-weight-info">
+        <div class="lb-weight-label">${label}</div>
+        <div class="lb-weight-desc">${desc}</div>
+      </div>
+      <div class="lb-weight-input-wrap">
+        <button class="lb-weight-btn" onclick="lbWeightAdj('${id}',-${step})">−</button>
+        <input class="lb-weight-input" id="lbw-${id}" type="number"
+               min="0" max="99" step="${step}" value="${val}">
+        <button class="lb-weight-btn" onclick="lbWeightAdj('${id}',${step})">+</button>
+      </div>
+    </div>`;
+
+  const negNote = !STATE.countNegativeInScore
+    ? `<p class="lb-weight-warning">⚠ Negative marks are currently disabled in Band Settings → "Count in leaderboard score". The weight below won't apply until that's re-enabled.</p>`
+    : '';
+
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Score Weights</div>
+    <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:16px">
+      Adjust how much each factor counts toward a student's leaderboard score.
+    </p>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">
+      ${weightRow('positive', '✓ Positive marks',  'Per positive mark awarded',             w.positive)}
+      ${weightRow('negative', '✗ Negative marks',  'Per mistake mark (when enabled)',       w.negative)}
+      ${weightRow('song',     '♪ Songs memorized', 'Per song marked as passed',             w.song)}
+      ${weightRow('absent',   '✗ Absences',        'Deducted per absence',                  w.absent)}
+      ${weightRow('late',     '◷ Lates',           'Deducted per late arrival',             w.late)}
+    </div>
+    ${negNote}
+    <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:16px;padding:8px 10px;background:var(--surface-alt);border-radius:var(--r-sm)">
+      Score = (Songs × <strong id="lbw-preview-song">${w.song}</strong>) + (Positives × <strong id="lbw-preview-positive">${w.positive}</strong>) − (Negatives × <strong id="lbw-preview-negative">${w.negative}</strong>) − (Absences × <strong id="lbw-preview-absent">${w.absent}</strong>) − (Lates × <strong id="lbw-preview-late">${w.late}</strong>)
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveLbWeights()">Save</button>
+    </div>
+  `);
+}
+
+function lbWeightAdj(id, delta) {
+  const input = document.getElementById(`lbw-${id}`);
+  if (!input) return;
+  const next = Math.max(0, Math.round((parseFloat(input.value) + parseFloat(delta)) * 100) / 100);
+  input.value = next;
+  const preview = document.getElementById(`lbw-preview-${id}`);
+  if (preview) preview.textContent = next;
+}
+
+function saveLbWeights() {
+  const parse = id => {
+    const v = parseFloat(document.getElementById(`lbw-${id}`)?.value);
+    return isNaN(v) || v < 0 ? null : Math.round(v * 100) / 100;
+  };
+  const weights = {
+    positive: parse('positive'),
+    negative: parse('negative'),
+    absent:   parse('absent'),
+    late:     parse('late'),
+    song:     parse('song'),
+  };
+  if (Object.values(weights).some(v => v === null)) {
+    showToast('All weights must be 0 or greater.');
+    return;
+  }
+  STATE.lbWeights = weights;
+  orgCol('settings').doc('presets').set({ lbWeights: weights }, { merge: true });
+  showToast('Score weights saved.');
+  closeModal();
+  const mc = document.getElementById('main-content');
+  if (_view === 'leaderboard' && mc) mc.innerHTML = viewLeaderboard();
 }
 
 function viewStudent(num) {
