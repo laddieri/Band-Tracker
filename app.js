@@ -472,7 +472,9 @@ let _dashForceHistory = false; // force dashboard into historical view even when
 let _attModifyMode           = false; // true = show edit UI even when attendance is submitted
 let _blockMode  = false;
 let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
-let _drillData  = null; // parsed Pyware drill sections (session-only)
+let _drillData       = null; // parsed Pyware drill sections (session-only)
+let _drillPages      = null; // parsed PAGE position data: [{seqNum,x,y}][]
+let _drillCurrentSet = 0;    // currently viewed set in chart modal
 let _drillSelectedNums = []; // student numbers selected via drill
 let _pendingSegment    = ''; // currently selected rehearsal segment in mark modal
 let _pendingStudentCode = ''; // code being verified for anonymous student login
@@ -6835,6 +6837,36 @@ function _parsePyware3dj(buffer) {
   return Object.values(sections).sort((a, b) => a.letter.localeCompare(b.letter));
 }
 
+// Scans the buffer for all PAGE blocks (144 performers × 20 bytes each).
+// Coordinate encoding (empirically derived):
+//   x (LE int16 @ byte 4): steps_from_west_goal = (x - 118) * 4  →  x=130 ≅ W30yd, x=122 ≅ W10yd
+//   y (LE int16 @ byte 6): steps_from_front_sideline = y * 4      →  y=3 ≅ 12 steps (first row)
+function _parsePywarePages(buffer) {
+  const u8   = new Uint8Array(buffer);
+  const view = new DataView(buffer);
+  const pages = [];
+  for (let i = 0; i < u8.length - 2890; i++) {
+    // Look for 'PAGE' tag
+    if (u8[i]!==0x50||u8[i+1]!==0x41||u8[i+2]!==0x47||u8[i+3]!==0x45) continue;
+    const blockLen = view.getUint32(i + 4, false); // big-endian
+    const count    = view.getUint16(i + 8, false);
+    if (count !== 144 || blockLen !== 2882) continue; // skip non-performer PAGE blocks
+    const base0 = i + 10;
+    const positions = [];
+    for (let e = 0; e < 144; e++) {
+      const b = base0 + e * 20;
+      positions.push({
+        seqNum: u8[b + 1],
+        x: view.getInt16(b + 4, true),
+        y: view.getInt16(b + 6, true),
+      });
+    }
+    pages.push(positions);
+    i += 2889; // skip to end of block; outer loop adds 1
+  }
+  return pages;
+}
+
 function openDrillPicker() {
   if (!STATE.isAdmin) return;
   let inp = document.getElementById('drill-file-input');
@@ -6856,8 +6888,9 @@ function _onDrillFileLoaded(file) {
   const reader = new FileReader();
   reader.onload = e => {
     try {
-      _drillData = _parsePyware3dj(e.target.result);
+      _drillData  = _parsePyware3dj(e.target.result);
       if (!_drillData.length) throw new Error('No performer sections found in this file.');
+      _drillPages = _parsePywarePages(e.target.result);
       showDrillPickModal();
     } catch (err) {
       showToast(err.message || 'Failed to read drill file.');
@@ -6917,8 +6950,9 @@ function showDrillPickModal() {
       <button class="btn btn-sm btn-secondary" style="flex:1" onclick="drillSelectAll()">Select All</button>
       <button class="btn btn-sm btn-secondary" style="flex:1" onclick="drillClearAll()">Clear</button>
     </div>
-    <div style="display:flex;justify-content:center;margin:4px 0 2px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0 2px">
       <button class="drill-reload-btn" onclick="drillLoadNewFile()">Load different file</button>
+      ${_drillPages && _drillPages.length ? `<button class="drill-reload-btn" onclick="showDrillChartModal()">View field chart →</button>` : ''}
     </div>
     <div class="modal-actions" style="margin-top:4px">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
@@ -6929,6 +6963,7 @@ function showDrillPickModal() {
 
 function drillLoadNewFile() {
   _drillData = null;
+  _drillPages = null;
   closeModal();
   setTimeout(() => {
     const inp = document.getElementById('drill-file-input');
@@ -7023,6 +7058,132 @@ function applyDrillSelection() {
 function clearDrillSelection(rid) {
   _drillSelectedNums = [];
   if (rid) reRender(rid);
+}
+
+// ── Pyware Field Chart ────────────────────────────────────────────────────────
+
+const _DRILL_COLORS = [
+  '#e74c3c','#e67e22','#f39c12','#2ecc71','#1abc9c',
+  '#3498db','#9b59b6','#e91e63','#795548','#607d8b',
+];
+
+function showDrillChartModal() {
+  if (!_drillPages || !_drillPages.length) {
+    showToast('No set position data found in this file.');
+    return;
+  }
+  _drillCurrentSet = 0;
+  openModal(`<div id="drill-chart-root">${_drillChartHtml()}</div>`);
+}
+
+function _drillChartHtml() {
+  const totalSets = _drillPages.length;
+  const setIdx    = _drillCurrentSet;
+  const positions = _drillPages[setIdx];
+
+  // Field SVG: 100 yards wide (160 steps) × 84 steps deep
+  // x formula: steps_from_west_goal = (x_raw - 118) * 4
+  // y formula: steps_from_front     = y_raw * 4
+  const SCALE  = 3.5; // px per step
+  const FW     = Math.round(160 * SCALE); // 560
+  const FH     = Math.round(84  * SCALE); // 294
+  const ML = 30, MR = 8, MT = 20, MB = 14;
+  const SW = FW + ML + MR, SH = FH + MT + MB;
+
+  const fx = s => (ML + s * SCALE).toFixed(1);
+  const fy = s => (MT + s * SCALE).toFixed(1);
+
+  // Section color lookup
+  const colorMap = {};
+  if (_drillData) {
+    _drillData.forEach((sec, i) => {
+      const c = _DRILL_COLORS[i % _DRILL_COLORS.length];
+      sec.performers.forEach(idx => { colorMap[idx] = c; });
+    });
+  }
+
+  // Yard lines
+  let lines = '';
+  for (let yd = 0; yd <= 100; yd += 5) {
+    const sx = fx(yd * 1.6);
+    const major = yd % 10 === 0;
+    lines += `<line x1="${sx}" y1="${MT}" x2="${sx}" y2="${MT+FH}" stroke="${major?'#fff':'#5a5'}" stroke-width="${major?'0.8':'0.4'}"/>`;
+    if (major && yd > 0 && yd < 100) {
+      const lbl = yd > 50 ? 100 - yd : yd;
+      lines += `<text x="${sx}" y="${MT-4}" text-anchor="middle" fill="#aaa" font-size="8" font-family="sans-serif">${lbl}</text>`;
+    }
+  }
+
+  // Hash marks at 32 and 52 steps from front (approximate high-school positions)
+  for (const hs of [32, 52]) {
+    const hy = fy(hs);
+    for (let yd = 0; yd <= 100; yd += 5) {
+      const sx = parseFloat(fx(yd * 1.6));
+      lines += `<line x1="${(sx-3).toFixed(1)}" y1="${hy}" x2="${(sx+3).toFixed(1)}" y2="${hy}" stroke="#fff" stroke-width="0.5"/>`;
+    }
+  }
+
+  // Performers
+  let dots = '';
+  for (const {seqNum, x, y} of positions) {
+    const stepsX = (x - 118) * 4;
+    const stepsY = y * 4;
+    if (stepsX < -8 || stepsX > 168 || stepsY < 0 || stepsY > 100) continue;
+    const sx  = fx(stepsX), sy = fy(stepsY);
+    const col = colorMap[seqNum] || '#888';
+    const sel = _drillChecked.has(seqNum);
+    // Invisible larger tap target
+    dots += `<circle cx="${sx}" cy="${sy}" r="7" fill="transparent" onclick="drillChartToggle(${seqNum})" style="cursor:pointer"/>`;
+    if (sel) {
+      dots += `<circle cx="${sx}" cy="${sy}" r="6" fill="none" stroke="#fff" stroke-width="1.5"/>`;
+    }
+    dots += `<circle cx="${sx}" cy="${sy}" r="${sel?'4.5':'3'}" fill="${col}" pointer-events="none"/>`;
+  }
+
+  // Section legend
+  let legend = '';
+  if (_drillData) {
+    legend = _drillData.map((sec, i) => {
+      const c = _DRILL_COLORS[i % _DRILL_COLORS.length];
+      return `<span class="drill-chart-leg-item"><svg width="10" height="10" style="flex-shrink:0"><circle cx="5" cy="5" r="4" fill="${c}"/></svg>${esc(sec.letter)}</span>`;
+    }).join('');
+  }
+
+  return `
+    <div class="modal-title" style="margin-bottom:6px">Field Chart</div>
+    <div class="drill-chart-nav">
+      <button class="btn btn-sm btn-secondary" onclick="drillChartNav(-1)"${setIdx===0?' disabled':''}>&#8592;</button>
+      <span class="drill-chart-setlabel">Set ${setIdx+1} <span style="font-weight:400;color:var(--text-muted)">/ ${totalSets}</span></span>
+      <button class="btn btn-sm btn-secondary" onclick="drillChartNav(1)"${setIdx>=totalSets-1?' disabled':''}>&#8594;</button>
+    </div>
+    <div class="drill-chart-wrap">
+      <svg viewBox="0 0 ${SW} ${SH}" xmlns="http://www.w3.org/2000/svg" style="display:block;width:${SW}px;max-width:100%">
+        <rect x="${ML}" y="${MT}" width="${FW}" height="${FH}" fill="#1f5c1f"/>
+        <rect x="${ML}" y="${MT}" width="${FW}" height="${FH}" fill="none" stroke="#fff" stroke-width="1.2"/>
+        ${lines}${dots}
+        <text x="${(ML-3)}" y="${fy(0)}" text-anchor="end" fill="#777" font-size="7" font-family="sans-serif" dominant-baseline="middle">F</text>
+        <text x="${(ML-3)}" y="${fy(84)}" text-anchor="end" fill="#777" font-size="7" font-family="sans-serif" dominant-baseline="middle">B</text>
+      </svg>
+    </div>
+    ${legend ? `<div class="drill-chart-legend">${legend}</div>` : ''}
+    <div class="modal-actions" style="margin-top:8px">
+      <button class="btn btn-secondary" onclick="showDrillPickModal()">&#8592; List</button>
+      <button class="btn btn-primary" onclick="applyDrillSelection()">Apply Selection</button>
+    </div>`;
+}
+
+function drillChartNav(delta) {
+  const total = _drillPages ? _drillPages.length : 0;
+  _drillCurrentSet = Math.max(0, Math.min(total - 1, _drillCurrentSet + delta));
+  const root = document.getElementById('drill-chart-root');
+  if (root) root.innerHTML = _drillChartHtml();
+}
+
+function drillChartToggle(seqNum) {
+  if (_drillChecked.has(seqNum)) _drillChecked.delete(seqNum);
+  else _drillChecked.add(seqNum);
+  const root = document.getElementById('drill-chart-root');
+  if (root) root.innerHTML = _drillChartHtml();
 }
 
 // ── Pyware Mapping Modal ──────────────────────────────────────────────────────
