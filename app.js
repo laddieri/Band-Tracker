@@ -4480,8 +4480,6 @@ function viewRehearsal(rid) {
                 <span class="suggestion-name">${esc(s.name || `#${s.number}`)}</span>
                 <span class="suggestion-detail">${esc(fmtPos(s.column,s.row))}</span>
               </div>`).join('') : ''}
-            ${!isNameSearch && !showAllForFilter ? `
-              <div class="tracker-hint">Search by name or number, or use filters to find students.</div>` : ''}
           </div>
         ` : ''}
         ${activeCard}
