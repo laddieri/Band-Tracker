@@ -68,6 +68,11 @@ const SECTIONS = ['Woodwinds','Brass','Percussion','Front Ensemble','Color Guard
 const MISTAKE_PRESETS  = ['Out of step','Missed turn','Poor posture','Late to mark','Wrong direction','Dress/cover issue','Instrument angle','Off the line'];
 const POSITIVE_PRESETS = ['Snappy turns','Great marching style','Good posture','Strong presence','Perfect timing','Excellent dress/cover','High energy','Great recovery'];
 
+const DEFAULT_AUTO_MARKS = [
+  { id: 'am-default-1', note: 'On time to rehearsal',   type: 'positive', when: 'end', condition: 'on_time'    },
+  { id: 'am-default-2', note: 'No noticeable mistakes', type: 'positive', when: 'end', condition: 'no_mistakes' },
+];
+
 const COLUMNS      = ['A','B','C','D','E','F','G','H','I','J','K','L'];
 const ROWS         = [1,2,3,4,5,6,7,8,9,10,11,12];
 const GRADE_LEVELS = ['8th','9th','10th','11th','12th'];
@@ -119,6 +124,7 @@ const STATE = {
   features: { attendance: true, marks: true, songs: true, stats: true },
   activeStudentFields:        null,
   customStudentFields:        [],
+  autoMarks:                  null,
   _unsubs:      []
 };
 
@@ -288,6 +294,7 @@ async function startListeners() {
       STATE.customStudentFields        = Array.isArray(d.customStudentFields)  ? d.customStudentFields  : [];
       STATE.hideNegativeFromPortal     = !!d.hideNegativeFromPortal;
       STATE.countNegativeInScore       = d.countNegativeInScore !== false;
+      STATE.autoMarks                  = Array.isArray(d.autoMarks) ? d.autoMarks : null;
       if (!STATE.loading) render();
     }),
 
@@ -2103,6 +2110,13 @@ function showMarksOptionsModal() {
         <div>
           <div class="options-menu-label">Manage Mark Presets</div>
           <div class="options-menu-sub">Edit preset comments for marks</div>
+        </div>
+      </button>
+      <button class="options-menu-item" onclick="closeModal();showAutoMarksModal()">
+        <div class="options-menu-icon">⚡</div>
+        <div>
+          <div class="options-menu-label">Auto Marks</div>
+          <div class="options-menu-sub">Marks awarded automatically at rehearsal start or end</div>
         </div>
       </button>
     </div>
@@ -4426,7 +4440,7 @@ function viewRehearsal(rid) {
 
     ${r.ended ? `
       <div class="ended-banner">
-        ✓ Rehearsal ended — automatic positive marks have been applied
+        ✓ Rehearsal ended — auto marks applied
       </div>` : ''}
   `;
 }
@@ -4774,24 +4788,42 @@ function setAttendance(rid, num, status) {
   apply();
 }
 
+function _getAutoMarks() {
+  return STATE.autoMarks ?? DEFAULT_AUTO_MARKS;
+}
+
+function _checkAutoMarkCondition(mark, att, mistakes) {
+  if (att === 'absent') return false;
+  switch (mark.condition) {
+    case 'on_time':     return att !== 'late';
+    case 'no_mistakes': return mistakes === 0;
+    case 'present':     return true;
+    default:            return true;
+  }
+}
+
+function _computeAutoMarkEvents(entry, r) {
+  const att        = entry.attendance || 'present';
+  const baseEvents = (entry.events || []).filter(e => !e.auto);
+  const mistakes   = baseEvents.filter(e => e.type === 'mistake').length;
+  const events     = [...baseEvents];
+  for (const mark of _getAutoMarks()) {
+    const whenOk = mark.when === 'start' ? !!r.attendanceSubmitted : !!r.ended;
+    if (!whenOk) continue;
+    if (_checkAutoMarkCondition(mark, att, mistakes)) {
+      events.push({ type: mark.type || 'positive', note: mark.note, ts: Date.now(), by: 'system', auto: true });
+    }
+  }
+  return events;
+}
+
 function _recalcAutoBonuses(rid, num) {
   const r = STATE.rehearsals.find(r => r.id === rid);
-  if (!r?.ended) return;
+  if (!r?.attendanceSubmitted && !r?.ended) return;
   const entry = STATE.entries[rid]?.[num];
   if (!entry) return;
 
-  const att = entry.attendance || 'present';
-  const baseEvents = (entry.events || []).filter(e =>
-    e.note !== 'On time to rehearsal' && e.note !== 'No noticeable mistakes'
-  );
-
-  const isOnTime   = att !== 'late' && att !== 'absent';
-  const noMistakes = att !== 'absent' && baseEvents.filter(e => e.type === 'mistake').length === 0;
-
-  const events = [...baseEvents];
-  if (isOnTime)   events.push({ type: 'positive', note: 'On time to rehearsal',   ts: Date.now(), by: 'system', auto: true });
-  if (noMistakes) events.push({ type: 'positive', note: 'No noticeable mistakes', ts: Date.now(), by: 'system', auto: true });
-
+  const events    = _computeAutoMarkEvents(entry, r);
   const positives = events.filter(e => e.type === 'positive').length;
   STATE.entries[rid][num] = { ...entry, events, positives };
   fsUpsertEntry(rid, num, {
@@ -4871,6 +4903,9 @@ function submitAttendance(rid) {
   if (!r) return;
   r.attendanceSubmitted = true;
   orgCol('rehearsals').doc(rid).set({ attendanceSubmitted: true }, { merge: true });
+  if (_getAutoMarks().some(m => m.when === 'start')) {
+    Object.keys(STATE.students).forEach(num => _recalcAutoBonuses(rid, num));
+  }
   showToast('Attendance submitted.');
   _attModifyMode = false;
   reRender(rid);
@@ -5647,18 +5682,18 @@ function saveRehearsalEdit(rid) {
 function confirmEndRehearsal(rid) {
   const r = DB.getRehearsals().find(r => r.id === rid);
   if (!r) return;
-  const entries  = DB.getRehearsalEntries(rid);
-  const students = DB.getStudents();
-  const eligible = Object.keys(students).filter(num => !(entries[num]?.mistakes > 0));
+  const endMarks = _getAutoMarks().filter(m => m.when === 'end');
+  const marksList = endMarks.length
+    ? endMarks.map(m => `<li>${esc(m.note)}</li>`).join('')
+    : '<li style="color:var(--text-muted)">None configured</li>';
   openModal(`
     <div class="modal-title">End Rehearsal?</div>
-    <p style="font-size:0.9rem;color:var(--text-muted);margin-bottom:16px">
-      <strong>${eligible.length} student${eligible.length !== 1 ? 's' : ''}</strong>
-      with no mistakes will receive an automatic positive mark:<br>
-      <em>"No noticeable mistakes"</em>
+    <p style="font-size:0.9rem;color:var(--text-muted);margin-bottom:8px">
+      The following auto marks will be applied to eligible students:
     </p>
+    <ul style="font-size:0.85rem;color:var(--text);margin:0 0 16px 16px;line-height:1.7">${marksList}</ul>
     <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:20px">
-      Students who already have that mark from a previous end will not get a duplicate.
+      Existing auto marks will be recalculated — no duplicates.
     </p>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
@@ -5674,33 +5709,15 @@ async function endRehearsal(rid) {
   const entries  = STATE.entries[rid] || {};
   const students = STATE.students;
   const batch    = db.batch();
-  let onTimeCount     = 0;
-  let noMistakeCount  = 0;
+  let autoCount = 0;
+
+  r.ended = true; // set before _computeAutoMarkEvents so 'end' marks are included
 
   for (const [num] of Object.entries(students)) {
-    const entry = entries[num] || { mistakes: 0, positives: 0, notes: '', events: [] };
-    const att   = entry.attendance || 'present';
-
-    if (att === 'absent') continue; // absent students receive no auto-marks
-
-    const isOnTime   = att !== 'late';
-    const noMistakes = (entry.mistakes || 0) === 0;
-
-    if (!isOnTime && !noMistakes) continue;
-
-    // Strip previous auto-marks so re-ending a rehearsal doesn't duplicate
-    let events = (entry.events || []).filter(e =>
-      e.note !== 'On time to rehearsal' && e.note !== 'No noticeable mistakes'
-    );
-
-    if (isOnTime) {
-      events.push({ type: 'positive', note: 'On time to rehearsal', ts: Date.now(), by: 'system', auto: true });
-      onTimeCount++;
-    }
-    if (noMistakes) {
-      events.push({ type: 'positive', note: 'No noticeable mistakes', ts: Date.now(), by: 'system', auto: true });
-      noMistakeCount++;
-    }
+    const entry  = entries[num] || { mistakes: 0, positives: 0, notes: '', events: [] };
+    const events = _computeAutoMarkEvents(entry, r);
+    const newAuto = events.filter(e => e.auto).length;
+    autoCount += newAuto;
 
     const positives = events.filter(e => e.type === 'positive').length;
     const docRef    = orgCol('entries').doc(`${rid}_${num}`);
@@ -5720,18 +5737,13 @@ async function endRehearsal(rid) {
     STATE.entries[rid][num] = { ...entry, events, positives };
   }
 
-  r.ended = true;
   orgCol('rehearsals').doc(rid).set({ ended: true }, { merge: true });
   await batch.commit();
-  // Advance active rehearsal to the next open one if this was the active one
   if (_activeRid === rid || !_activeRid) {
     const next = STATE.rehearsals.find(r2 => !r2.ended && r2.id !== rid);
     _activeRid = next ? next.id : null;
   }
-  const parts = [];
-  if (onTimeCount)    parts.push(`${onTimeCount} on time`);
-  if (noMistakeCount) parts.push(`${noMistakeCount} no-mistake`);
-  showToast(`Rehearsal ended — ${parts.length ? parts.join(', ') + ' positives applied.' : 'no auto-positives.'}`);
+  showToast(`Rehearsal ended — ${autoCount ? `${autoCount} auto mark${autoCount !== 1 ? 's' : ''} applied.` : 'no auto marks.'}`);
   render();
 }
 
@@ -6095,6 +6107,113 @@ async function _savePresets() {
     console.error('Failed to save presets:', e);
     showToast('Failed to save presets.');
   }
+}
+
+// ── Auto Marks Settings ───────────────────────────────────────────────────────
+
+function showAutoMarksModal() {
+  if (!STATE.isAdmin) return;
+  const marks = _getAutoMarks();
+  const condLabel = c => ({ on_time: 'On time', no_mistakes: 'No mistakes', present: 'Present' }[c] || c);
+  const whenLabel = w => w === 'start' ? 'Attendance submitted' : 'Rehearsal ends';
+
+  const rows = marks.length
+    ? marks.map(m => `
+        <div class="auto-mark-row">
+          <div class="auto-mark-info">
+            <div class="auto-mark-note">${esc(m.note)}</div>
+            <div class="auto-mark-meta">${condLabel(m.condition)} · ${whenLabel(m.when)}</div>
+          </div>
+          <div class="auto-mark-actions">
+            <button class="icon-btn" onclick="showEditAutoMarkModal('${esc(m.id)}')" title="Edit">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px">
+                <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+            </button>
+            <button class="icon-btn icon-btn-danger" onclick="deleteAutoMark('${esc(m.id)}')" title="Delete">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
+                <path d="M9 6V4h6v2"/>
+              </svg>
+            </button>
+          </div>
+        </div>`)
+        .join('')
+    : '<p style="font-size:0.85rem;color:var(--text-muted);text-align:center;padding:8px 0">No auto marks configured.</p>';
+
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Auto Marks</div>
+    <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:14px">
+      Automatically award marks to students based on attendance and performance.
+    </p>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">${rows}</div>
+    <button class="btn btn-primary btn-full" onclick="showEditAutoMarkModal(null)">+ Add Auto Mark</button>
+    <div class="modal-actions" style="margin-top:8px">
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Done</button>
+    </div>
+  `);
+}
+
+function showEditAutoMarkModal(id) {
+  const existing = id ? _getAutoMarks().find(m => m.id === id) : null;
+  const sel = (v, match) => v === match ? 'selected' : '';
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">${existing ? 'Edit Auto Mark' : 'New Auto Mark'}</div>
+    <div class="form-group">
+      <label class="form-label">Mark text</label>
+      <input class="form-input" id="am-note" type="text"
+             value="${esc(existing?.note || '')}" placeholder="e.g. Full rehearsal attended">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Award when</label>
+      <select class="form-input" id="am-when">
+        <option value="end"   ${sel(existing?.when ?? 'end', 'end'  )}>Rehearsal ends</option>
+        <option value="start" ${sel(existing?.when,          'start')}>Attendance submitted</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Condition</label>
+      <select class="form-input" id="am-condition">
+        <option value="on_time"    ${sel(existing?.condition ?? 'on_time', 'on_time'   )}>On time — not absent, not late</option>
+        <option value="present"    ${sel(existing?.condition,              'present'   )}>Present — not absent (includes late)</option>
+        <option value="no_mistakes"${sel(existing?.condition,              'no_mistakes')}>No mistakes — present with zero mistake marks</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="showAutoMarksModal()">Back</button>
+      <button class="btn btn-primary" onclick="saveAutoMark('${esc(id || '')}')">Save</button>
+    </div>
+  `);
+}
+
+function saveAutoMark(id) {
+  const note = document.getElementById('am-note')?.value.trim();
+  if (!note) { showToast('Mark text is required'); return; }
+  const when      = document.getElementById('am-when')?.value      || 'end';
+  const condition = document.getElementById('am-condition')?.value || 'on_time';
+  const marks     = [..._getAutoMarks()];
+  if (id) {
+    const idx = marks.findIndex(m => m.id === id);
+    if (idx >= 0) marks[idx] = { ...marks[idx], note, when, condition };
+  } else {
+    marks.push({ id: `am-${Date.now()}`, note, type: 'positive', when, condition });
+  }
+  STATE.autoMarks = marks;
+  orgCol('settings').doc('presets').set({ autoMarks: marks }, { merge: true });
+  showToast('Auto mark saved.');
+  showAutoMarksModal();
+}
+
+function deleteAutoMark(id) {
+  const marks = _getAutoMarks().filter(m => m.id !== id);
+  STATE.autoMarks = marks;
+  orgCol('settings').doc('presets').set({ autoMarks: marks }, { merge: true });
+  showToast('Auto mark removed.');
+  showAutoMarksModal();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

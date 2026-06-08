@@ -151,6 +151,14 @@ html, body {
 .icon-btn:hover { background: rgba(255,255,255,.25); }
 .icon-btn svg { width: 20px; height: 20px; }
 .icon-btn.hidden { display: none !important; }
+.icon-btn-danger { color: var(--danger); }
+.icon-btn-danger:hover { background: var(--danger-bg); }
+
+.auto-mark-row { display:flex; align-items:center; gap:10px; padding:10px 12px; background:var(--surface-alt); border:1.5px solid var(--border); border-radius:var(--r-sm); }
+.auto-mark-info { flex:1; min-width:0; }
+.auto-mark-note { font-size:0.88rem; font-weight:600; color:var(--text); }
+.auto-mark-meta { font-size:0.76rem; color:var(--text-muted); margin-top:2px; }
+.auto-mark-actions { display:flex; gap:2px; flex-shrink:0; }
 
 /* ── Main content ───────────────────────────────────────────────────────── */
 
