@@ -6845,13 +6845,13 @@ function _parsePywarePages(buffer) {
   const u8   = new Uint8Array(buffer);
   const view = new DataView(buffer);
   const pages = [];
-  for (let i = 0; i < u8.length - 2890; i++) {
+  for (let i = 0; i < u8.length - 10; i++) {
     // Look for 'PAGE' tag
     if (u8[i]!==0x50||u8[i+1]!==0x41||u8[i+2]!==0x47||u8[i+3]!==0x45) continue;
-    const blockLen = view.getUint32(i + 4, false); // big-endian
-    const count    = view.getUint16(i + 8, false);
-    if (count !== 144 || blockLen !== 2882) continue; // skip non-performer PAGE blocks
+    const count = view.getUint16(i + 8, false); // big-endian performer count
+    if (count !== 144) continue; // only accept full 144-performer sets
     const base0 = i + 10;
+    if (base0 + 144 * 20 > u8.length) continue; // bounds check
     const positions = [];
     for (let e = 0; e < 144; e++) {
       const b = base0 + e * 20;
@@ -6862,7 +6862,7 @@ function _parsePywarePages(buffer) {
       });
     }
     pages.push(positions);
-    i += 2889; // skip to end of block; outer loop adds 1
+    i += 2889; // skip past this block; outer loop adds 1
   }
   return pages;
 }
