@@ -3198,20 +3198,20 @@ function viewStudentPortal(previewMode = false) {
         </div>
         <div id="portal-sec-attendance" class="sec-collapsed">
           <div class="portal-stats">
-            <div class="portal-stat">
+            <button type="button" class="portal-stat portal-stat-btn" onclick="showPortalRehearsalsModal()">
               <div class="portal-stat-value">${hist.length}</div>
               <div class="portal-stat-label">Rehearsals</div>
-            </div>
+            </button>
             ${featureOn('marks') ? `
             ${!STATE.hideNegativeFromPortal ? `
-            <div class="portal-stat">
+            <button type="button" class="portal-stat portal-stat-btn" onclick="showPortalMistakesModal()">
               <div class="portal-stat-value portal-stat-mistake">${totalErr}</div>
               <div class="portal-stat-label">Mistake Marks</div>
-            </div>` : ''}
-            <div class="portal-stat">
+            </button>` : ''}
+            <button type="button" class="portal-stat portal-stat-btn" onclick="showPortalPositivesModal()">
               <div class="portal-stat-value portal-stat-positive">${totalPos}</div>
               <div class="portal-stat-label">Positives</div>
-            </div>` : ''}
+            </button>` : ''}
           </div>
           ${(() => {
             const absences = hist.filter(({entry:e}) => e.attendance === 'absent');
@@ -3350,6 +3350,113 @@ function viewStudentPortal(previewMode = false) {
         📊 View Band Stats &amp; Leaderboard
       </button>` : ''}
     </div>`;
+}
+
+function showPortalRehearsalsModal() {
+  const num  = STATE.studentNum;
+  const hist = DB.getStudentHistory(num);
+  if (!hist.length) {
+    openModal(`<div class="modal-title">Rehearsal History</div><p class="empty-state" style="padding:24px 0">No rehearsal history yet.</p>`);
+    return;
+  }
+  const rows = hist.map(({rehearsal: r, entry: e}) => {
+    const att = e.attendance;
+    const attBadge = att === 'absent' ? `<span class="portal-badge att-portal-badge-absent">Absent</span>`
+                   : att === 'late'   ? `<span class="portal-badge att-portal-badge-late">Late</span>`
+                   : att === 'present'? `<span class="portal-badge portal-badge-present">Present</span>`
+                   : '';
+    const mistakeBadge = featureOn('marks') && !STATE.hideNegativeFromPortal && (e.mistakes||0) > 0
+      ? `<span class="portal-badge portal-badge-mistake">✗ ${e.mistakes}</span>` : '';
+    const posBadge = featureOn('marks') && (e.positives||0) > 0
+      ? `<span class="portal-badge portal-badge-positive">✓ ${e.positives}</span>` : '';
+    const noteText = e.notes ? `<div class="portal-modal-entry-note">${esc(e.notes)}</div>` : '';
+    return `
+      <div class="portal-modal-row">
+        <div class="portal-modal-row-info">
+          <div class="portal-modal-date">${fmtDate(r.date)}</div>
+          ${r.label ? `<div class="portal-modal-label">${esc(r.label)}</div>` : ''}
+          ${noteText}
+        </div>
+        <div class="portal-badges" style="flex-shrink:0">${attBadge}${mistakeBadge}${posBadge}</div>
+      </div>`;
+  }).join('');
+  openModal(`<div class="modal-title">Rehearsal History</div><div class="portal-modal-list">${rows}</div>`);
+}
+
+function showPortalMistakesModal() {
+  const num  = STATE.studentNum;
+  const hist = DB.getStudentHistory(num);
+  const relevant = hist.filter(({entry: e}) => (e.mistakes || 0) > 0);
+  if (!relevant.length) {
+    openModal(`<div class="modal-title">Mistake Marks</div><p class="empty-state" style="padding:24px 0">No mistake marks recorded.</p>`);
+    return;
+  }
+  const totalErr = relevant.reduce((sum, {entry: e}) => sum + (e.mistakes || 0), 0);
+  const sections = relevant.map(({rehearsal: r, entry: e}) => {
+    const noteEvts = (e.events || []).filter(ev => ev.type === 'mistake' && ev.note?.trim());
+    const blankCount = Math.max(0, (e.mistakes || 0) - noteEvts.length);
+    const noteRows = noteEvts.map(ev => `
+      <div class="portal-event-row ${ev.sectionMark ? 'is-section-mark' : ''}">
+        <span class="event-note-type is-mistake">✗</span>
+        ${ev.sectionMark ? `<span class="section-mark-badge">§ ${esc(ev.section||'Section')}</span>` : ''}
+        ${ev.segment ? `<span class="event-seg">${esc(ev.segment)}</span>` : ''}
+        <span class="portal-event-text">${esc(ev.note)}</span>
+        ${ev.ts ? `<span class="event-note-time">${fmtTime(ev.ts)}</span>` : ''}
+      </div>`).join('');
+    const blankRow = blankCount > 0
+      ? `<div class="portal-modal-blank-marks">+ ${blankCount} mark${blankCount!==1?'s':''} without notes</div>` : '';
+    return `
+      <div class="portal-modal-section">
+        <div class="portal-modal-section-hdr">
+          <span class="portal-modal-date">${fmtDate(r.date)}</span>
+          ${r.label ? `<span class="portal-modal-label">${esc(r.label)}</span>` : ''}
+          <span class="portal-badge portal-badge-mistake" style="margin-left:auto">✗ ${e.mistakes}</span>
+        </div>
+        ${noteRows}${blankRow}
+      </div>`;
+  }).join('');
+  openModal(`
+    <div class="modal-title">Mistake Marks</div>
+    <div class="portal-modal-total portal-total-mistake">${totalErr} total mistake mark${totalErr!==1?'s':''}</div>
+    <div class="portal-modal-list">${sections}</div>`);
+}
+
+function showPortalPositivesModal() {
+  const num  = STATE.studentNum;
+  const hist = DB.getStudentHistory(num);
+  const relevant = hist.filter(({entry: e}) => (e.positives || 0) > 0);
+  if (!relevant.length) {
+    openModal(`<div class="modal-title">Positive Marks</div><p class="empty-state" style="padding:24px 0">No positive marks recorded yet.</p>`);
+    return;
+  }
+  const totalPos = relevant.reduce((sum, {entry: e}) => sum + (e.positives || 0), 0);
+  const sections = relevant.map(({rehearsal: r, entry: e}) => {
+    const noteEvts = (e.events || []).filter(ev => ev.type === 'positive' && ev.note?.trim());
+    const blankCount = Math.max(0, (e.positives || 0) - noteEvts.length);
+    const noteRows = noteEvts.map(ev => `
+      <div class="portal-event-row ${ev.sectionMark ? 'is-section-mark' : ''}">
+        <span class="event-note-type is-positive">✓</span>
+        ${ev.sectionMark ? `<span class="section-mark-badge">§ ${esc(ev.section||'Section')}</span>` : ''}
+        ${ev.segment ? `<span class="event-seg">${esc(ev.segment)}</span>` : ''}
+        <span class="portal-event-text">${esc(ev.note)}</span>
+        ${ev.ts ? `<span class="event-note-time">${fmtTime(ev.ts)}</span>` : ''}
+      </div>`).join('');
+    const blankRow = blankCount > 0
+      ? `<div class="portal-modal-blank-marks portal-blank-positive">+ ${blankCount} positive${blankCount!==1?'s':''} without notes</div>` : '';
+    return `
+      <div class="portal-modal-section">
+        <div class="portal-modal-section-hdr">
+          <span class="portal-modal-date">${fmtDate(r.date)}</span>
+          ${r.label ? `<span class="portal-modal-label">${esc(r.label)}</span>` : ''}
+          <span class="portal-badge portal-badge-positive" style="margin-left:auto">✓ ${e.positives}</span>
+        </div>
+        ${noteRows}${blankRow}
+      </div>`;
+  }).join('');
+  openModal(`
+    <div class="modal-title">Positive Marks</div>
+    <div class="portal-modal-total portal-total-positive">${totalPos} total positive mark${totalPos!==1?'s':''}</div>
+    <div class="portal-modal-list">${sections}</div>`);
 }
 
 function toggleCollapse(id) {
