@@ -445,8 +445,9 @@ function navigate(view, params = {}, _fromHistory = false) {
     _dashRid = null; _dashForceHistory = false;
   }
   if (_view === 'attendance' && view !== 'attendance') {
-    _attModifyMode = false;
-    _attFilter     = _mkFilter('name', 'asc');
+    _attModifyMode       = false;
+    _attPresentCollapsed = true;
+    _attFilter           = _mkFilter('name', 'asc');
   }
   if (_view === 'roster' && view !== 'roster') {
     _rosterFilter = _mkFilter('name', 'asc');
@@ -476,6 +477,7 @@ let _dashRid        = null; // null = all rehearsals
 let _activeRid      = null; // which open rehearsal is currently being marked
 let _dashForceHistory = false; // force dashboard into historical view even when rehearsal is open
 let _attModifyMode           = false; // true = show edit UI even when attendance is submitted
+let _attPresentCollapsed     = true;  // collapsed state of the "marked present" section
 let _blockMode  = false;
 let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
 let _drillData       = null; // parsed Pyware sections: [{letter, performers:[label]}]
@@ -4759,9 +4761,10 @@ function viewAttendance(rid) {
 
   const submitted = r?.attendanceSubmitted || false;
   if (submitted && !_attModifyMode) return viewAttendanceSummary(rid);
-  const absent   = students.filter(s => entries[s.number]?.attendance === 'absent').length;
-  const late     = students.filter(s => entries[s.number]?.attendance === 'late').length;
-  const unmarked = students.length - absent - late;
+  const absent        = students.filter(s => entries[s.number]?.attendance === 'absent').length;
+  const late          = students.filter(s => entries[s.number]?.attendance === 'late').length;
+  const markedPresent = students.filter(s => entries[s.number]?.attendance === 'present').length;
+  const unmarked      = students.length - absent - late - markedPresent;
 
   // Build attMap for status-based sorting
   const attMap = {};
@@ -4778,7 +4781,8 @@ function viewAttendance(rid) {
     <div class="att-screen-summary-bar">
       <span class="att-summary-chip att-chip-absent">${absent} Absent</span>
       <span class="att-summary-chip att-chip-late">${late} Late</span>
-      <span class="att-summary-chip att-chip-present">${unmarked} Present</span>
+      <span class="att-summary-chip att-chip-present">${markedPresent} Present</span>
+      ${unmarked > 0 ? `<span class="att-summary-chip att-chip-unmarked">${unmarked} Remaining</span>` : ''}
     </div>
 
     ${renderFilterBar('att', _attFilter, [
@@ -4812,32 +4816,63 @@ function buildAttBodyHtml(rid, students, entries) {
     attMap[s.number] = { att: entries[s.number]?.attendance || 'present' };
   });
 
-  const pool = filterAndSortStudents(students, _attFilter, attMap);
+  // Students explicitly marked present are hidden from the main list
+  const presentPool = students.filter(s => entries[s.number]?.attendance === 'present');
+  const nonPresent  = students.filter(s => entries[s.number]?.attendance !== 'present');
+  const mainPool    = filterAndSortStudents(nonPresent, _attFilter, attMap);
 
-  if (!pool.length) {
-    const hasFilter = _attFilter.search || _attFilter.instruments.length || _attFilter.grades.length || _attFilter.sections.length;
+  const hasFilter = _attFilter.search || _attFilter.instruments.length ||
+                    _attFilter.grades.length  || _attFilter.sections.length;
+
+  let html = '';
+  if (mainPool.length) {
+    html = mainPool.map(s => attStudentRow(rid, s, entries)).join('');
+  } else if (!presentPool.length) {
     const msg = hasFilter ? 'No students match the current filter.' : 'No students in this group.';
-    return `<div class="empty-state" style="padding:24px"><p>${msg}</p></div>`;
+    html = `<div class="empty-state" style="padding:24px"><p>${msg}</p></div>`;
+  } else if (!hasFilter) {
+    html = `<div class="att-all-marked">All students have been marked.</div>`;
   }
 
-  return pool.map(s => attStudentRow(rid, s, entries)).join('');
+  if (presentPool.length) {
+    const collapsed = _attPresentCollapsed;
+    html += `
+      <div class="att-present-section">
+        <button class="att-present-toggle" onclick="toggleAttPresentSection('${esc(rid)}')">
+          <span>✓ Marked Present (${presentPool.length})</span>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="transition:transform .2s;transform:rotate(${collapsed ? '0' : '180'}deg)"><polyline points="2,4 7,10 12,4"/></svg>
+        </button>
+        ${!collapsed ? `<div class="att-present-list">${presentPool.map(s => attStudentRow(rid, s, entries)).join('')}</div>` : ''}
+      </div>`;
+  }
+
+  return html;
+}
+
+function toggleAttPresentSection(rid) {
+  _attPresentCollapsed = !_attPresentCollapsed;
+  const el = document.getElementById('att-student-list');
+  if (el) el.innerHTML = buildAttBodyHtml(rid, Object.values(DB.getStudents()), STATE.entries[rid] || {});
 }
 
 // filterAttendanceList replaced by updateFilter / unified filter bar
 
 function attStudentRow(rid, s, entries) {
-  const att  = entries[s.number]?.attendance || null; // null = unmarked = present
+  const att  = entries[s.number]?.attendance || null;
   const meta = [fmtPos(s.column, s.row), normInstrument(s.instrument)].filter(Boolean).join(' · ');
+  const rowClass = att === 'absent' ? 'att-stu-absent' : att === 'late' ? 'att-stu-late' : att === 'present' ? 'att-stu-present' : '';
   return `
-    <div class="att-stu-row ${att === 'absent' ? 'att-stu-absent' : att === 'late' ? 'att-stu-late' : ''}">
+    <div class="att-stu-row ${rowClass}">
       <div class="att-stu-info">
         <span class="att-stu-name">${esc(s.name || `#${s.number}`)}</span>
         ${meta ? `<div class="att-stu-meta">${esc(meta)}</div>` : ''}
       </div>
       <div class="att-stu-btns">
-        <button class="att-btn att-late   ${att==='late'   ?'att-on-late':''}"
+        <button class="att-btn att-present ${att==='present'?'att-on-present':''}"
+                onclick="setAttendance('${esc(rid)}','${esc(s.number)}','present')" title="Mark present">✓</button>
+        <button class="att-btn att-late    ${att==='late'   ?'att-on-late':''}"
                 onclick="setAttendance('${esc(rid)}','${esc(s.number)}','late')">◷ Late</button>
-        <button class="att-btn att-absent ${att==='absent' ?'att-on-absent':''}"
+        <button class="att-btn att-absent  ${att==='absent' ?'att-on-absent':''}"
                 onclick="setAttendance('${esc(rid)}','${esc(s.number)}','absent')">✗ Absent</button>
       </div>
     </div>`;
