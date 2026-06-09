@@ -1679,6 +1679,83 @@ html, body {
   text-transform: uppercase;
   letter-spacing: .04em;
 }
+.portal-stat-btn {
+  cursor: pointer;
+  transition: transform 0.12s, box-shadow 0.12s, border-color 0.12s;
+  font-family: inherit;
+}
+.portal-stat-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.10);
+  border-color: var(--primary);
+}
+.portal-stat-btn:active {
+  transform: translateY(0);
+}
+/* Portal stat drill-down modals */
+.portal-modal-list {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  max-height: 65vh;
+}
+.portal-modal-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border);
+}
+.portal-modal-row:last-child { border-bottom: none; }
+.portal-modal-row-info { flex: 1; min-width: 0; }
+.portal-modal-date {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.portal-modal-label {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+.portal-modal-entry-note {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-top: 3px;
+}
+.portal-modal-total {
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.portal-total-mistake { color: var(--danger); }
+.portal-total-positive { color: var(--success); }
+.portal-modal-section { margin-bottom: 14px; }
+.portal-modal-section:last-child { margin-bottom: 0; }
+.portal-modal-section-hdr {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.portal-modal-blank-marks {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  padding: 4px 0 2px 22px;
+}
+.portal-blank-positive { color: var(--success-muted, var(--success)); opacity: 0.75; }
+.portal-badge-present {
+  background: #dcfce7;
+  color: #15803d;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 99px;
+}
 
 /* ── CSV Import ─────────────────────────────────────────────────────────────── */
 
