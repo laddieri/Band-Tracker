@@ -475,6 +475,7 @@ let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
 let _drillData       = null; // parsed Pyware sections: [{letter, performers:[label]}]
 let _drillPages      = null; // distinct formation frames: [{label,section,num,stepsX,stepsY}][]
 let _drillCurrentSet = 0;    // currently viewed frame index in chart modal
+let _drillFlipV      = false; // chart vertical flip (Pyware "facing" orientation)
 let _drillSelectedNums = []; // student numbers selected via drill
 let _pendingSegment    = ''; // currently selected rehearsal segment in mark modal
 let _pendingStudentCode = ''; // code being verified for anonymous student login
@@ -6789,23 +6790,22 @@ function buildAttendanceReportHTML(rehearsals, periodLabel) {
 
 // ── Pyware 3D Drill Integration ───────────────────────────────────────────────
 //
-// .3dj performer record (20 bytes), reverse-engineered and verified against a
-// known drill (every set's yard lines and step counts matched exactly):
-//   byte 6      = performer number within its section (1..N)
-//   byte 8      = section letter, ASCII ('A'..'I', etc.)
-//   bytes 13-14 = X, big-endian, 120 internal units per marching step
-//   bytes 15-16 = Y, big-endian, 120 internal units per marching step
-// A performer is identified by their drill label (section + number, e.g. "A1") —
-// stable, human-meaningful, and the key we map drill positions to students by.
-//
-// (The earlier parser read byte 4 for X — a coarse 2.5-yard grid — and byte 6
-// for Y, which is actually the performer number, not depth. That's why
-// positions landed out of bounds. Section data also came from a SEL1 block that
-// is empty in real files; sections now come straight from byte 8.)
-
-const _PYWARE_X0  = 23168; // internal X value at the west goal line
-const _PYWARE_Y0  = 27728; // internal Y value at the front sideline
-const _PYWARE_UPS = 120;   // internal units per marching step
+// .3dj performer record (20 bytes), reverse-engineered and verified exactly
+// against two known drills (every set's yard lines and step depths matched):
+//   byte 1      = stable performer id (follows a performer across all frames)
+//   byte 6      = per-frame ordinal (re-assigned each frame — NOT an identity)
+//   byte 8      = section/symbol letter, ASCII
+//   bytes 13-14 = X, big-endian
+//   bytes 15-16 = Y, big-endian
+// The marching field occupies a FIXED rectangle in Pyware's internal grid,
+// identical across files: 120 units = 1 step (192 = 1 yard); the west goal line
+// is at X 23168, and the two sidelines are at Y 27728 and 37808 (84 steps
+// apart). Pyware's "facing" setting decides which sideline is the front; we
+// default to the high-Y sideline and offer a flip in the chart.
+const _PY_WESTGOAL = 23168; // grid X at the west goal line
+const _PY_FRONT_Y  = 37808; // grid Y at the (default) front sideline
+const _PY_UNIT     = 120;   // grid units per marching step
+const _PY_DEPTH    = 84;    // field depth in steps (front sideline to back)
 
 function _parsePywareFile(buffer) {
   const u8   = new Uint8Array(buffer);
@@ -6813,9 +6813,7 @@ function _parsePywareFile(buffer) {
   if (u8[0]!==0x33||u8[1]!==0x44||u8[2]!==0x4A||u8[3]!==0x56)
     throw new Error('This does not look like a Pyware .3dj file.');
 
-  // Read every PAGE block (one frame of 144 records). byte 1 is the stable
-  // performer id; byte 6 ("number") is re-assigned every frame, so it can't
-  // identify a performer on its own — we bind a fixed label to byte 1 below.
+  // Read every PAGE block (one frame of 144 records), keyed by the stable id.
   const rawFrames = [];
   for (let i = 0; i < u8.length - 10; i++) {
     if (u8[i]!==0x50||u8[i+1]!==0x41||u8[i+2]!==0x47||u8[i+3]!==0x45) continue; // 'PAGE'
@@ -6828,11 +6826,10 @@ function _parsePywareFile(buffer) {
       const xRaw = (u8[b + 13] << 8) | u8[b + 14];
       const yRaw = (u8[b + 15] << 8) | u8[b + 16];
       frame.push({
-        pid:     u8[b + 1],                       // stable performer id
-        section: String.fromCharCode(u8[b + 8]),  // section letter
-        num:     u8[b + 6],                        // per-frame ordinal (not stable)
-        stepsX: (xRaw - _PYWARE_X0) / _PYWARE_UPS, // steps from west goal line
-        stepsY: (yRaw - _PYWARE_Y0) / _PYWARE_UPS, // steps off the front sideline
+        pid:     u8[b + 1],
+        section: String.fromCharCode(u8[b + 8]),
+        stepsX: (xRaw - _PY_WESTGOAL) / _PY_UNIT, // steps from west goal (0..160)
+        stepsY: (_PY_FRONT_Y - yRaw)  / _PY_UNIT, // steps off the front sideline (0..84)
       });
     }
     rawFrames.push(frame);
@@ -6840,14 +6837,22 @@ function _parsePywareFile(buffer) {
   }
   if (!rawFrames.length) throw new Error('No performer position data found in this file.');
 
-  // Fix each performer's drill label (e.g. "A1") from the FIRST frame and bind
-  // it to the stable id, so a label always refers to the same physical
-  // performer across every set — essential for mapping positions to students.
+  // Assign each performer a fixed drill label from the FIRST frame — section
+  // letter + front-to-back rank within that section (so "A1" is the front-most
+  // of column A, matching Pyware) — and bind it to the stable id so a label
+  // always means the same physical performer across every set.
   const labelOf = {}, sectionOf = {};
-  rawFrames[0].forEach(p => { labelOf[p.pid] = p.section + p.num; sectionOf[p.pid] = p.section; });
+  const bySec = {};
+  rawFrames[0].forEach(p => { (bySec[p.section] = bySec[p.section] || []).push(p); });
+  Object.values(bySec).forEach(arr => {
+    arr.sort((a, b) => a.stepsY - b.stepsY).forEach((p, idx) => {
+      labelOf[p.pid] = p.section + (idx + 1);
+      sectionOf[p.pid] = p.section;
+    });
+  });
 
   const allFrames = rawFrames.map(f => f.map(p => ({
-    label:   labelOf[p.pid]   || (p.section + p.num),
+    label:   labelOf[p.pid]   || p.section,
     section: sectionOf[p.pid] || p.section,
     stepsX:  p.stepsX,
     stepsY:  p.stepsY,
@@ -6861,7 +6866,7 @@ function _parsePywareFile(buffer) {
   let lastSig = null;
   for (const f of allFrames) { const s = sig(f); if (s !== lastSig) { pages.push(f); lastSig = s; } }
 
-  // Sections (ordered A,B,…) with their performer labels (A1,A2,…A10 in order).
+  // Sections (A,B,…) with their performer labels (A1,A2,…A10 in order).
   const labelNum = lbl => parseInt(lbl.replace(/^\D+/, ''), 10) || 0;
   const secMap = {};
   pages[0].forEach(p => { (secMap[p.section] = secMap[p.section] || []).push(p.label); });
@@ -7072,7 +7077,7 @@ function _drillChartHtml() {
   const positions = _drillPages[idx];
   const total     = _drillPages.length;
 
-  const navLabel     = `Set ${idx + 1} <span style="font-weight:400;color:var(--text-muted)">of ${total}</span>`;
+  const navLabel     = `Formation ${idx + 1} <span style="font-weight:400;color:var(--text-muted)">of ${total}</span>`;
   const prevDisabled = idx <= 0;
   const nextDisabled = idx >= total - 1;
 
@@ -7084,7 +7089,9 @@ function _drillChartHtml() {
   const ML = 30, MR = 8, MT = 20, MB = 14;
   const SW = FW + ML + MR, SH = FH + MT + MB;
   const fx = s => (ML + s * SCALE).toFixed(1);
-  const fy = s => (MT + s * SCALE).toFixed(1);
+  // Front sideline at the bottom (stepsY = 0). The flip swaps front/back to
+  // match Pyware's "facing" setting if a file was built the other way.
+  const fy = s => (_drillFlipV ? (MT + s * SCALE) : (MT + FH - s * SCALE)).toFixed(1);
 
   // One color per section letter (consistent with the legend).
   const secColor = {};
@@ -7101,8 +7108,8 @@ function _drillChartHtml() {
       lines += `<text x="${sx}" y="${MT-4}" text-anchor="middle" fill="#aaa" font-size="8" font-family="sans-serif">${lbl}</text>`;
     }
   }
-  // Hash marks (approx. high-school positions, steps off front)
-  for (const hs of [32, 52]) {
+  // Hash marks (high-school positions: 28 and 56 steps off the front sideline)
+  for (const hs of [28, 56]) {
     const hy = fy(hs);
     for (let yd = 0; yd <= 100; yd += 5) {
       const sx = parseFloat(fx(yd * 1.6));
@@ -7144,6 +7151,10 @@ function _drillChartHtml() {
       </svg>
     </div>
     ${legend ? `<div class="drill-chart-legend">${legend}</div>` : ''}
+    <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:6px">
+      <span style="font-size:.72rem;color:var(--text-muted)">Front sideline at ${_drillFlipV ? 'top' : 'bottom'}</span>
+      <button class="btn btn-sm btn-secondary" onclick="drillChartFlip()">⇅ Flip facing</button>
+    </div>
     <div class="modal-actions" style="margin-top:8px">
       <button class="btn btn-secondary" onclick="showDrillPickModal()">&#8592; List</button>
       <button class="btn btn-primary" onclick="applyDrillSelection()">Apply Selection</button>
@@ -7160,6 +7171,12 @@ function drillChartNav(delta) {
 function drillChartToggle(label) {
   if (_drillChecked.has(label)) _drillChecked.delete(label);
   else _drillChecked.add(label);
+  const root = document.getElementById('drill-chart-root');
+  if (root) root.innerHTML = _drillChartHtml();
+}
+
+function drillChartFlip() {
+  _drillFlipV = !_drillFlipV;
   const root = document.getElementById('drill-chart-root');
   if (root) root.innerHTML = _drillChartHtml();
 }
