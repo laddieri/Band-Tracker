@@ -2938,3 +2938,22 @@ html, body {
 .drill-chart-wrap { overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; margin-bottom:6px; border-radius:var(--r-sm); }
 .drill-chart-legend { display:flex; flex-wrap:wrap; gap:4px 12px; margin:4px 0 2px; }
 .drill-chart-leg-item { display:flex; align-items:center; gap:4px; font-size:0.78rem; color:var(--text-muted); }
+
+/* Drill fullscreen overlay */
+#drill-chart-fs {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: #0a1a0a;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px 12px;
+  box-sizing: border-box;
+}
+#drill-chart-fs.hidden { display: none !important; }
+.drill-fs-nav { display:flex; align-items:center; gap:8px; flex-shrink:0; margin-bottom:8px; }
+.drill-fs-nav .drill-chart-setlabel { color:#e0e0e0; }
+.drill-fs-svg-wrap { flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; display:flex; align-items:flex-start; justify-content:center; }
+.drill-fs-bottom { flex-shrink:0; display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:8px; }
+.drill-fs-bottom .drill-chart-legend { margin:0; }
+.drill-fs-bottom .drill-chart-leg-item { color:#aaa; }

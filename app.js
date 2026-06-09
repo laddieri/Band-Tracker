@@ -812,6 +812,7 @@ function handleModalClick(e) {
 
 function closeModal() {
   document.getElementById('modal-overlay').classList.add('hidden');
+  drillChartCollapse();
 }
 
 function openModal(html) {
@@ -7106,7 +7107,7 @@ function showDrillChartModal() {
   openModal(`<div id="drill-chart-root">${_drillChartHtml()}</div>`);
 }
 
-function _drillChartHtml() {
+function _drillChartHtml(fs = false) {
   const idx       = _drillCurrentSet;
   const positions = _drillPages[idx].performers;
   const total     = _drillPages.length;
@@ -7168,21 +7169,43 @@ function _drillChartHtml() {
     return `<span class="drill-chart-leg-item"><svg width="10" height="10" style="flex-shrink:0"><circle cx="5" cy="5" r="4" fill="${c}"/></svg>${esc(sec.letter)}</span>`;
   }).join('');
 
+  const svgField = `
+    <svg viewBox="0 0 ${SW} ${SH}" xmlns="http://www.w3.org/2000/svg" style="display:block;${fs ? 'width:100%;height:auto' : `width:${SW}px;max-width:100%`}">
+      <rect x="${ML}" y="${MT}" width="${FW}" height="${FH}" fill="#1f5c1f"/>
+      <rect x="${ML}" y="${MT}" width="${FW}" height="${FH}" fill="none" stroke="#fff" stroke-width="1.2"/>
+      ${lines}${dots}
+      <text x="${(ML-3)}" y="${fy(0)}" text-anchor="end" fill="#777" font-size="7" font-family="sans-serif" dominant-baseline="middle">F</text>
+      <text x="${(ML-3)}" y="${fy(84)}" text-anchor="end" fill="#777" font-size="7" font-family="sans-serif" dominant-baseline="middle">B</text>
+    </svg>`;
+
+  const expandIcon = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1 5V1h4M13 5V1H9M1 9v4h4M13 9v4H9"/></svg>`;
+
+  if (fs) {
+    return `
+      <div class="drill-fs-nav">
+        <button class="btn btn-sm btn-secondary" onclick="drillChartNav(-1)"${prevDisabled?' disabled':''}>&#8592;</button>
+        <span class="drill-chart-setlabel">${navLabel}</span>
+        <button class="btn btn-sm btn-secondary" onclick="drillChartNav(1)"${nextDisabled?' disabled':''}>&#8594;</button>
+        <button class="btn btn-sm btn-secondary" onclick="drillChartFlip()" title="Flip facing">⇅</button>
+        <button class="btn btn-sm btn-secondary" onclick="drillChartCollapse()" title="Exit fullscreen" style="margin-left:4px">&#x2715;</button>
+      </div>
+      <div class="drill-fs-svg-wrap">${svgField}</div>
+      <div class="drill-fs-bottom">
+        ${legend ? `<div class="drill-chart-legend" style="flex:1">${legend}</div>` : '<div></div>'}
+        <button class="btn btn-primary btn-sm" onclick="applyDrillSelection()">Apply Selection</button>
+      </div>`;
+  }
+
   return `
     <div class="modal-title" style="margin-bottom:6px">Field Chart</div>
     <div class="drill-chart-nav">
       <button class="btn btn-sm btn-secondary" onclick="drillChartNav(-1)"${prevDisabled?' disabled':''}>&#8592;</button>
       <span class="drill-chart-setlabel">${navLabel}</span>
       <button class="btn btn-sm btn-secondary" onclick="drillChartNav(1)"${nextDisabled?' disabled':''}>&#8594;</button>
+      <button class="btn btn-sm btn-secondary" onclick="drillChartExpand()" title="Fullscreen" style="margin-left:4px">${expandIcon}</button>
     </div>
     <div class="drill-chart-wrap">
-      <svg viewBox="0 0 ${SW} ${SH}" xmlns="http://www.w3.org/2000/svg" style="display:block;width:${SW}px;max-width:100%">
-        <rect x="${ML}" y="${MT}" width="${FW}" height="${FH}" fill="#1f5c1f"/>
-        <rect x="${ML}" y="${MT}" width="${FW}" height="${FH}" fill="none" stroke="#fff" stroke-width="1.2"/>
-        ${lines}${dots}
-        <text x="${(ML-3)}" y="${fy(0)}" text-anchor="end" fill="#777" font-size="7" font-family="sans-serif" dominant-baseline="middle">F</text>
-        <text x="${(ML-3)}" y="${fy(84)}" text-anchor="end" fill="#777" font-size="7" font-family="sans-serif" dominant-baseline="middle">B</text>
-      </svg>
+      ${svgField}
     </div>
     ${legend ? `<div class="drill-chart-legend">${legend}</div>` : ''}
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:6px">
@@ -7195,24 +7218,52 @@ function _drillChartHtml() {
     </div>`;
 }
 
+function _drillChartRefresh() {
+  const fs = document.getElementById('drill-chart-fs');
+  if (fs && !fs.classList.contains('hidden')) {
+    fs.innerHTML = _drillChartHtml(true);
+    return;
+  }
+  const root = document.getElementById('drill-chart-root');
+  if (root) root.innerHTML = _drillChartHtml();
+}
+
+function drillChartExpand() {
+  const fs = document.getElementById('drill-chart-fs');
+  if (!fs) return;
+  fs.innerHTML = _drillChartHtml(true);
+  fs.classList.remove('hidden');
+  document.addEventListener('keydown', _drillChartFsKeydown);
+}
+
+function drillChartCollapse() {
+  const fs = document.getElementById('drill-chart-fs');
+  if (!fs || fs.classList.contains('hidden')) return;
+  fs.classList.add('hidden');
+  document.removeEventListener('keydown', _drillChartFsKeydown);
+}
+
+function _drillChartFsKeydown(e) {
+  if (e.key === 'Escape')     { drillChartCollapse(); return; }
+  if (e.key === 'ArrowLeft')  drillChartNav(-1);
+  if (e.key === 'ArrowRight') drillChartNav(1);
+}
+
 function drillChartNav(delta) {
   const total = _drillPages ? _drillPages.length : 0;
   _drillCurrentSet = Math.max(0, Math.min(total - 1, _drillCurrentSet + delta));
-  const root = document.getElementById('drill-chart-root');
-  if (root) root.innerHTML = _drillChartHtml();
+  _drillChartRefresh();
 }
 
 function drillChartToggle(label) {
   if (_drillChecked.has(label)) _drillChecked.delete(label);
   else _drillChecked.add(label);
-  const root = document.getElementById('drill-chart-root');
-  if (root) root.innerHTML = _drillChartHtml();
+  _drillChartRefresh();
 }
 
 function drillChartFlip() {
   _drillFlipV = !_drillFlipV;
-  const root = document.getElementById('drill-chart-root');
-  if (root) root.innerHTML = _drillChartHtml();
+  _drillChartRefresh();
 }
 
 // ── Pyware Mapping Modal ──────────────────────────────────────────────────────
