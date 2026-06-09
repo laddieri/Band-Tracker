@@ -4881,19 +4881,32 @@ function attStudentRow(rid, s, entries) {
 // setAttendanceFilter replaced by updateFilter / unified filter bar
 
 async function markAllPresent(rid) {
-  const entries = STATE.entries[rid] || {};
-  const marked  = Object.entries(entries).filter(([, e]) => e.attendance);
-  if (!marked.length) { showToast('All students already marked present.'); return; }
+  const entries  = STATE.entries[rid] || {};
+  const students = Object.values(DB.getStudents());
+  // Mark only unchecked students (attendance === null/undefined) as 'present'.
+  // Leave absent/late entries untouched.
+  const unchecked = students.filter(s => !entries[s.number]?.attendance);
+  if (!unchecked.length) { showToast('All students already marked.'); return; }
+  if (!STATE.entries[rid]) STATE.entries[rid] = {};
   const batch = db.batch();
-  for (const [num] of marked) {
-    const docId = `${rid}_${num}`;
-    batch.update(orgCol('entries').doc(docId), {
-      attendance: firebase.firestore.FieldValue.delete()
-    });
-    STATE.entries[rid][num] = { ...STATE.entries[rid][num], attendance: null };
+  for (const s of unchecked) {
+    const num   = s.number;
+    const cur   = entries[num] || { mistakes: 0, positives: 0, notes: '', events: [] };
+    STATE.entries[rid][num] = { ...cur, attendance: 'present' };
+    batch.set(orgCol('entries').doc(`${rid}_${String(num)}`), {
+      rehearsalId:   rid,
+      studentNumber: String(num),
+      mistakes:      cur.mistakes  || 0,
+      positives:     cur.positives || 0,
+      notes:         cur.notes     || '',
+      events:        cur.events    || [],
+      attendance:    'present',
+      updatedAt:     firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy:     STATE.user?.email || '',
+    }, { merge: true });
   }
   await batch.commit();
-  showToast(`${marked.length} student${marked.length !== 1 ? 's' : ''} marked present.`);
+  showToast(`${unchecked.length} student${unchecked.length !== 1 ? 's' : ''} marked present.`);
   reRender(rid);
 }
 
