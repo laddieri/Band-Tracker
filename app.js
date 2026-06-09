@@ -472,10 +472,10 @@ let _dashForceHistory = false; // force dashboard into historical view even when
 let _attModifyMode           = false; // true = show edit UI even when attendance is submitted
 let _blockMode  = false;
 let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
-let _drillData       = null; // parsed Pyware drill sections (session-only)
-let _drillPages      = null; // parsed PAGE position data: [{seqNum,x,y}][]
-let _drillSets       = null; // indices into _drillPages for each set page
-let _drillCurrentSet = 0;    // currently viewed set in chart modal
+let _drillData       = null; // parsed Pyware sections: [{letter, performers:[label]}]
+let _drillPages      = null; // distinct formation frames: [{label,section,num,stepsX,stepsY}][]
+let _drillCurrentSet = 0;    // currently viewed frame index in chart modal
+let _drillFlipV      = false; // chart vertical flip (Pyware "facing" orientation)
 let _drillSelectedNums = []; // student numbers selected via drill
 let _pendingSegment    = ''; // currently selected rehearsal segment in mark modal
 let _pendingStudentCode = ''; // code being verified for anonymous student login
@@ -6789,94 +6789,95 @@ function buildAttendanceReportHTML(rehearsals, periodLabel) {
 }
 
 // ── Pyware 3D Drill Integration ───────────────────────────────────────────────
+//
+// .3dj performer record (20 bytes), reverse-engineered and verified exactly
+// against two known drills (every set's yard lines and step depths matched):
+//   byte 1      = stable performer id (follows a performer across all frames)
+//   byte 6      = per-frame ordinal (re-assigned each frame — NOT an identity)
+//   byte 8      = section/symbol letter, ASCII
+//   bytes 13-14 = X, big-endian
+//   bytes 15-16 = Y, big-endian
+// The marching field occupies a FIXED rectangle in Pyware's internal grid,
+// identical across files: 120 units = 1 step (192 = 1 yard); the west goal line
+// is at X 23168, and the two sidelines are at Y 27728 and 37808 (84 steps
+// apart). Pyware's "facing" setting decides which sideline is the front; we
+// default to the high-Y sideline and offer a flip in the chart.
+const _PY_WESTGOAL = 23168; // grid X at the west goal line
+const _PY_FRONT_Y  = 37808; // grid Y at the (default) front sideline
+const _PY_UNIT     = 120;   // grid units per marching step
+const _PY_DEPTH    = 84;    // field depth in steps (front sideline to back)
 
-function _pywareFindBlock(u8, tag) {
-  const c = [tag.charCodeAt(0), tag.charCodeAt(1), tag.charCodeAt(2), tag.charCodeAt(3)];
-  for (let i = 0; i < u8.length - 4; i++) {
-    if (u8[i]===c[0] && u8[i+1]===c[1] && u8[i+2]===c[2] && u8[i+3]===c[3]) return i + 4;
-  }
-  return -1;
-}
-
-function _parsePyware3dj(buffer) {
+function _parsePywareFile(buffer) {
   const u8   = new Uint8Array(buffer);
   const view = new DataView(buffer);
-
   if (u8[0]!==0x33||u8[1]!==0x44||u8[2]!==0x4A||u8[3]!==0x56)
-    throw new Error('File does not appear to be a Pyware .3dj file (invalid header).');
+    throw new Error('This does not look like a Pyware .3dj file.');
 
-  const sel1 = _pywareFindBlock(u8, 'SEL1');
-  if (sel1 < 0) throw new Error('No performer section data (SEL1) found in this file.');
-
-  // SEL1 layout (after the 4-byte tag):
-  //   [4 bytes BE: block length] [1 byte: group count]
-  //   per group: [1B name_len][name_len B name][1B tool_len][tool_len B tool]
-  //              [2B zeros][1B performer_count][count × 2B BE performer_index]
-  let pos = sel1 + 4 + 1; // skip BE length + group count byte... wait, we need count
-  const numGroups = u8[sel1 + 4];
-  pos = sel1 + 5; // entries start here
-
-  const sections = {};
-  for (let g = 0; g < numGroups; g++) {
-    const nameLen = u8[pos++];
-    let name = '';
-    for (let i = 0; i < nameLen; i++) name += String.fromCharCode(u8[pos++]);
-    const toolLen = u8[pos++];
-    pos += toolLen + 2; // skip tool string + 2 zero bytes
-
-    const count = u8[pos++];
-    if (count > 32) { pos += count * 2; continue; } // skip combined/all group
-
-    const letter = name[0] || '?';
-    if (!sections[letter]) sections[letter] = { letter, performers: [] };
-    for (let i = 0; i < count; i++) {
-      const idx = view.getUint16(pos, false); pos += 2; // big-endian
-      if (!sections[letter].performers.includes(idx)) sections[letter].performers.push(idx);
-    }
-  }
-
-  return Object.values(sections).sort((a, b) => a.letter.localeCompare(b.letter));
-}
-
-// Scans the buffer for all PAGE blocks (144 performers × 20 bytes each).
-// Coordinate encoding (empirically derived):
-//   x (LE int16 @ byte 4): steps_from_west_goal = (x - 118) * 4  →  x=130 ≅ W30yd, x=122 ≅ W10yd
-//   y (LE int16 @ byte 6): steps_from_front_sideline = y * 4      →  y=3 ≅ 12 steps (first row)
-function _parsePywarePages(buffer) {
-  const u8   = new Uint8Array(buffer);
-  const view = new DataView(buffer);
-  const pages   = [];
-  const b2b3Arr = []; // track per-page "constant" bytes to detect set boundaries
+  // Read every PAGE block (one frame of 144 records), keyed by the stable id.
+  const rawFrames = [];
   for (let i = 0; i < u8.length - 10; i++) {
-    // Look for 'PAGE' tag
-    if (u8[i]!==0x50||u8[i+1]!==0x41||u8[i+2]!==0x47||u8[i+3]!==0x45) continue;
-    const count = view.getUint16(i + 8, false); // big-endian performer count
-    if (count !== 144) continue; // only accept full 144-performer sets
+    if (u8[i]!==0x50||u8[i+1]!==0x41||u8[i+2]!==0x47||u8[i+3]!==0x45) continue; // 'PAGE'
+    if (view.getUint16(i + 8, false) !== 144) continue;
     const base0 = i + 10;
-    if (base0 + 144 * 20 > u8.length) continue; // bounds check
-    b2b3Arr.push((u8[base0 + 2] << 8) | u8[base0 + 3]); // first entry's b2b3
-    const positions = [];
+    if (base0 + 144 * 20 > u8.length) break;
+    const frame = [];
     for (let e = 0; e < 144; e++) {
       const b = base0 + e * 20;
-      positions.push({
-        seqNum: u8[b + 1],
-        x: view.getInt16(b + 4, true),
-        y: view.getInt16(b + 6, true),
+      const xRaw = (u8[b + 13] << 8) | u8[b + 14];
+      const yRaw = (u8[b + 15] << 8) | u8[b + 16];
+      frame.push({
+        pid:     u8[b + 1],
+        section: String.fromCharCode(u8[b + 8]),
+        stepsX: (xRaw - _PY_WESTGOAL) / _PY_UNIT, // steps from west goal (0..160)
+        stepsY: (_PY_FRONT_Y - yRaw)  / _PY_UNIT, // steps off the front sideline (0..84)
       });
     }
-    pages.push(positions);
-    i += 2889; // skip past this block; outer loop adds 1
+    rawFrames.push(frame);
+    i += 2889;
   }
+  if (!rawFrames.length) throw new Error('No performer position data found in this file.');
 
-  // Detect set pages: b2b3 is constant within each PAGE but changes at set boundaries
-  const setIndices = [0];
-  for (let i = 1; i < b2b3Arr.length; i++) {
-    if (b2b3Arr[i] !== b2b3Arr[i - 1]) setIndices.push(i);
-  }
-  // Only trust detection if it yields a plausible set count (2–50)
-  const sets = setIndices.length >= 2 && setIndices.length <= 50 ? setIndices : null;
-  return { pages, sets };
+  // Assign each performer a fixed drill label from the FIRST frame — section
+  // letter + front-to-back rank within that section (so "A1" is the front-most
+  // of column A, matching Pyware) — and bind it to the stable id so a label
+  // always means the same physical performer across every set.
+  const labelOf = {}, sectionOf = {};
+  const bySec = {};
+  rawFrames[0].forEach(p => { (bySec[p.section] = bySec[p.section] || []).push(p); });
+  Object.values(bySec).forEach(arr => {
+    arr.sort((a, b) => a.stepsY - b.stepsY).forEach((p, idx) => {
+      labelOf[p.pid] = p.section + (idx + 1);
+      sectionOf[p.pid] = p.section;
+    });
+  });
+
+  const allFrames = rawFrames.map(f => f.map(p => ({
+    label:   labelOf[p.pid]   || p.section,
+    section: sectionOf[p.pid] || p.section,
+    stepsX:  p.stepsX,
+    stepsY:  p.stepsY,
+  })));
+
+  // Collapse consecutive identical formations (holds / duplicate layers) so the
+  // chart steps through distinct formations rather than every raw count.
+  const sig = f => [...f].sort((a, b) => (a.label < b.label ? -1 : 1))
+    .map(p => `${p.label}:${Math.round(p.stepsX*4)},${Math.round(p.stepsY*4)}`).join('|');
+  const pages = [];
+  let lastSig = null;
+  for (const f of allFrames) { const s = sig(f); if (s !== lastSig) { pages.push(f); lastSig = s; } }
+
+  // Sections (A,B,…) with their performer labels (A1,A2,…A10 in order).
+  const labelNum = lbl => parseInt(lbl.replace(/^\D+/, ''), 10) || 0;
+  const secMap = {};
+  pages[0].forEach(p => { (secMap[p.section] = secMap[p.section] || []).push(p.label); });
+  const sections = Object.keys(secMap).sort().map(letter => ({
+    letter,
+    performers: secMap[letter].sort((a, b) => labelNum(a) - labelNum(b)),
+  }));
+
+  return { pages, sections };
 }
+
 
 function openDrillPicker() {
   if (!STATE.isAdmin) return;
@@ -6899,11 +6900,9 @@ function _onDrillFileLoaded(file) {
   const reader = new FileReader();
   reader.onload = e => {
     try {
-      _drillData  = _parsePyware3dj(e.target.result);
-      if (!_drillData.length) throw new Error('No performer sections found in this file.');
-      const parsed = _parsePywarePages(e.target.result);
+      const parsed = _parsePywareFile(e.target.result);
       _drillPages = parsed.pages;
-      _drillSets  = parsed.sets;
+      _drillData  = parsed.sections;
       showDrillPickModal();
     } catch (err) {
       showToast(err.message || 'Failed to read drill file.');
@@ -6915,38 +6914,40 @@ function _onDrillFileLoaded(file) {
 let _drillActiveSection = 0;
 let _drillChecked = new Set(); // selected performer indices
 
+// One performer row in the picker / mapping grid, keyed by drill label ("A1").
+function _drillPerfRowHtml(perfLabel) {
+  const mapping    = STATE.pywareMapping || {};
+  const studentNum = mapping[perfLabel];
+  const student    = studentNum ? STATE.students[studentNum] : null;
+  const checked    = _drillChecked.has(perfLabel);
+  const name       = student ? (student.name || `#${studentNum}`) : perfLabel;
+  const sub        = student ? (normInstrument(student.instrument) || '') : '<em>Not mapped</em>';
+  return `
+    <label class="drill-perf-row${checked ? ' drill-perf-row--checked' : ''}${!studentNum ? ' drill-perf-row--unmapped' : ''}">
+      <input type="checkbox" style="display:none" ${checked ? 'checked' : ''}
+        onchange="drillTogglePerformer('${esc(perfLabel)}', this.checked)">
+      <div class="drill-perf-check">${checked ? '✓' : ''}</div>
+      <div class="drill-perf-info">
+        <div class="drill-perf-name">${esc(name)}</div>
+        <div class="drill-perf-sub">${sub}</div>
+      </div>
+    </label>`;
+}
+
 function showDrillPickModal() {
   if (!_drillData) return;
   _drillChecked = new Set();
 
   const sections = _drillData;
   const mapping  = STATE.pywareMapping || {};
-  const unmappedCount = sections.flatMap(s => s.performers).filter(idx => !mapping[String(idx)]).length;
+  const unmappedCount = sections.flatMap(s => s.performers).filter(lbl => !mapping[lbl]).length;
 
   const renderSectionTabs = () => sections.map((s, i) =>
     `<button class="drill-tab${i === _drillActiveSection ? ' drill-tab--active' : ''}" onclick="drillSetSection(${i})">${esc(s.letter)}</button>`
   ).join('');
 
-  const renderPerformerGrid = () => {
-    const sec = sections[_drillActiveSection];
-    return sec.performers.map((idx, pos) => {
-      const studentNum = mapping[String(idx)];
-      const student    = studentNum ? STATE.students[studentNum] : null;
-      const checked    = _drillChecked.has(idx);
-      const label      = student ? (student.name || `#${studentNum}`) : `Position ${pos + 1}`;
-      const sub        = student ? (normInstrument(student.instrument) || '') : '<em>Not mapped</em>';
-      return `
-        <label class="drill-perf-row${checked ? ' drill-perf-row--checked' : ''}${!studentNum ? ' drill-perf-row--unmapped' : ''}">
-          <input type="checkbox" style="display:none" ${checked ? 'checked' : ''}
-            onchange="drillTogglePerformer(${idx}, this.checked)">
-          <div class="drill-perf-check">${checked ? '✓' : ''}</div>
-          <div class="drill-perf-info">
-            <div class="drill-perf-name">${esc(label)}</div>
-            <div class="drill-perf-sub">${sub}</div>
-          </div>
-        </label>`;
-    }).join('');
-  };
+  const renderPerformerGrid = () =>
+    sections[_drillActiveSection].performers.map(_drillPerfRowHtml).join('');
 
   openModal(`
     <div class="modal-handle"></div>
@@ -6977,7 +6978,6 @@ function showDrillPickModal() {
 function drillLoadNewFile() {
   _drillData = null;
   _drillPages = null;
-  _drillSets  = null;
   closeModal();
   setTimeout(() => {
     const inp = document.getElementById('drill-file-input');
@@ -6988,40 +6988,22 @@ function drillLoadNewFile() {
 
 function drillSetSection(idx) {
   _drillActiveSection = idx;
-  const sections = _drillData;
-  const tabsEl   = document.getElementById('drill-tabs');
-  const listEl   = document.getElementById('drill-perf-list');
+  const tabsEl = document.getElementById('drill-tabs');
+  const listEl = document.getElementById('drill-perf-list');
   if (!tabsEl || !listEl) return;
   tabsEl.querySelectorAll('.drill-tab').forEach((t, i) =>
     t.classList.toggle('drill-tab--active', i === idx));
-  const mapping = STATE.pywareMapping || {};
-  listEl.innerHTML = sections[idx].performers.map((perfIdx, pos) => {
-    const studentNum = mapping[String(perfIdx)];
-    const student    = studentNum ? STATE.students[studentNum] : null;
-    const checked    = _drillChecked.has(perfIdx);
-    const label      = student ? (student.name || `#${studentNum}`) : `Position ${pos + 1}`;
-    const sub        = student ? (normInstrument(student.instrument) || '') : '<em>Not mapped</em>';
-    return `
-      <label class="drill-perf-row${checked ? ' drill-perf-row--checked' : ''}${!studentNum ? ' drill-perf-row--unmapped' : ''}">
-        <input type="checkbox" style="display:none" ${checked ? 'checked' : ''}
-          onchange="drillTogglePerformer(${perfIdx}, this.checked)">
-        <div class="drill-perf-check">${checked ? '✓' : ''}</div>
-        <div class="drill-perf-info">
-          <div class="drill-perf-name">${esc(label)}</div>
-          <div class="drill-perf-sub">${sub}</div>
-        </div>
-      </label>`;
-  }).join('');
+  listEl.innerHTML = _drillData[idx].performers.map(_drillPerfRowHtml).join('');
 }
 
-function drillTogglePerformer(idx, checked) {
-  if (checked) _drillChecked.add(idx); else _drillChecked.delete(idx);
-  // Update the row's visual state without full re-render
+function drillTogglePerformer(label, checked) {
+  if (checked) _drillChecked.add(label); else _drillChecked.delete(label);
+  // Update the row's visual state without a full re-render
   const listEl = document.getElementById('drill-perf-list');
   if (listEl) {
-    const rows = listEl.querySelectorAll('.drill-perf-row');
     const performers = _drillData[_drillActiveSection].performers;
-    const rowIdx = performers.indexOf(idx);
+    const rowIdx = performers.indexOf(label);
+    const rows = listEl.querySelectorAll('.drill-perf-row');
     if (rowIdx >= 0 && rows[rowIdx]) {
       rows[rowIdx].classList.toggle('drill-perf-row--checked', checked);
       rows[rowIdx].querySelector('.drill-perf-check').textContent = checked ? '✓' : '';
@@ -7047,10 +7029,10 @@ function applyDrillSelection() {
   const mapping = STATE.pywareMapping || {};
   const unmapped = [];
   const studentNums = [];
-  for (const idx of _drillChecked) {
-    const num = mapping[String(idx)];
+  for (const label of _drillChecked) {
+    const num = mapping[label];
     if (num && STATE.students[num]) studentNums.push(num);
-    else unmapped.push(idx);
+    else unmapped.push(label);
   }
   if (!studentNums.length && !unmapped.length) {
     showToast('Select at least one position.');
@@ -7091,43 +7073,31 @@ function showDrillChartModal() {
 }
 
 function _drillChartHtml() {
-  const setIdx    = _drillCurrentSet;
-  const positions = _drillPages[setIdx];
-  const sets      = _drillSets; // array of PAGE indices for each drill set, or null
+  const idx       = _drillCurrentSet;
+  const positions = _drillPages[idx];
+  const total     = _drillPages.length;
 
-  // Current set number (0-based): the last set page at or before setIdx
-  const navSetNum = sets
-    ? sets.reduce((best, s, i) => (s <= setIdx ? i : best), 0)
-    : null;
+  const navLabel     = `Formation ${idx + 1} <span style="font-weight:400;color:var(--text-muted)">of ${total}</span>`;
+  const prevDisabled = idx <= 0;
+  const nextDisabled = idx >= total - 1;
 
-  const navLabel    = sets
-    ? `Set ${navSetNum + 1} <span style="font-weight:400;color:var(--text-muted)">of ${sets.length}</span> <span style="font-weight:400;font-size:0.78em;color:var(--text-muted)">(count ${sets[navSetNum]})</span>`
-    : `Count ${setIdx + 1} <span style="font-weight:400;color:var(--text-muted)">/ ${_drillPages.length}</span>`;
-  const prevDisabled = sets ? navSetNum <= 0               : setIdx <= 0;
-  const nextDisabled = sets ? navSetNum >= sets.length - 1 : setIdx >= _drillPages.length - 1;
-
-  // Field SVG: 100 yards wide (160 steps) × 84 steps deep
-  // x formula: steps_from_west_goal = (x_raw - 118) * 4
-  // y formula: steps_from_front     = y_raw * 4
-  const SCALE  = 3.5; // px per step
-  const FW     = Math.round(160 * SCALE); // 560
-  const FH     = Math.round(84  * SCALE); // 294
+  // Field SVG: 100 yards = 160 steps wide × 84 steps deep.
+  // Performer coords are already in steps: stepsX from the west goal line,
+  // stepsY off the front sideline (top of the chart).
+  const SCALE = 3.5; // px per step
+  const FW = Math.round(160 * SCALE), FH = Math.round(84 * SCALE);
   const ML = 30, MR = 8, MT = 20, MB = 14;
   const SW = FW + ML + MR, SH = FH + MT + MB;
-
   const fx = s => (ML + s * SCALE).toFixed(1);
-  const fy = s => (MT + s * SCALE).toFixed(1);
+  // Front sideline at the bottom (stepsY = 0). The flip swaps front/back to
+  // match Pyware's "facing" setting if a file was built the other way.
+  const fy = s => (_drillFlipV ? (MT + s * SCALE) : (MT + FH - s * SCALE)).toFixed(1);
 
-  // Section color lookup
-  const colorMap = {};
-  if (_drillData) {
-    _drillData.forEach((sec, i) => {
-      const c = _DRILL_COLORS[i % _DRILL_COLORS.length];
-      sec.performers.forEach(idx => { colorMap[idx] = c; });
-    });
-  }
+  // One color per section letter (consistent with the legend).
+  const secColor = {};
+  (_drillData || []).forEach((sec, i) => { secColor[sec.letter] = _DRILL_COLORS[i % _DRILL_COLORS.length]; });
 
-  // Yard lines
+  // Yard lines + numbers
   let lines = '';
   for (let yd = 0; yd <= 100; yd += 5) {
     const sx = fx(yd * 1.6);
@@ -7138,9 +7108,8 @@ function _drillChartHtml() {
       lines += `<text x="${sx}" y="${MT-4}" text-anchor="middle" fill="#aaa" font-size="8" font-family="sans-serif">${lbl}</text>`;
     }
   }
-
-  // Hash marks at 32 and 52 steps from front (approximate high-school positions)
-  for (const hs of [32, 52]) {
+  // Hash marks (high-school positions: 28 and 56 steps off the front sideline)
+  for (const hs of [28, 56]) {
     const hy = fy(hs);
     for (let yd = 0; yd <= 100; yd += 5) {
       const sx = parseFloat(fx(yd * 1.6));
@@ -7150,40 +7119,20 @@ function _drillChartHtml() {
 
   // Performers
   let dots = '';
-  let visibleCount = 0;
-  let xRawMin = Infinity, xRawMax = -Infinity, yRawMin = Infinity, yRawMax = -Infinity;
-  for (const {seqNum, x, y} of positions) {
-    if (x < xRawMin) xRawMin = x; if (x > xRawMax) xRawMax = x;
-    if (y < yRawMin) yRawMin = y; if (y > yRawMax) yRawMax = y;
-    // Two coordinate encodings exist in .3dj files:
-    // "Animation" pages (x_raw ≈ 118–160): stepsX = (x - 118) * 4
-    // "Set definition" pages (x_raw ≈ 0–20):  stepsX = x * 8  (5-yard units)
-    const stepsX = x < 50 ? x * 8 : (x - 118) * 4;
-    const stepsY = y * 4;
-    if (stepsX < -8 || stepsX > 168 || stepsY < 0 || stepsY > 100) continue;
-    visibleCount++;
-    const sx  = fx(stepsX), sy = fy(stepsY);
-    const col = colorMap[seqNum] || '#888';
-    const sel = _drillChecked.has(seqNum);
-    // Invisible larger tap target
-    dots += `<circle cx="${sx}" cy="${sy}" r="7" fill="transparent" onclick="drillChartToggle(${seqNum})" style="cursor:pointer"/>`;
-    if (sel) {
-      dots += `<circle cx="${sx}" cy="${sy}" r="6" fill="none" stroke="#fff" stroke-width="1.5"/>`;
-    }
+  for (const p of positions) {
+    if (p.stepsX < -10 || p.stepsX > 170 || p.stepsY < -5 || p.stepsY > 90) continue; // safety
+    const sx = fx(p.stepsX), sy = fy(p.stepsY);
+    const col = secColor[p.section] || '#888';
+    const sel = _drillChecked.has(p.label);
+    dots += `<circle cx="${sx}" cy="${sy}" r="7" fill="transparent" onclick="drillChartToggle('${esc(p.label)}')" style="cursor:pointer"/>`;
+    if (sel) dots += `<circle cx="${sx}" cy="${sy}" r="6" fill="none" stroke="#fff" stroke-width="1.5"/>`;
     dots += `<circle cx="${sx}" cy="${sy}" r="${sel?'4.5':'3'}" fill="${col}" pointer-events="none"/>`;
   }
-  const diagMsg = positions.length > 0
-    ? `<div style="font-size:0.7rem;color:${visibleCount===0?'var(--warning)':'var(--text-muted)'};text-align:center;margin:4px 0">${visibleCount===0?'No performers in bounds — ':''}raw x: ${xRawMin}–${xRawMax}, y: ${yRawMin}–${yRawMax}</div>`
-    : '';
 
-  // Section legend
-  let legend = '';
-  if (_drillData) {
-    legend = _drillData.map((sec, i) => {
-      const c = _DRILL_COLORS[i % _DRILL_COLORS.length];
-      return `<span class="drill-chart-leg-item"><svg width="10" height="10" style="flex-shrink:0"><circle cx="5" cy="5" r="4" fill="${c}"/></svg>${esc(sec.letter)}</span>`;
-    }).join('');
-  }
+  const legend = (_drillData || []).map((sec, i) => {
+    const c = _DRILL_COLORS[i % _DRILL_COLORS.length];
+    return `<span class="drill-chart-leg-item"><svg width="10" height="10" style="flex-shrink:0"><circle cx="5" cy="5" r="4" fill="${c}"/></svg>${esc(sec.letter)}</span>`;
+  }).join('');
 
   return `
     <div class="modal-title" style="margin-bottom:6px">Field Chart</div>
@@ -7201,8 +7150,11 @@ function _drillChartHtml() {
         <text x="${(ML-3)}" y="${fy(84)}" text-anchor="end" fill="#777" font-size="7" font-family="sans-serif" dominant-baseline="middle">B</text>
       </svg>
     </div>
-    ${diagMsg}
     ${legend ? `<div class="drill-chart-legend">${legend}</div>` : ''}
+    <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:6px">
+      <span style="font-size:.72rem;color:var(--text-muted)">Front sideline at ${_drillFlipV ? 'top' : 'bottom'}</span>
+      <button class="btn btn-sm btn-secondary" onclick="drillChartFlip()">⇅ Flip facing</button>
+    </div>
     <div class="modal-actions" style="margin-top:8px">
       <button class="btn btn-secondary" onclick="showDrillPickModal()">&#8592; List</button>
       <button class="btn btn-primary" onclick="applyDrillSelection()">Apply Selection</button>
@@ -7210,21 +7162,21 @@ function _drillChartHtml() {
 }
 
 function drillChartNav(delta) {
-  if (_drillSets) {
-    const cur = _drillSets.reduce((best, s, i) => (s <= _drillCurrentSet ? i : best), 0);
-    const next = Math.max(0, Math.min(_drillSets.length - 1, cur + delta));
-    _drillCurrentSet = _drillSets[next];
-  } else {
-    const total = _drillPages ? _drillPages.length : 0;
-    _drillCurrentSet = Math.max(0, Math.min(total - 1, _drillCurrentSet + delta));
-  }
+  const total = _drillPages ? _drillPages.length : 0;
+  _drillCurrentSet = Math.max(0, Math.min(total - 1, _drillCurrentSet + delta));
   const root = document.getElementById('drill-chart-root');
   if (root) root.innerHTML = _drillChartHtml();
 }
 
-function drillChartToggle(seqNum) {
-  if (_drillChecked.has(seqNum)) _drillChecked.delete(seqNum);
-  else _drillChecked.add(seqNum);
+function drillChartToggle(label) {
+  if (_drillChecked.has(label)) _drillChecked.delete(label);
+  else _drillChecked.add(label);
+  const root = document.getElementById('drill-chart-root');
+  if (root) root.innerHTML = _drillChartHtml();
+}
+
+function drillChartFlip() {
+  _drillFlipV = !_drillFlipV;
   const root = document.getElementById('drill-chart-root');
   if (root) root.innerHTML = _drillChartHtml();
 }
@@ -7254,13 +7206,13 @@ function _renderDrillMappingModal() {
        onclick="drillMappingSetSection(${i})">${esc(s.letter)}</button>`).join('');
 
   const sec = sections[_drillMappingSection];
-  const rows = sec.performers.map((idx, pos) => {
-    const currentNum = mapping[String(idx)] || '';
+  const rows = sec.performers.map(label => {
+    const currentNum = mapping[label] || '';
     return `
       <div class="drill-map-row">
-        <div class="drill-map-pos">Position ${pos + 1}</div>
-        <select class="drill-map-select form-input" data-idx="${idx}"
-          onchange="drillMappingChange(${idx}, this.value)">
+        <div class="drill-map-pos">${esc(label)}</div>
+        <select class="drill-map-select form-input" data-label="${esc(label)}"
+          onchange="drillMappingChange('${esc(label)}', this.value)">
           ${studentOptions.replace(`value="${esc(currentNum)}"`, `value="${esc(currentNum)}" selected`)}
         </select>
       </div>`;
@@ -7283,10 +7235,10 @@ function drillMappingSetSection(idx) {
   _renderDrillMappingModal();
 }
 
-function drillMappingChange(perfIdx, studentNum) {
+function drillMappingChange(label, studentNum) {
   const mapping = { ...STATE.pywareMapping };
-  if (studentNum) mapping[String(perfIdx)] = studentNum;
-  else delete mapping[String(perfIdx)];
+  if (studentNum) mapping[label] = studentNum;
+  else delete mapping[label];
   STATE.pywareMapping = mapping;
   orgCol('settings').doc('presets').set({ pywareMapping: mapping }, { merge: true });
 }
