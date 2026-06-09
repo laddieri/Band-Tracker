@@ -6859,17 +6859,32 @@ function _parsePywareFile(buffer) {
   })));
 
   // Collapse consecutive identical formations (holds / duplicate layers) so the
-  // chart steps through distinct formations rather than every raw count.
-  const sig = f => [...f].sort((a, b) => (a.label < b.label ? -1 : 1))
-    .map(p => `${p.label}:${Math.round(p.stepsX*4)},${Math.round(p.stepsY*4)}`).join('|');
-  const pages = [];
-  let lastSig = null;
-  for (const f of allFrames) { const s = sig(f); if (s !== lastSig) { pages.push(f); lastSig = s; } }
+  // Detect set keyframes. Every PAGE block is one count, and Pyware moves
+  // performers in straight lines between sets — so a "set" is a count where
+  // many performers' motion bends (their position isn't the midpoint of the
+  // neighbouring counts). (A set the form marches straight through, with no
+  // direction change, can't be seen this way and may be skipped.)
+  const maps = allFrames.map(f => { const m = {}; f.forEach(p => m[p.label] = p); return m; });
+  const setCounts = [0];
+  for (let i = 1; i < allFrames.length - 1; i++) {
+    let bends = 0;
+    for (const lbl in maps[i]) {
+      const a = maps[i-1][lbl], b = maps[i][lbl], c = maps[i+1][lbl];
+      if (!a || !c) continue;
+      if (Math.abs(b.stepsX - (a.stepsX + c.stepsX)/2) > 0.02 ||
+          Math.abs(b.stepsY - (a.stepsY + c.stepsY)/2) > 0.02) bends++;
+    }
+    if (bends >= 16 && i - setCounts[setCounts.length-1] > 2) setCounts.push(i);
+  }
+  if (setCounts[setCounts.length-1] !== allFrames.length - 1) setCounts.push(allFrames.length - 1);
+
+  // Each page = a detected set (its count + the formation at that count).
+  const pages = setCounts.map(c => ({ count: c, performers: allFrames[c] }));
 
   // Sections (A,B,…) with their performer labels (A1,A2,…A10 in order).
   const labelNum = lbl => parseInt(lbl.replace(/^\D+/, ''), 10) || 0;
   const secMap = {};
-  pages[0].forEach(p => { (secMap[p.section] = secMap[p.section] || []).push(p.label); });
+  pages[0].performers.forEach(p => { (secMap[p.section] = secMap[p.section] || []).push(p.label); });
   const sections = Object.keys(secMap).sort().map(letter => ({
     letter,
     performers: secMap[letter].sort((a, b) => labelNum(a) - labelNum(b)),
@@ -7074,10 +7089,10 @@ function showDrillChartModal() {
 
 function _drillChartHtml() {
   const idx       = _drillCurrentSet;
-  const positions = _drillPages[idx];
+  const positions = _drillPages[idx].performers;
   const total     = _drillPages.length;
 
-  const navLabel     = `Formation ${idx + 1} <span style="font-weight:400;color:var(--text-muted)">of ${total}</span>`;
+  const navLabel     = `Set ${idx + 1} <span style="font-weight:400;color:var(--text-muted)">of ${total} · count ${_drillPages[idx].count}</span>`;
   const prevDisabled = idx <= 0;
   const nextDisabled = idx >= total - 1;
 
