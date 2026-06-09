@@ -5,6 +5,9 @@ service-account.json
 **/service-account*.json
 node_modules/
 
+# Local Firestore backups (full production data — never commit)
+**/backup-*.json
+
 # Firebase emulator artifacts
 *-debug.log
 .firebase/
