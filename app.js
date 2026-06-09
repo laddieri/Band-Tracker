@@ -299,6 +299,12 @@ async function startListeners() {
       STATE.autoMarks                  = Array.isArray(d.autoMarks) ? d.autoMarks : null;
       STATE.lbWeights                  = d.lbWeights || {};
       STATE.pywareMapping              = d.pywareMapping || {};
+      if (d.drillSections?.length && d.drillPages?.length) {
+        _drillData     = d.drillSections;
+        _drillPages    = d.drillPages;
+        _drillFlipV    = !!d.drillFlipV;
+        _drillFileName = d.drillFileName || null;
+      }
       if (!STATE.loading) render();
     }),
 
@@ -476,6 +482,7 @@ let _drillData       = null; // parsed Pyware sections: [{letter, performers:[la
 let _drillPages      = null; // distinct formation frames: [{label,section,num,stepsX,stepsY}][]
 let _drillCurrentSet = 0;    // currently viewed frame index in chart modal
 let _drillFlipV      = false; // chart vertical flip (Pyware "facing" orientation)
+let _drillFileName   = null; // original filename of the stored .3dj
 let _drillSelectedNums = []; // student numbers selected via drill
 let _pendingSegment    = ''; // currently selected rehearsal segment in mark modal
 let _pendingStudentCode = ''; // code being verified for anonymous student login
@@ -6935,9 +6942,17 @@ function _onDrillFileLoaded(file) {
   const reader = new FileReader();
   reader.onload = e => {
     try {
-      const parsed = _parsePywareFile(e.target.result);
-      _drillPages = parsed.pages;
-      _drillData  = parsed.sections;
+      const parsed   = _parsePywareFile(e.target.result);
+      _drillPages    = parsed.pages;
+      _drillData     = parsed.sections;
+      _drillFileName = file.name;
+      _drillFlipV    = false;
+      orgCol('settings').doc('presets').set({
+        drillFileName: file.name,
+        drillSections: parsed.sections,
+        drillPages:    parsed.pages,
+        drillFlipV:    false,
+      }, { merge: true });
       showDrillPickModal();
     } catch (err) {
       showToast(err.message || 'Failed to read drill file.');
@@ -7000,8 +7015,11 @@ function showDrillPickModal() {
       <button class="btn btn-sm btn-secondary" style="flex:1" onclick="drillClearAll()">Clear</button>
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0 2px">
-      <button class="drill-reload-btn" onclick="drillLoadNewFile()">Load different file</button>
-      ${_drillPages && _drillPages.length ? `<button class="drill-reload-btn" onclick="showDrillChartModal()">View field chart →</button>` : ''}
+      <span style="font-size:0.72rem;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:55%">${_drillFileName ? esc(_drillFileName) : 'Drill file'}</span>
+      <div style="display:flex;gap:10px;flex-shrink:0">
+        <button class="drill-reload-btn" onclick="drillLoadNewFile()">Replace file</button>
+        ${_drillPages && _drillPages.length ? `<button class="drill-reload-btn" onclick="showDrillChartModal()">View field chart →</button>` : ''}
+      </div>
     </div>
     <div class="modal-actions" style="margin-top:4px">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
@@ -7011,8 +7029,14 @@ function showDrillPickModal() {
 }
 
 function drillLoadNewFile() {
-  _drillData = null;
-  _drillPages = null;
+  _drillData     = null;
+  _drillPages    = null;
+  _drillFileName = null;
+  const del = firebase.firestore.FieldValue.delete();
+  orgCol('settings').doc('presets').set(
+    { drillFileName: del, drillSections: del, drillPages: del, drillFlipV: del },
+    { merge: true }
+  );
   closeModal();
   setTimeout(() => {
     const inp = document.getElementById('drill-file-input');
@@ -7263,6 +7287,7 @@ function drillChartToggle(label) {
 
 function drillChartFlip() {
   _drillFlipV = !_drillFlipV;
+  orgCol('settings').doc('presets').set({ drillFlipV: _drillFlipV }, { merge: true });
   _drillChartRefresh();
 }
 
