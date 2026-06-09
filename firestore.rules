@@ -39,14 +39,20 @@ service cloud.firestore {
     }
 
     // ── Per-org data (subcollections) ─────────────────────────────────────────
-    // Reads: any member of the org. Writes: directors of the org only.
+    // Writes: directors of the org only. Reads are scoped per collection:
+    // students only ever see their own records plus the director-published
+    // settings/public snapshot — never the raw roster, other students' marks,
+    // song results, or director-only settings. See "Student data visibility"
+    // in docs/DATA_MODEL.md.
 
     match /orgs/{orgId} {
 
-      // Org metadata. During the controlled rollout, creating a band requires a
-      // valid access code (a doc in /accessCodes managed by the operator). Only
-      // its directors may read/update it. No client deletes.
-      allow read:   if belongsTo(orgId);
+      // Org metadata. Director-only read: this doc carries the co-director
+      // invite code, which must never be visible to students (a student who
+      // read it could join their own org as a director). During the controlled
+      // rollout, creating a band requires a valid access code (a doc in
+      // /accessCodes managed by the operator). No client deletes.
+      allow read:   if isDirectorOf(orgId);
       allow create: if isSignedIn() && !isAnonymous()
                     && request.resource.data.createdBy == request.auth.uid
                     && exists(/databases/$(database)/documents/accessCodes/$(request.resource.data.accessCode));
@@ -56,28 +62,41 @@ service cloud.firestore {
       function canRead()  { return belongsTo(orgId); }
       function canWrite() { return isDirectorOf(orgId); }
 
+      // settings/public is the student-safe doc that director clients publish
+      // (branding, feature flags, derived stats with pseudonyms). Everything
+      // else under settings — notably 'presets', which holds the pseudonym
+      // salt, score weights and drill data — is director-only.
       match /settings/{doc} {
-        allow read:  if canRead();
+        allow read:  if canWrite() || (doc == 'public' && canRead());
         allow write: if canWrite();
       }
 
+      // A student may read only their own roster doc (doc id == their number).
       match /students/{doc} {
-        allow read:  if canRead();
+        allow read:  if canWrite() || (canRead() && member().studentNumber == doc);
         allow write: if canWrite();
       }
 
+      // Rehearsal metadata (dates/labels) is schedule info — safe for members.
       match /rehearsals/{doc} {
         allow read:  if canRead();
         allow write: if canWrite();
       }
 
+      // A student may read only their own entries. Student clients must query
+      // with where('studentNumber', '==', <own number>) so the rule can be
+      // proven for the whole query.
       match /entries/{doc} {
-        allow read:  if canRead();
+        allow read:  if canWrite() || (canRead() && resource.data.studentNumber == member().studentNumber);
         allow write: if canWrite();
       }
 
+      // Song docs embed every student's pass/fail status and fail notes, so
+      // they are director-only. Students get the song catalog + aggregate
+      // progress from settings/public, and their own results from the
+      // songStatuses mirror on their own student doc.
       match /songs/{doc} {
-        allow read:  if canRead();
+        allow read:  if canWrite();
         allow write: if canWrite();
       }
     }

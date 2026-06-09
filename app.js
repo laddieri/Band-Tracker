@@ -127,6 +127,10 @@ const STATE = {
   autoMarks:                  null,
   lbWeights:                  {},
   pywareMapping:              {},
+  // Student clients: the director-published snapshot from settings/public
+  // (per-rehearsal absence counts, song progress, pseudonymized leaderboard).
+  // Students cannot read the raw roster/entries/songs — see firestore.rules.
+  publicStats:  null,
   _unsubs:      []
 };
 
@@ -162,7 +166,9 @@ async function fsUpsertEntry(rid, num, data) {
     studentNumber: String(num),
     ...data,
     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-    updatedBy: STATE.user?.email || ''
+    // uid, not email: entries are readable by their own student, and director
+    // emails should not be exposed there.
+    updatedBy: STATE.user?.uid || ''
   }, { merge: true });
 }
 
@@ -252,9 +258,25 @@ async function startListeners() {
   STATE._unsubs.forEach(u => u());
   STATE._unsubs = [];
   STATE.loading = true;
+  _lastPublishedJson = '';
 
   // Resolve the user's org before reading any data; bail if redirected.
   if (!await resolveMembership()) return;
+
+  // Students get a restricted set of listeners matching what the security
+  // rules let them read: own student doc, own entries, rehearsal metadata and
+  // the director-published settings/public snapshot.
+  if (!STATE.isAdmin) {
+    if (!STATE.studentNum) {
+      // Member with a student role but no student number — nothing we can
+      // show. Should not happen via any join flow; bail to login.
+      showToast('Your account isn’t linked to a student. Ask your director for a new code.');
+      auth.signOut();
+      return;
+    }
+    STATE._unsubs = studentListeners();
+    return;
+  }
 
   const loaded = new Set();
   function tick(key) {
@@ -306,6 +328,7 @@ async function startListeners() {
         _drillFileName = d.drillFileName || null;
       }
       if (!STATE.loading) render();
+      schedulePublishPublicStats();
     }),
 
     orgCol('students').onSnapshot({ includeMetadataChanges: true }, snap => {
@@ -313,22 +336,8 @@ async function startListeners() {
         if (ch.type === 'removed') delete STATE.students[ch.doc.id];
         else STATE.students[ch.doc.id] = { ...ch.doc.data(), _id: ch.doc.id };
       });
-
-      // Email (non-anonymous, non-director) users: match their student record by
-      // studentEmail if we don't already have a student number.
-      if (!STATE.user?.isAnonymous && !STATE.isAdmin && !STATE.studentNum) {
-        const email = STATE.user?.email?.toLowerCase();
-        if (email) {
-          for (const [num, s] of Object.entries(STATE.students)) {
-            if (s.studentEmail && s.studentEmail.toLowerCase() === email) {
-              STATE.studentNum = num;
-              break;
-            }
-          }
-        }
-      }
-
       tick('students');
+      schedulePublishPublicStats();
     }),
 
     orgCol('rehearsals').onSnapshot(snap => {
@@ -336,6 +345,7 @@ async function startListeners() {
         .map(d => ({ ...d.data(), id: d.id }))
         .sort((a, b) => b.date.localeCompare(a.date));
       tick('rehearsals');
+      schedulePublishPublicStats();
     }),
 
     orgCol('entries').onSnapshot(snap => {
@@ -350,6 +360,7 @@ async function startListeners() {
         }
       });
       tick('entries');
+      schedulePublishPublicStats();
     }),
 
     orgCol('songs').onSnapshot(snap => {
@@ -357,6 +368,7 @@ async function startListeners() {
         .map(d => ({ ...d.data(), id: d.id }))
         .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
       tick('songs');
+      schedulePublishPublicStats();
     }, err => {
       console.error('songs listener error:', err);
       tick('songs'); // don't hang the app — songs will be empty
@@ -364,6 +376,148 @@ async function startListeners() {
   ];
 
   STATE._unsubs = listeners;
+}
+
+// Listeners for student accounts — limited to exactly what the rules allow.
+function studentListeners() {
+  const num = String(STATE.studentNum);
+  const loaded = new Set();
+  function tick(key) {
+    loaded.add(key);
+    if (loaded.size >= 4 && STATE.loading) {
+      STATE.loading = false;
+      render();
+    } else if (!STATE.loading) {
+      render();
+    }
+  }
+
+  return [
+    // Director-published, student-safe settings + derived stats.
+    orgCol('settings').doc('public').onSnapshot(doc => {
+      const d = doc.exists ? doc.data() : {};
+      STATE.bandName                   = d.bandName || '';
+      STATE.bandLogo                   = d.bandLogo || '';
+      STATE.marchingLeaderboardEnabled = !!d.marchingLeaderboardEnabled;
+      STATE.hideNegativeFromPortal     = !!d.hideNegativeFromPortal;
+      STATE.songCategories             = d.songCategories || [];
+      STATE.features = {
+        attendance: d.features?.attendance !== false,
+        marks:      d.features?.marks      !== false,
+        songs:      d.features?.songs      !== false,
+        stats:      d.features?.stats      !== false,
+      };
+      STATE.publicStats = d.stats || null;
+      tick('settings');
+    }, err => {
+      console.error('public settings listener error:', err);
+      tick('settings');
+    }),
+
+    // Own roster doc only (includes the songStatuses mirror for the portal).
+    orgCol('students').doc(num).onSnapshot(doc => {
+      STATE.students = doc.exists ? { [num]: { ...doc.data(), _id: num } } : {};
+      tick('students');
+    }, err => {
+      console.error('student doc listener error:', err);
+      tick('students');
+    }),
+
+    // Rehearsal metadata (dates/labels) for the portal history.
+    orgCol('rehearsals').onSnapshot(snap => {
+      STATE.rehearsals = snap.docs
+        .map(d => ({ ...d.data(), id: d.id }))
+        .sort((a, b) => b.date.localeCompare(a.date));
+      tick('rehearsals');
+    }, err => {
+      console.error('rehearsals listener error:', err);
+      tick('rehearsals');
+    }),
+
+    // Own entries only — the where() clause is required by the security rules.
+    orgCol('entries').where('studentNumber', '==', num).onSnapshot(snap => {
+      snap.docChanges().forEach(ch => {
+        const d = ch.doc.data();
+        if (!d.rehearsalId || !d.studentNumber) return;
+        if (ch.type === 'removed') {
+          if (STATE.entries[d.rehearsalId]) delete STATE.entries[d.rehearsalId][d.studentNumber];
+        } else {
+          if (!STATE.entries[d.rehearsalId]) STATE.entries[d.rehearsalId] = {};
+          STATE.entries[d.rehearsalId][d.studentNumber] = d;
+        }
+      });
+      tick('entries');
+    }, err => {
+      console.error('entries listener error:', err);
+      tick('entries');
+    }),
+  ];
+}
+
+// ── Published student-safe stats (settings/public) ───────────────────────────
+// Students cannot read the raw roster, entries or songs, so director clients
+// publish a sanitized snapshot instead: branding, feature flags, per-rehearsal
+// absence counts, song progress aggregates and the pseudonymized leaderboard.
+// All band data is director-written, so a director's client is online whenever
+// the data changes and the snapshot stays fresh by construction.
+
+let _publishTimer      = null;
+let _lastPublishedJson = '';
+
+function computePublicStats() {
+  const students = Object.values(STATE.students);
+  const total    = students.length;
+
+  const rehearsals = STATE.rehearsals.map(r => ({
+    date:   r.date,
+    label:  r.label || '',
+    absent: Object.values(STATE.entries[r.id] || {}).filter(e => e.attendance === 'absent').length,
+  }));
+
+  const songs = (featureOn('songs') ? STATE.songs : []).map(song => {
+    const passed = students.filter(s => song.statuses?.[String(s.number)]?.status === 'passed').length;
+    return {
+      id: song.id, title: song.title || '', dueDate: song.dueDate || '',
+      category: song.category || '', passed, remaining: Math.max(0, total - passed),
+    };
+  });
+
+  // Pseudonymized ranking — published only while the leaderboard is enabled.
+  // Rows carry the student number so each student can find their own row;
+  // names and per-event details are never included.
+  const leaderboard = (STATE.marchingLeaderboardEnabled && featureOn('stats'))
+    ? _scoreStudents()
+        .sort((a, b) => b.score - a.score)
+        .map(({ docId, name, score }) => ({ num: docId, name, score }))
+    : null;
+
+  return { rehearsals, songs, leaderboard };
+}
+
+function schedulePublishPublicStats() {
+  if (!STATE.isAdmin || !STATE.orgId || STATE.loading) return;
+  clearTimeout(_publishTimer);
+  _publishTimer = setTimeout(() => {
+    if (!STATE.isAdmin || !STATE.orgId) return;
+    const pub = {
+      bandName:                   STATE.bandName,
+      bandLogo:                   STATE.bandLogo,
+      features:                   STATE.features,
+      marchingLeaderboardEnabled: STATE.marchingLeaderboardEnabled,
+      hideNegativeFromPortal:     !!STATE.hideNegativeFromPortal,
+      songCategories:             STATE.songCategories,
+      stats:                      computePublicStats(),
+    };
+    const json = JSON.stringify(pub);
+    if (json === _lastPublishedJson) return;
+    _lastPublishedJson = json;
+    orgCol('settings').doc('public')
+      .set({ ...pub, publishedAt: firebase.firestore.FieldValue.serverTimestamp() })
+      .catch(e => {
+        _lastPublishedJson = ''; // retry on the next data change
+        console.error('publishing settings/public failed:', e);
+      });
+  }, 1500);
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -398,6 +552,8 @@ auth.onAuthStateChanged(user => {
     STATE.rehearsals = [];
     STATE.entries    = {};
     STATE.songs      = [];
+    STATE.publicStats = null;
+    _lastPublishedJson = '';
     _authMode        = 'signin';
     render();
   }
@@ -1079,7 +1235,7 @@ function render() {
     case 'leaderboard':
       title.textContent = 'Band Stats';
       actions.innerHTML = (STATE.isAdmin ? optBtn('showLeaderboardSettingsModal()') : '') + userBtn();
-      main.innerHTML = viewLeaderboard();
+      main.innerHTML = STATE.isAdmin ? viewLeaderboard() : viewLeaderboardStudent();
       break;
 
     case 'dashboard': {
@@ -2690,9 +2846,17 @@ function _applySongStatus(sid, num, song, status, note = '') {
     }).catch(() => {
       orgCol('songs').doc(sid).set({ statuses: song.statuses }, { merge: false });
     });
+    // Keep the student's own mirror in sync — songs are director-only, so the
+    // portal reads results from songStatuses on the student's own doc.
+    orgCol('students').doc(String(num)).update({
+      [`songStatuses.${sid}`]: firebase.firestore.FieldValue.delete()
+    }).catch(() => {});
   } else {
     song.statuses[String(num)] = { status, note: note || '', updatedAt: Date.now(), updatedBy: STATE.user?.email || '' };
     orgCol('songs').doc(sid).set({ statuses: { [String(num)]: song.statuses[String(num)] } }, { merge: true });
+    orgCol('students').doc(String(num)).set({
+      songStatuses: { [sid]: { status, note: note || '', updatedAt: Date.now() } }
+    }, { merge: true }).catch(() => {});
   }
 
   const listEl = document.getElementById('song-student-list');
@@ -2930,6 +3094,18 @@ function confirmDeleteSong(sid) {
   if (!confirm('Delete this song and all its memorization data?\n\nThis cannot be undone.')) return;
   STATE.songs = STATE.songs.filter(s => s.id !== sid);
   orgCol('songs').doc(sid).delete();
+  // Best-effort cleanup of the per-student songStatuses mirrors.
+  const batch = db.batch();
+  let dirty = false;
+  for (const [num, s] of Object.entries(STATE.students)) {
+    if (s.songStatuses && s.songStatuses[sid] !== undefined) {
+      batch.update(orgCol('students').doc(String(num)), {
+        [`songStatuses.${sid}`]: firebase.firestore.FieldValue.delete()
+      });
+      dirty = true;
+    }
+  }
+  if (dirty) batch.commit().catch(() => {});
   closeModal();
   navigate('songs');
   showToast('Song deleted.');
@@ -2953,7 +3129,7 @@ function showStudentPortalPreview(num) {
 function previewLeaderboard(num) {
   const prev = STATE.studentNum;
   STATE.studentNum = num;
-  const html = viewLeaderboard();
+  const html = viewLeaderboardStudent();
   STATE.studentNum = prev;
   openModal(`
     <div class="modal-handle"></div>
@@ -2965,10 +3141,39 @@ function previewLeaderboard(num) {
   `);
 }
 
+// A student's leaderboard pseudonym. Students can't read the pseudonym salt
+// (it lives in director-only settings/presets), so they look their name up in
+// the published leaderboard; directors compute it directly.
+function portalPseudonym(num) {
+  if (STATE.isAdmin) return fakeAnimalName(num);
+  const row = (STATE.publicStats?.leaderboard || []).find(r => String(r.num) === String(num));
+  return row ? row.name : '';
+}
+
+// Songs for the student portal: the catalog plus this student's own result.
+// Directors read song docs directly; students join the published catalog
+// (settings/public) with the songStatuses mirror on their own student doc.
+function _portalSongs(num) {
+  if (!featureOn('songs')) return [];
+  if (STATE.isAdmin) {
+    return STATE.songs.map(song => ({
+      id: song.id, title: song.title, dueDate: song.dueDate || '',
+      category: song.category || '', mine: song.statuses?.[String(num)] || null,
+    }));
+  }
+  const mine = STATE.students[String(num)]?.songStatuses || {};
+  return (STATE.publicStats?.songs || []).map(song => ({
+    id: song.id, title: song.title, dueDate: song.dueDate || '',
+    category: song.category || '', mine: mine[song.id] || null,
+  }));
+}
+
 function viewStudentPortal(previewMode = false) {
   const num  = STATE.studentNum;
   const s    = STATE.students[num];
   const hist = DB.getStudentHistory(num);
+  const mySongs   = _portalSongs(num);
+  const pseudonym = portalPseudonym(num);
 
   const pos        = fmtPos(s?.column, s?.row);
   const metaParts  = [s?.instrument, s?.section, s?.grade ? s.grade + ' Grade' : '', pos ? `Position ${pos}` : ''].filter(Boolean);
@@ -2982,7 +3187,7 @@ function viewStudentPortal(previewMode = false) {
         <div>
           <div class="portal-name">${esc(s?.name || 'Student #' + num)}</div>
           ${metaParts.length ? `<div class="portal-meta">${metaParts.map(esc).join(' &middot; ')}</div>` : ''}
-          ${(STATE.marchingLeaderboardEnabled && featureOn('stats')) ? `<div class="portal-animal-name">🐾 Leaderboard name: <strong>${esc(fakeAnimalName(num))}</strong></div>` : ''}
+          ${(STATE.marchingLeaderboardEnabled && featureOn('stats') && pseudonym) ? `<div class="portal-animal-name">🐾 Leaderboard name: <strong>${esc(pseudonym)}</strong></div>` : ''}
         </div>
       </div>
 
@@ -3033,7 +3238,7 @@ function viewStudentPortal(previewMode = false) {
         </div>
       ` : ''}
 
-      ${DB.getSongs().length > 0 ? `
+      ${mySongs.length > 0 ? `
         <div id="portal-sec-songs-hdr" class="sec-hdr" onclick="toggleCollapse('portal-sec-songs')">
           <span class="section-title" style="margin:0">Songs to Memorize</span>
           <span class="sec-chevron">▾</span>
@@ -3042,7 +3247,7 @@ function viewStudentPortal(previewMode = false) {
           ${(() => {
             const cats = STATE.songCategories;
             const portalSongRow = song => {
-              const entry    = song.statuses?.[String(num)];
+              const entry    = song.mine;
               const status   = entry?.status || 'not_attempted';
               const failNote = status === 'failed' ? (entry?.note || '') : '';
               const overdue  = song.dueDate && song.dueDate < today() && status !== 'passed';
@@ -3059,12 +3264,12 @@ function viewStudentPortal(previewMode = false) {
               </div>`;
             };
             if (!cats.length) {
-              return `<div class="portal-songs-list">${STATE.songs.map(portalSongRow).join('')}</div>`;
+              return `<div class="portal-songs-list">${mySongs.map(portalSongRow).join('')}</div>`;
             }
             const grouped = {};
             const uncategorized = [];
             cats.forEach(c => { grouped[c] = []; });
-            STATE.songs.forEach(song => {
+            mySongs.forEach(song => {
               if (song.category && grouped[song.category] !== undefined) grouped[song.category].push(song);
               else uncategorized.push(song);
             });
@@ -3084,7 +3289,7 @@ function viewStudentPortal(previewMode = false) {
             });
             if (uncategorized.length) {
               const id = `portal-song-cat-${catIdx}`;
-              const label = STATE.songs.length > uncategorized.length ? 'Other' : 'Songs';
+              const label = mySongs.length > uncategorized.length ? 'Other' : 'Songs';
               html += `
                 <div id="${id}-hdr" class="sec-hdr sec-hdr-open song-cat-sec-hdr" onclick="toggleCollapse('${id}')">
                   <span>${label}</span>
@@ -3469,10 +3674,12 @@ function _lbW() {
   };
 }
 
-function _buildLbRankRows() {
-  const myDocId = STATE.studentNum;
+// Scores every student from the raw data (director clients only — students
+// can't read the inputs). Shared by the admin leaderboard view and the
+// settings/public publisher.
+function _scoreStudents() {
   const w = _lbW();
-  const allScored = Object.entries(STATE.students).map(([docId, s]) => {
+  return Object.entries(STATE.students).map(([docId, s]) => {
     const songPoints = DB.getSongs().reduce((sum, song) => {
       return sum + (song.statuses?.[String(s.number)]?.status === 'passed' ? 1 : 0);
     }, 0);
@@ -3488,6 +3695,11 @@ function _buildLbRankRows() {
       positives: featureOn('marks') ? Object.values(STATE.entries).reduce((sum, re) => sum + (re[String(s.number)]?.positives || 0), 0) : 0,
       mistakes:  featureOn('marks') ? Object.values(STATE.entries).reduce((sum, re) => sum + (re[String(s.number)]?.mistakes  || 0), 0) : 0 };
   });
+}
+
+function _buildLbRankRows() {
+  const myDocId = STATE.studentNum;
+  const allScored = _scoreStudents();
 
   const lbScoreMap = {};
   allScored.forEach(({ s, score, positives, mistakes }) => {
@@ -3514,26 +3726,187 @@ function _buildLbRankRows() {
   }).join('');
 }
 
+// Renders the "Band Attendance Data" card from per-rehearsal absence rows
+// [{date, label, absent}] (sorted desc). Shared by the admin and student views.
+function _lbAttendanceSectionHtml(rehearsalRows) {
+  if (!featureOn('attendance')) return '';
+  const last         = rehearsalRows[0] || null;
+  const { mon, fri } = currentWeekRange();
+  const weekRows     = rehearsalRows.filter(r => r.date >= mon && r.date <= fri);
+  const weekAbsences = weekRows.reduce((s, r) => s + r.absent, 0);
+  const seasonTotal  = rehearsalRows.reduce((s, r) => s + r.absent, 0);
+  const seasonAvg    = rehearsalRows.length ? (seasonTotal / rehearsalRows.length).toFixed(1) : '—';
+
+  return `
+      <div id="lb-sec-attendance-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('lb-sec-attendance')">
+        <span class="section-title" style="margin:0">Band Attendance Data</span>
+        <span class="sec-chevron">▾</span>
+      </div>
+      <div id="lb-sec-attendance">
+        <div class="card mb-12" style="padding:0;overflow:hidden">
+          ${last ? `
+          <div class="lb-stat-row">
+            <div class="lb-stat-label">
+              Most recent rehearsal
+              <div class="lb-stat-sub">${fmtDate(last.date)}${last.label ? ' — ' + esc(last.label) : ''}</div>
+            </div>
+            <div class="lb-stat-val ${last.absent > 0 ? 'lb-val-warn' : 'lb-val-ok'}">
+              ${last.absent} absent
+            </div>
+          </div>` : `
+          <div class="lb-stat-row">
+            <div class="lb-stat-label">No rehearsals yet</div>
+          </div>`}
+          <div class="lb-stat-row lb-stat-row-alt">
+            <div class="lb-stat-label">
+              This week
+              <div class="lb-stat-sub">${fmtDate(mon)} – ${fmtDate(fri)} · ${weekRows.length} rehearsal${weekRows.length !== 1 ? 's' : ''}</div>
+            </div>
+            <div class="lb-stat-val ${weekAbsences > 0 ? 'lb-val-warn' : 'lb-val-ok'}">
+              ${weekRows.length ? `${weekAbsences} absent` : '—'}
+            </div>
+          </div>
+          <div class="lb-stat-row">
+            <div class="lb-stat-label">
+              Season average
+              <div class="lb-stat-sub">${rehearsalRows.length} rehearsal${rehearsalRows.length !== 1 ? 's' : ''} total</div>
+            </div>
+            <div class="lb-stat-val">${seasonAvg !== '—' ? `${seasonAvg} / rehearsal` : '—'}</div>
+          </div>
+        </div>
+      </div>`;
+}
+
+// Renders the "Songs to Memorize" progress section from aggregate rows
+// [{song:{title,dueDate,category}, passed, remaining, pct}]. Shared by the
+// admin and student views.
+function _lbSongsSectionHtml(songRows) {
+  if (!songRows.length) return '';
+  const cats = STATE.songCategories;
+  const lbSongRow = ({ song, passed, remaining, pct }, i) => `
+    <div class="lb-song-row ${i % 2 === 1 ? 'lb-stat-row-alt' : ''}">
+      <div class="lb-song-info">
+        <div class="lb-song-title">${esc(song.title)}</div>
+        ${song.dueDate ? `<div class="lb-song-due ${song.dueDate < today() && remaining > 0 ? 'song-overdue' : ''}">Due ${fmtDate(song.dueDate)}</div>` : ''}
+        <div class="lb-prog-bar"><div class="lb-prog-fill" style="width:${pct}%"></div></div>
+      </div>
+      <div class="lb-song-counts">
+        <span class="lb-count-pass">${passed} passed</span>
+        <span class="lb-count-rem">${remaining} left</span>
+      </div>
+    </div>`;
+
+  let body;
+  if (!cats.length) {
+    body = `<div class="card mb-12" style="padding:0;overflow:hidden">${songRows.map(lbSongRow).join('')}</div>`;
+  } else {
+    const grouped = {};
+    const uncategorized = [];
+    cats.forEach(c => { grouped[c] = []; });
+    songRows.forEach(row => {
+      if (row.song.category && grouped[row.song.category] !== undefined) grouped[row.song.category].push(row);
+      else uncategorized.push(row);
+    });
+    let catIdx = 0;
+    body = '';
+    cats.forEach(cat => {
+      if (!grouped[cat].length) return;
+      const id = `lb-song-cat-${catIdx++}`;
+      body += `
+        <div id="${id}-hdr" class="sec-hdr sec-hdr-open song-cat-sec-hdr" onclick="toggleCollapse('${id}')">
+          <span>${esc(cat)}</span>
+          <span class="sec-chevron">▾</span>
+        </div>
+        <div id="${id}">
+          <div class="card mb-12" style="padding:0;overflow:hidden">${grouped[cat].map(lbSongRow).join('')}</div>
+        </div>`;
+    });
+    if (uncategorized.length) {
+      const id = `lb-song-cat-${catIdx}`;
+      const label = songRows.length > uncategorized.length ? 'Other' : 'Songs';
+      body += `
+        <div id="${id}-hdr" class="sec-hdr sec-hdr-open song-cat-sec-hdr" onclick="toggleCollapse('${id}')">
+          <span>${label}</span>
+          <span class="sec-chevron">▾</span>
+        </div>
+        <div id="${id}">
+          <div class="card mb-12" style="padding:0;overflow:hidden">${uncategorized.map(lbSongRow).join('')}</div>
+        </div>`;
+    }
+  }
+
+  return `
+        <div id="lb-sec-songs-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('lb-sec-songs')">
+          <span class="section-title" style="margin:0">Songs to Memorize</span>
+          <span class="sec-chevron">▾</span>
+        </div>
+        <div id="lb-sec-songs">${body}</div>`;
+}
+
+// Student-facing Band Stats view. Renders entirely from the director-published
+// settings/public snapshot — students cannot read the raw data it was derived
+// from. Directors get the same rendering when previewing the student view
+// (computed locally so the preview is always current).
+function viewLeaderboardStudent() {
+  const pub = STATE.isAdmin ? computePublicStats() : STATE.publicStats;
+
+  if (!pub) {
+    return `
+    <div class="leaderboard-view">
+      <div class="empty-state" style="padding:48px 24px">
+        <div class="empty-icon">📊</div>
+        <p>Band stats haven't been published yet. Check back after your next rehearsal!</p>
+      </div>
+    </div>`;
+  }
+
+  const rehearsalRows = [...(pub.rehearsals || [])].sort((a, b) => b.date.localeCompare(a.date));
+  const songRows = (featureOn('songs') ? (pub.songs || []) : []).map(s => ({
+    song: s,
+    passed: s.passed,
+    remaining: s.remaining,
+    pct: (s.passed + s.remaining) ? Math.round(s.passed / (s.passed + s.remaining) * 100) : 0,
+  }));
+
+  const lbRows = (STATE.marchingLeaderboardEnabled && featureOn('stats') && pub.leaderboard)
+    ? pub.leaderboard : null;
+  const rankingHtml = lbRows ? `
+          <div id="lb-sec-ranking-hdr" class="sec-hdr sec-hdr-open lb-marching-hdr" onclick="toggleCollapse('lb-sec-ranking')">
+            <span class="section-title" style="margin:0">Marching Leaderboard</span>
+            <span class="sec-chevron">▾</span>
+          </div>
+          <div id="lb-sec-ranking">
+            <div class="card mb-12" style="padding:0;overflow:hidden">
+              ${lbRows.map((r, i) => {
+                const isMe  = String(r.num) === String(STATE.studentNum);
+                const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
+                return `
+              <div class="lb-rank-row ${isMe ? 'lb-rank-me' : ''} ${i % 2 === 1 ? 'lb-stat-row-alt' : ''}">
+                <span class="lb-rank-medal">${medal}</span>
+                <span class="lb-rank-name">${esc(r.name)}${isMe ? ' <span class="lb-you-badge">you</span>' : ''}</span>
+                <span class="lb-rank-score ${r.score > 0 ? 'lb-val-ok' : r.score < 0 ? 'lb-val-warn' : ''}">${r.score > 0 ? '+' : ''}${r.score}</span>
+              </div>`;
+              }).join('')}
+            </div>
+          </div>` : '';
+
+  return `
+    <div class="leaderboard-view">
+      ${_lbAttendanceSectionHtml(rehearsalRows)}
+      ${_lbSongsSectionHtml(songRows)}
+      ${rankingHtml}
+    </div>`;
+}
+
 function viewLeaderboard() {
   const rehearsals    = [...STATE.rehearsals].sort((a,b) => b.date.localeCompare(a.date));
   const totalStudents = Object.keys(STATE.students).length;
 
-  // ── Attendance stats ──────────────────────────────────────────────────────
-
-  const absencesFor = rid =>
-    Object.values(STATE.entries[rid] || {}).filter(e => e.attendance === 'absent').length;
-
-  const lastRehearsal    = rehearsals[0] || null;
-  const lastAbsences     = lastRehearsal ? absencesFor(lastRehearsal.id) : null;
-
-  const { mon, fri }     = currentWeekRange();
-  const weekRehearsals   = rehearsals.filter(r => r.date >= mon && r.date <= fri);
-  const weekAbsences     = weekRehearsals.reduce((s, r) => s + absencesFor(r.id), 0);
-
-  const seasonTotal      = rehearsals.reduce((s, r) => s + absencesFor(r.id), 0);
-  const seasonAvg        = rehearsals.length ? (seasonTotal / rehearsals.length).toFixed(1) : '—';
-
-  // ── Songs ─────────────────────────────────────────────────────────────────
+  const rehearsalRows = rehearsals.map(r => ({
+    date:   r.date,
+    label:  r.label || '',
+    absent: Object.values(STATE.entries[r.id] || {}).filter(e => e.attendance === 'absent').length,
+  }));
 
   const songRows = DB.getSongs().map(song => {
     const passed    = Object.values(song.statuses || {}).filter(s => s.status === 'passed').length;
@@ -3547,105 +3920,9 @@ function viewLeaderboard() {
   return `
     <div class="leaderboard-view">
 
-      ${featureOn('attendance') ? `
-      <div id="lb-sec-attendance-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('lb-sec-attendance')">
-        <span class="section-title" style="margin:0">Band Attendance Data</span>
-        <span class="sec-chevron">▾</span>
-      </div>
-      <div id="lb-sec-attendance">
-        <div class="card mb-12" style="padding:0;overflow:hidden">
-          ${lastRehearsal ? `
-          <div class="lb-stat-row">
-            <div class="lb-stat-label">
-              Most recent rehearsal
-              <div class="lb-stat-sub">${fmtDate(lastRehearsal.date)}${lastRehearsal.label ? ' — ' + esc(lastRehearsal.label) : ''}</div>
-            </div>
-            <div class="lb-stat-val ${lastAbsences > 0 ? 'lb-val-warn' : 'lb-val-ok'}">
-              ${lastAbsences} absent
-            </div>
-          </div>` : `
-          <div class="lb-stat-row">
-            <div class="lb-stat-label">No rehearsals yet</div>
-          </div>`}
-          <div class="lb-stat-row lb-stat-row-alt">
-            <div class="lb-stat-label">
-              This week
-              <div class="lb-stat-sub">${fmtDate(mon)} – ${fmtDate(fri)} · ${weekRehearsals.length} rehearsal${weekRehearsals.length !== 1 ? 's' : ''}</div>
-            </div>
-            <div class="lb-stat-val ${weekAbsences > 0 ? 'lb-val-warn' : 'lb-val-ok'}">
-              ${weekRehearsals.length ? `${weekAbsences} absent` : '—'}
-            </div>
-          </div>
-          <div class="lb-stat-row">
-            <div class="lb-stat-label">
-              Season average
-              <div class="lb-stat-sub">${rehearsals.length} rehearsal${rehearsals.length !== 1 ? 's' : ''} total</div>
-            </div>
-            <div class="lb-stat-val">${seasonAvg !== '—' ? `${seasonAvg} / rehearsal` : '—'}</div>
-          </div>
-        </div>
-      </div>` : ''}
+      ${_lbAttendanceSectionHtml(rehearsalRows)}
 
-      ${songRows.length ? `
-        <div id="lb-sec-songs-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('lb-sec-songs')">
-          <span class="section-title" style="margin:0">Songs to Memorize</span>
-          <span class="sec-chevron">▾</span>
-        </div>
-        <div id="lb-sec-songs">
-          ${(() => {
-            const cats = STATE.songCategories;
-            const lbSongRow = ({ song, passed, remaining, pct }, i) => `
-              <div class="lb-song-row ${i % 2 === 1 ? 'lb-stat-row-alt' : ''}">
-                <div class="lb-song-info">
-                  <div class="lb-song-title">${esc(song.title)}</div>
-                  ${song.dueDate ? `<div class="lb-song-due ${song.dueDate < today() && passed < totalStudents ? 'song-overdue' : ''}">Due ${fmtDate(song.dueDate)}</div>` : ''}
-                  <div class="lb-prog-bar"><div class="lb-prog-fill" style="width:${pct}%"></div></div>
-                </div>
-                <div class="lb-song-counts">
-                  <span class="lb-count-pass">${passed} passed</span>
-                  <span class="lb-count-rem">${remaining} left</span>
-                </div>
-              </div>`;
-            if (!cats.length) {
-              return `<div class="card mb-12" style="padding:0;overflow:hidden">${songRows.map(lbSongRow).join('')}</div>`;
-            }
-            const grouped = {};
-            const uncategorized = [];
-            cats.forEach(c => { grouped[c] = []; });
-            songRows.forEach(row => {
-              if (row.song.category && grouped[row.song.category] !== undefined) grouped[row.song.category].push(row);
-              else uncategorized.push(row);
-            });
-            let catIdx = 0;
-            let html = '';
-            cats.forEach(cat => {
-              if (!grouped[cat].length) return;
-              const id = `lb-song-cat-${catIdx++}`;
-              html += `
-                <div id="${id}-hdr" class="sec-hdr sec-hdr-open song-cat-sec-hdr" onclick="toggleCollapse('${id}')">
-                  <span>${esc(cat)}</span>
-                  <span class="sec-chevron">▾</span>
-                </div>
-                <div id="${id}">
-                  <div class="card mb-12" style="padding:0;overflow:hidden">${grouped[cat].map(lbSongRow).join('')}</div>
-                </div>`;
-            });
-            if (uncategorized.length) {
-              const id = `lb-song-cat-${catIdx}`;
-              const label = songRows.length > uncategorized.length ? 'Other' : 'Songs';
-              html += `
-                <div id="${id}-hdr" class="sec-hdr sec-hdr-open song-cat-sec-hdr" onclick="toggleCollapse('${id}')">
-                  <span>${label}</span>
-                  <span class="sec-chevron">▾</span>
-                </div>
-                <div id="${id}">
-                  <div class="card mb-12" style="padding:0;overflow:hidden">${uncategorized.map(lbSongRow).join('')}</div>
-                </div>`;
-            }
-            return html;
-          })()}
-        </div>
-      ` : ''}
+      ${_lbSongsSectionHtml(songRows)}
 
       ${(STATE.marchingLeaderboardEnabled || STATE.isAdmin) ? `
           <div id="lb-sec-ranking-hdr" class="sec-hdr sec-hdr-open lb-marching-hdr" onclick="toggleCollapse('lb-sec-ranking')">
@@ -4408,7 +4685,7 @@ function viewRehearsal(rid) {
         <div class="event-notes-section">
           <div class="event-notes-hdr">Notes per mark</div>
           ${allEvts.map((e,i) => {
-            const canDelete = STATE.isAdmin || !e.by || e.by === STATE.user?.email;
+            const canDelete = STATE.isAdmin || !e.by || e.by === STATE.user?.uid;
             return `
             <div class="event-note-row ${e.sectionMark ? 'is-section-mark' : ''}">
               <span class="event-note-type ${e.type==='mistake'?'is-mistake':'is-positive'}">${e.type==='mistake'?'✗':'✓'}</span>
@@ -4677,7 +4954,7 @@ function confirmMark(rid, num, type, note) {
   const cur    = ents[num] || { mistakes:0, positives:0, notes:'', events:[] };
   const newVal = (cur[field]||0) + 1;
   const events = [...(cur.events || [])];
-  events.push({ type, note: note || '', segment, ts: Date.now(), by: STATE.user?.email || '' });
+  events.push({ type, note: note || '', segment, ts: Date.now(), by: STATE.user?.uid || '' });
   if (!STATE.entries[rid]) STATE.entries[rid] = {};
   STATE.entries[rid][num] = { ...cur, [field]: newVal, events };
   fsUpsertEntry(rid, num, { mistakes: STATE.entries[rid][num].mistakes, positives: STATE.entries[rid][num].positives, notes: STATE.entries[rid][num].notes || '', events });
@@ -4902,7 +5179,7 @@ async function markAllPresent(rid) {
       events:        cur.events    || [],
       attendance:    'present',
       updatedAt:     firebase.firestore.FieldValue.serverTimestamp(),
-      updatedBy:     STATE.user?.email || '',
+      updatedBy:     STATE.user?.uid || '',
     }, { merge: true });
   }
   await batch.commit();
@@ -5218,7 +5495,7 @@ async function confirmGroupMark(rid, groupName, type, note) {
   const field   = type === 'mistake' ? 'mistakes' : 'positives';
   const batch   = db.batch();
   const sectionLabel = isAll ? 'All Students' : groupName;
-  const evt     = { type, note: note || '', segment, ts: Date.now(), by: STATE.user?.email || '', sectionMark: true, section: sectionLabel };
+  const evt     = { type, note: note || '', segment, ts: Date.now(), by: STATE.user?.uid || '', sectionMark: true, section: sectionLabel };
 
   for (const stu of stuList) {
     const num    = String(stu.number || stu._id);
@@ -5235,7 +5512,7 @@ async function confirmGroupMark(rid, groupName, type, note) {
       notes: cur.notes || '', events,
       ...(att ? { attendance: att } : {}),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      updatedBy: STATE.user?.email || ''
+      updatedBy: STATE.user?.uid || ''
     }, { merge: true });
   }
 
@@ -5271,7 +5548,7 @@ function deleteEvent(rid, num, idx) {
   const evt = (cur.events || [])[idx];
   if (!evt) return;
   // Enforce ownership — non-admins can only delete their own marks
-  if (!STATE.isAdmin && evt.by && evt.by !== STATE.user?.email) return;
+  if (!STATE.isAdmin && evt.by && evt.by !== STATE.user?.uid) return;
   const events   = (cur.events || []).filter((_, i) => i !== idx);
   const mistakes  = events.filter(e => e.type === 'mistake').length;
   const positives = events.filter(e => e.type === 'positive').length;
@@ -5879,7 +6156,7 @@ async function endRehearsal(rid) {
       events,
       ...(entry.attendance ? { attendance: entry.attendance } : {}),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      updatedBy: STATE.user?.email || ''
+      updatedBy: STATE.user?.uid || ''
     });
 
     if (!STATE.entries[rid]) STATE.entries[rid] = {};
