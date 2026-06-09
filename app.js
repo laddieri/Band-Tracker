@@ -6815,9 +6815,11 @@ function _parsePywareFile(buffer) {
 
   // Read every PAGE block (one frame of 144 records), keyed by the stable id.
   const rawFrames = [];
+  let firstPage = -1;
   for (let i = 0; i < u8.length - 10; i++) {
     if (u8[i]!==0x50||u8[i+1]!==0x41||u8[i+2]!==0x47||u8[i+3]!==0x45) continue; // 'PAGE'
     if (view.getUint16(i + 8, false) !== 144) continue;
+    if (firstPage < 0) firstPage = i;
     const base0 = i + 10;
     if (base0 + 144 * 20 > u8.length) break;
     const frame = [];
@@ -6859,27 +6861,44 @@ function _parsePywareFile(buffer) {
   })));
 
   // Collapse consecutive identical formations (holds / duplicate layers) so the
-  // Detect set keyframes. Every PAGE block is one count, and Pyware moves
-  // performers in straight lines between sets — so a "set" is a count where
-  // many performers' motion bends (their position isn't the midpoint of the
-  // neighbouring counts). (A set the form marches straight through, with no
-  // direction change, can't be seen this way and may be skipped.)
-  const maps = allFrames.map(f => { const m = {}; f.forEach(p => m[p.label] = p); return m; });
-  const setCounts = [0];
-  for (let i = 1; i < allFrames.length - 1; i++) {
-    let bends = 0;
-    for (const lbl in maps[i]) {
-      const a = maps[i-1][lbl], b = maps[i][lbl], c = maps[i+1][lbl];
-      if (!a || !c) continue;
-      if (Math.abs(b.stepsX - (a.stepsX + c.stepsX)/2) > 0.02 ||
-          Math.abs(b.stepsY - (a.stepsY + c.stepsY)/2) > 0.02) bends++;
+  // Read Pyware's marked-set table, which sits immediately before the PAGE
+  // blocks: a run of 18-byte records (count as big-endian u16 at bytes 0-1,
+  // byte 14 = 0x01), set 1 (count 0) first. We walk backward from the first
+  // PAGE block, which is exactly where the table ends.
+  let setCounts = [];
+  {
+    let off = firstPage - 18, prev = Infinity;
+    while (off >= 0) {
+      const c = view.getUint16(off, false);
+      if (c >= prev || u8[off + 14] !== 0x01) break;
+      setCounts.unshift(c);
+      prev = c;
+      if (c === 0) break;
+      off -= 18;
     }
-    if (bends >= 16 && i - setCounts[setCounts.length-1] > 2) setCounts.push(i);
   }
-  if (setCounts[setCounts.length-1] !== allFrames.length - 1) setCounts.push(allFrames.length - 1);
+  // Fallback: if the table isn't found, detect sets geometrically — Pyware
+  // moves performers in straight lines between sets, so a set is a count where
+  // many performers' motion bends. (Misses sets the form marches straight
+  // through, so it's only a fallback.)
+  if (setCounts.length < 2 || setCounts[0] !== 0) {
+    const maps = allFrames.map(f => { const m = {}; f.forEach(p => m[p.label] = p); return m; });
+    setCounts = [0];
+    for (let i = 1; i < allFrames.length - 1; i++) {
+      let bends = 0;
+      for (const lbl in maps[i]) {
+        const a = maps[i-1][lbl], b = maps[i][lbl], c = maps[i+1][lbl];
+        if (!a || !c) continue;
+        if (Math.abs(b.stepsX - (a.stepsX + c.stepsX)/2) > 0.02 ||
+            Math.abs(b.stepsY - (a.stepsY + c.stepsY)/2) > 0.02) bends++;
+      }
+      if (bends >= 16 && i - setCounts[setCounts.length-1] > 2) setCounts.push(i);
+    }
+  }
 
-  // Each page = a detected set (its count + the formation at that count).
-  const pages = setCounts.map(c => ({ count: c, performers: allFrames[c] }));
+  // Each page = a marked set (its count + the formation at that count).
+  const pages = setCounts.filter(c => allFrames[c]).map(c => ({ count: c, performers: allFrames[c] }));
+  if (!pages.length) pages.push({ count: 0, performers: allFrames[0] });
 
   // Sections (A,B,…) with their performer labels (A1,A2,…A10 in order).
   const labelNum = lbl => parseInt(lbl.replace(/^\D+/, ''), 10) || 0;
