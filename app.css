@@ -2531,7 +2531,8 @@ html, body {
 
 /* ── Attendance screen ───────────────────────────────────────────────────────── */
 
-.att-chip-present { background: var(--success-bg); color: var(--success); }
+.att-chip-present  { background: var(--success-bg); color: var(--success); }
+.att-chip-unmarked { background: var(--surface-2,#f3f4f6); color: var(--text-muted); }
 
 .att-screen-summary-bar {
   display: flex;
@@ -2656,6 +2657,32 @@ html, body {
   border-color: var(--success);
   background: var(--success-bg);
 }
+
+/* Marked-present row tint */
+.att-stu-present { background: #f0fdf4; border-radius: var(--r-sm); padding-left: 8px; padding-right: 8px; }
+
+/* "All students marked" message */
+.att-all-marked { text-align: center; padding: 16px 0; color: var(--text-muted); font-size: 0.88rem; }
+
+/* Marked-present collapsible section */
+.att-present-section { border-top: 2px solid var(--border); margin-top: 12px; }
+.att-present-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 0;
+  background: none;
+  border: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--success);
+  cursor: pointer;
+  font-family: inherit;
+  gap: 8px;
+}
+.att-present-toggle:hover { opacity: 0.8; }
+.att-present-list { padding-bottom: 8px; }
 .att-screen-btn-done .att-screen-btn-label { color: var(--success); }
 
 /* ── Attendance submitted overview ───────────────────────────────────────────── */
