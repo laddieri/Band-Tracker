@@ -121,6 +121,62 @@ After that, the student's reads are scoped to `orgs/{orgId}/…` like everyone
 else. `studentCodes` is the only collection readable before a membership
 exists, and it exposes nothing sensitive (just an org id + a number).
 
+## Student data visibility (privacy model)
+
+Students must not be able to see other students' data, even though the app's
+UI never showed it: the security rules — not the UI — are the boundary, since
+any student can talk to Firestore directly with their own credentials.
+
+What a **student** can read (everything else is director-only):
+
+| Data                          | Student access                                     |
+|-------------------------------|----------------------------------------------------|
+| `orgs/{orgId}` (org doc)      | ❌ — carries the co-director **invite code**; a student who read it could join as a director |
+| `settings/presets`            | ❌ — pseudonym salt, score weights, drill data, presets |
+| `settings/public`             | ✅ — director-published, student-safe (see below)  |
+| `students/{num}`              | own doc only (`members/{uid}.studentNumber == num`) |
+| `entries/{id}`                | own entries only; queries must filter `studentNumber == <own>` |
+| `rehearsals/*`                | ✅ — schedule metadata (dates/labels)              |
+| `songs/*`                     | ❌ — embeds every student's pass/fail + fail notes |
+
+### `settings/public` — the published snapshot
+
+Because students can't read the raw data, **director clients publish a
+sanitized snapshot** to `orgs/{orgId}/settings/public` (debounced, deduped by
+content hash): band name/logo, feature flags, song categories, plus derived
+stats — per-rehearsal absence counts, per-song passed/remaining aggregates,
+and the pseudonymized leaderboard (`{num, pseudonym, score}`, only while the
+leaderboard is enabled).
+
+This needs no Cloud Functions: all band data is director-written, so a
+director's client is online whenever the data changes and the snapshot stays
+fresh by construction.
+
+Known tradeoff: published leaderboard rows include the student number so each
+student can find their own row. A student who knows a classmate's number can
+map it to a pseudonym + aggregate score (comparable to a score sheet posted by
+ID number). Names, notes, emails and per-event details are never published.
+
+### Per-student song results
+
+Song docs keep the director-facing `statuses` map, but each write also mirrors
+that student's own result to `students/{num}.songStatuses.{songId}`
+(`status`, `note`, `updatedAt` — no director identity). The portal reads the
+mirror; the song catalog and aggregate progress come from `settings/public`.
+
+Director identity in student-readable data: entries stamp `updatedBy`/`by`
+with the director's **uid**, never their email.
+
+### Deploy order for this change
+
+1. Run `scripts/backfill-student-privacy.js` (mirrors song statuses, seeds
+   `settings/public` for every org).
+2. Deploy the app (new `app.js` works under the old rules too).
+3. Deploy the rules.
+
+Old clients listen to collections the new rules deny to students, so
+deploying rules first would break live student sessions.
+
 ## What replaces the old `admins` collection
 
 The old top-level `admins/{email}` collection (used to flag directors) is

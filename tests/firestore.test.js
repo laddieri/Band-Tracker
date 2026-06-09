@@ -34,12 +34,18 @@ const guest    = ()    => testEnv.unauthenticatedContext().firestore();
 async function seed() {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
-    await db.doc('orgs/a').set({ createdBy: 'dirA', name: 'Org A' });
+    await db.doc('orgs/a').set({ createdBy: 'dirA', name: 'Org A', inviteCode: 'ICODE' });
     await db.doc('members/dirA').set({ orgId: 'a', role: 'director', email: 'dir@a.com' });
     await db.doc('members/coA').set({ orgId: 'a', role: 'director', email: 'co@a.com' });
     await db.doc('members/studA').set({ orgId: 'a', role: 'student', studentNumber: '42' });
     await db.doc('orgs/a/students/42').set({ name: 'Sam' });
-    await db.doc('orgs/a/settings/presets').set({ bandName: 'Org A' });
+    await db.doc('orgs/a/students/7').set({ name: 'Riley' });
+    await db.doc('orgs/a/settings/presets').set({ bandName: 'Org A', pseudonymSalt: 's3cret' });
+    await db.doc('orgs/a/settings/public').set({ bandName: 'Org A' });
+    await db.doc('orgs/a/rehearsals/r1').set({ date: '2026-06-01', label: 'Sectionals' });
+    await db.doc('orgs/a/entries/r1_42').set({ rehearsalId: 'r1', studentNumber: '42', attendance: 'present' });
+    await db.doc('orgs/a/entries/r1_7').set({ rehearsalId: 'r1', studentNumber: '7', mistakes: 2 });
+    await db.doc('orgs/a/songs/s1').set({ title: 'Anthem', statuses: { 7: { status: 'failed', note: 'bars 12-16' } } });
 
     await db.doc('orgs/b').set({ createdBy: 'dirB', name: 'Org B' });
     await db.doc('members/dirB').set({ orgId: 'b', role: 'director', email: 'dir@b.com' });
@@ -90,11 +96,62 @@ describe('roles within an org', () => {
   it('a director can write a student', async () => {
     await assertSucceeds(director('dirA').doc('orgs/a/students/99').set({ name: 'New' }));
   });
-  it('a student can read org data', async () => {
+  it('a student can read their own student doc', async () => {
     await assertSucceeds(director('studA').doc('orgs/a/students/42').get());
   });
   it('a student CANNOT write org data', async () => {
     await assertFails(director('studA').doc('orgs/a/students/42').set({ name: 'hacked' }));
+  });
+});
+
+describe('student data visibility', () => {
+  it("a student CANNOT read another student's doc", async () => {
+    await assertFails(director('studA').doc('orgs/a/students/7').get());
+  });
+  it('a student CANNOT list the roster', async () => {
+    await assertFails(director('studA').collection('orgs/a/students').get());
+  });
+  it('a student can read their own entry', async () => {
+    await assertSucceeds(director('studA').doc('orgs/a/entries/r1_42').get());
+  });
+  it("a student CANNOT read another student's entry", async () => {
+    await assertFails(director('studA').doc('orgs/a/entries/r1_7').get());
+  });
+  it('a student can query entries scoped to their own number', async () => {
+    await assertSucceeds(
+      director('studA').collection('orgs/a/entries').where('studentNumber', '==', '42').get()
+    );
+  });
+  it('a student CANNOT list all entries', async () => {
+    await assertFails(director('studA').collection('orgs/a/entries').get());
+  });
+  it('a student CANNOT read songs (per-student results live there)', async () => {
+    await assertFails(director('studA').doc('orgs/a/songs/s1').get());
+  });
+  it('a director can read songs', async () => {
+    await assertSucceeds(director('dirA').doc('orgs/a/songs/s1').get());
+  });
+  it('a student can read rehearsal metadata', async () => {
+    await assertSucceeds(director('studA').doc('orgs/a/rehearsals/r1').get());
+  });
+  it('a student can read settings/public', async () => {
+    await assertSucceeds(director('studA').doc('orgs/a/settings/public').get());
+  });
+  it('a student CANNOT write settings/public', async () => {
+    await assertFails(director('studA').doc('orgs/a/settings/public').set({ bandName: 'x' }));
+  });
+  it('a student CANNOT read settings/presets (pseudonym salt etc.)', async () => {
+    await assertFails(director('studA').doc('orgs/a/settings/presets').get());
+  });
+  it('a director can read and write settings/public', async () => {
+    await assertSucceeds(director('dirA').doc('orgs/a/settings/public').set({ bandName: 'Org A' }));
+    await assertSucceeds(director('dirA').doc('orgs/a/settings/public').get());
+  });
+  it('a student CANNOT read the org doc (it holds the invite code)', async () => {
+    await assertFails(director('studA').doc('orgs/a').get());
+  });
+  it('a director can read the org doc', async () => {
+    await assertSucceeds(director('dirA').doc('orgs/a').get());
   });
 });
 
