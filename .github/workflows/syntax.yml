@@ -1,0 +1,33 @@
+name: Syntax Check
+
+# Fast guard: parse every committed JS file on each PR so a syntax error
+# (e.g. smart/curly quotes pasted in as string delimiters) can't reach main
+# and blank the app. `node --check` is syntax-only — no dependencies needed.
+
+on:
+  pull_request:
+    paths:
+      - '**/*.js'
+      - '.github/workflows/syntax.yml'
+  push:
+    branches: [main]
+    paths:
+      - '**/*.js'
+      - '.github/workflows/syntax.yml'
+
+jobs:
+  check:
+    name: node --check all JS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Parse every tracked .js file
+        run: |
+          set -e
+          files=$(git ls-files '*.js' | grep -v node_modules || true)
+          echo "Checking:"; echo "$files"
+          for f in $files; do node --check "$f"; done
+          echo "All JS files parsed successfully."
