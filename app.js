@@ -127,6 +127,9 @@ const STATE = {
   autoMarks:                  null,
   lbWeights:                  {},
   pywareMapping:              {},
+  // Per-feature student portal visibility (independent of whether the feature is
+  // enabled for directors). Default true = visible; false = hidden from portal.
+  portalVisible: { attendance: true, marks: true, songs: true, stats: true },
   // Student clients: the director-published snapshot from settings/public
   // (per-rehearsal absence counts, song progress, pseudonymized leaderboard).
   // Students cannot read the raw roster/entries/songs — see firestore.rules.
@@ -318,6 +321,12 @@ async function startListeners() {
       STATE.customStudentFields        = Array.isArray(d.customStudentFields)  ? d.customStudentFields  : [];
       STATE.hideNegativeFromPortal     = !!d.hideNegativeFromPortal;
       STATE.countNegativeInScore       = d.countNegativeInScore !== false;
+      STATE.portalVisible = {
+        attendance: d.portalVisible?.attendance !== false,
+        marks:      d.portalVisible?.marks      !== false,
+        songs:      d.portalVisible?.songs      !== false,
+        stats:      d.portalVisible?.stats      !== false,
+      };
       STATE.autoMarks                  = Array.isArray(d.autoMarks) ? d.autoMarks : null;
       STATE.lbWeights                  = d.lbWeights || {};
       STATE.pywareMapping              = d.pywareMapping || {};
@@ -406,6 +415,12 @@ function studentListeners() {
         marks:      d.features?.marks      !== false,
         songs:      d.features?.songs      !== false,
         stats:      d.features?.stats      !== false,
+      };
+      STATE.portalVisible = {
+        attendance: d.portalVisible?.attendance !== false,
+        marks:      d.portalVisible?.marks      !== false,
+        songs:      d.portalVisible?.songs      !== false,
+        stats:      d.portalVisible?.stats      !== false,
       };
       STATE.publicStats = d.stats || null;
       tick('settings');
@@ -503,6 +518,7 @@ function schedulePublishPublicStats() {
       bandName:                   STATE.bandName,
       bandLogo:                   STATE.bandLogo,
       features:                   STATE.features,
+      portalVisible:              STATE.portalVisible,
       marchingLeaderboardEnabled: STATE.marchingLeaderboardEnabled,
       hideNegativeFromPortal:     !!STATE.hideNegativeFromPortal,
       songCategories:             STATE.songCategories,
@@ -1014,6 +1030,22 @@ function featureOn(name) {
     case 'marks':      return f.marks      !== false;
     case 'songs':      return f.songs      !== false;
     case 'stats':      return f.stats !== false && f.marks !== false;
+    default:           return true;
+  }
+}
+
+// Like featureOn() but also checks the per-feature student portal visibility
+// toggle. Use this everywhere student-facing UI is rendered (portal, student
+// leaderboard view) so directors can enable a feature internally while keeping
+// it hidden from the student portal.
+function portalFeatureOn(name) {
+  if (!featureOn(name)) return false;
+  const pv = STATE.portalVisible || {};
+  switch (name) {
+    case 'attendance': return pv.attendance !== false;
+    case 'marks':      return pv.marks      !== false;
+    case 'songs':      return pv.songs      !== false;
+    case 'stats':      return pv.stats      !== false;
     default:           return true;
   }
 }
@@ -1699,19 +1731,30 @@ function showBrandSettingsModal() {
         reappears if you turn a feature back on.
       </p>
       ${[
-        ['attendance', 'Attendance', 'Track who’s absent, late, or present'],
-        ['marks',      'Marks / Student Feedback', 'Log positive and mistake marks during rehearsals'],
-        ['songs',      'Songs', 'Music memorization with pass/fail tracking'],
-        ['stats',      'Stats / Leaderboard', 'Rankings built from marks (needs Marks on)'],
-      ].map(([key, label, desc]) => `
-        <label style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;cursor:pointer">
-          <input type="checkbox" id="feat-${key}" ${STATE.features?.[key] !== false ? 'checked' : ''}
-            style="margin-top:3px;width:18px;height:18px;flex-shrink:0">
-          <span>
-            <span style="font-weight:600">${label}</span>
-            <span style="display:block;font-size:.75rem;color:var(--text-muted)">${desc}</span>
-          </span>
-        </label>`).join('')}
+        [‘attendance’, ‘Attendance’, ‘Track who’s absent, late, or present’],
+        [‘marks’,      ‘Marks / Student Feedback’, ‘Log positive and mistake marks during rehearsals’],
+        [‘songs’,      ‘Songs’, ‘Music memorization with pass/fail tracking’],
+        [‘stats’,      ‘Stats / Leaderboard’, ‘Rankings built from marks (needs Marks on)’],
+      ].map(([key, label, desc]) => {
+        const featOn   = STATE.features?.[key] !== false;
+        const portalOn = STATE.portalVisible?.[key] !== false;
+        return `
+        <div class="feat-toggle-row">
+          <label style="display:flex;align-items:flex-start;gap:10px;padding:8px 0 4px;cursor:pointer">
+            <input type="checkbox" id="feat-${key}" ${featOn ? ‘checked’ : ‘’}
+              style="margin-top:3px;width:18px;height:18px;flex-shrink:0"
+              onchange="handleFeatToggle(‘${key}’)">
+            <span>
+              <span style="font-weight:600">${label}</span>
+              <span style="display:block;font-size:.75rem;color:var(--text-muted)">${desc}</span>
+            </span>
+          </label>
+          <label class="feat-portal-lbl${!featOn ? ‘ feat-portal-lbl-dim’ : ‘’}" id="feat-portal-lbl-${key}">
+            <input type="checkbox" id="feat-portal-${key}" ${portalOn ? ‘checked’ : ‘’}${!featOn ? ‘ disabled’ : ‘’}>
+            <span>Show to students</span>
+          </label>
+        </div>`;
+      }).join(‘’)}
     </div>
 
     <div class="form-group">
@@ -1869,6 +1912,16 @@ function removeBrandLogo() {
   showBrandSettingsModal(); // re-open without current logo so Remove btn disappears
 }
 
+function handleFeatToggle(key) {
+  const featEl     = document.getElementById(`feat-${key}`);
+  const portalLbl  = document.getElementById(`feat-portal-lbl-${key}`);
+  const portalEl   = document.getElementById(`feat-portal-${key}`);
+  if (!featEl || !portalLbl || !portalEl) return;
+  const on = featEl.checked;
+  portalEl.disabled = !on;
+  portalLbl.classList.toggle('feat-portal-lbl-dim', !on);
+}
+
 async function saveBrandSettings() {
   const name = document.getElementById('brand-name-input')?.value.trim() || '';
   const logo = _pendingLogoData !== null ? _pendingLogoData : STATE.bandLogo;
@@ -1877,21 +1930,32 @@ async function saveBrandSettings() {
     const el = document.getElementById(`feat-${key}`);
     return el ? el.checked : (STATE.features?.[key] !== false);
   };
+  const readPortal = (key) => {
+    const el = document.getElementById(`feat-portal-${key}`);
+    return el ? el.checked : (STATE.portalVisible?.[key] !== false);
+  };
   const features = {
     attendance: readFeat('attendance'),
     marks:      readFeat('marks'),
     songs:      readFeat('songs'),
     stats:      readFeat('stats'),
   };
+  const portalVisible = {
+    attendance: readPortal('attendance'),
+    marks:      readPortal('marks'),
+    songs:      readPortal('songs'),
+    stats:      readPortal('stats'),
+  };
   const hideNegativeFromPortal = !(document.getElementById('neg-show-portal')?.checked ?? true);
   const countNegativeInScore   = !!(document.getElementById('neg-count-score')?.checked ?? true);
   STATE.bandName               = name;
   STATE.bandLogo               = logo;
   STATE.features               = features;
+  STATE.portalVisible          = portalVisible;
   STATE.hideNegativeFromPortal = hideNegativeFromPortal;
   STATE.countNegativeInScore   = countNegativeInScore;
   await orgCol('settings').doc('presets').set(
-    { bandName: name, bandLogo: logo, features, hideNegativeFromPortal, countNegativeInScore },
+    { bandName: name, bandLogo: logo, features, portalVisible, hideNegativeFromPortal, countNegativeInScore },
     { merge: true }
   );
   closeModal();
@@ -3154,7 +3218,7 @@ function portalPseudonym(num) {
 // Directors read song docs directly; students join the published catalog
 // (settings/public) with the songStatuses mirror on their own student doc.
 function _portalSongs(num) {
-  if (!featureOn('songs')) return [];
+  if (!portalFeatureOn('songs')) return [];
   if (STATE.isAdmin) {
     return STATE.songs.map(song => ({
       id: song.id, title: song.title, dueDate: song.dueDate || '',
@@ -3187,11 +3251,11 @@ function viewStudentPortal(previewMode = false) {
         <div>
           <div class="portal-name">${esc(s?.name || 'Student #' + num)}</div>
           ${metaParts.length ? `<div class="portal-meta">${metaParts.map(esc).join(' &middot; ')}</div>` : ''}
-          ${(STATE.marchingLeaderboardEnabled && featureOn('stats') && pseudonym) ? `<div class="portal-animal-name">🐾 Leaderboard name: <strong>${esc(pseudonym)}</strong></div>` : ''}
+          ${(STATE.marchingLeaderboardEnabled && portalFeatureOn('stats') && pseudonym) ? `<div class="portal-animal-name">🐾 Leaderboard name: <strong>${esc(pseudonym)}</strong></div>` : ''}
         </div>
       </div>
 
-      ${(hist.length > 0 && featureOn('attendance')) ? `
+      ${(hist.length > 0 && portalFeatureOn('attendance')) ? `
         <div id="portal-sec-attendance-hdr" class="sec-hdr" onclick="toggleCollapse('portal-sec-attendance')">
           <span class="section-title" style="margin:0">Attendance</span>
           <span class="sec-chevron">▾</span>
@@ -3202,7 +3266,7 @@ function viewStudentPortal(previewMode = false) {
               <div class="portal-stat-value">${hist.length}</div>
               <div class="portal-stat-label">Rehearsals</div>
             </button>
-            ${featureOn('marks') ? `
+            ${portalFeatureOn('marks') ? `
             ${!STATE.hideNegativeFromPortal ? `
             <button type="button" class="portal-stat portal-stat-btn" onclick="showPortalMistakesModal()">
               <div class="portal-stat-value portal-stat-mistake">${totalErr}</div>
@@ -3322,10 +3386,10 @@ function viewStudentPortal(previewMode = false) {
                 ${r.label ? `<div class="portal-rehear-label">${esc(r.label)}</div>` : ''}
               </div>
               <div class="portal-badges">
-                ${featureOn('attendance') && e.attendance==='absent' ? `<span class="portal-badge att-portal-badge-absent">Absent</span>` : ''}
-                ${featureOn('attendance') && e.attendance==='late'   ? `<span class="portal-badge att-portal-badge-late">Late</span>`   : ''}
-                ${featureOn('marks') && !STATE.hideNegativeFromPortal && (e.mistakes || 0) > 0 ? `<span class="portal-badge portal-badge-mistake">✗ ${e.mistakes}</span>` : ''}
-                ${featureOn('marks') && (e.positives || 0) > 0 ? `<span class="portal-badge portal-badge-positive">✓ ${e.positives}</span>` : ''}
+                ${portalFeatureOn('attendance') && e.attendance==='absent' ? `<span class="portal-badge att-portal-badge-absent">Absent</span>` : ''}
+                ${portalFeatureOn('attendance') && e.attendance==='late'   ? `<span class="portal-badge att-portal-badge-late">Late</span>`   : ''}
+                ${portalFeatureOn('marks') && !STATE.hideNegativeFromPortal && (e.mistakes || 0) > 0 ? `<span class="portal-badge portal-badge-mistake">✗ ${e.mistakes}</span>` : ''}
+                ${portalFeatureOn('marks') && (e.positives || 0) > 0 ? `<span class="portal-badge portal-badge-positive">✓ ${e.positives}</span>` : ''}
               </div>
               ${hasDetail ? `<span class="portal-chevron">▸</span>` : '<span class="portal-chevron" style="opacity:0">▸</span>'}
             </div>
@@ -3345,7 +3409,7 @@ function viewStudentPortal(previewMode = false) {
         </div>
       ` : `<p class="empty-state" style="padding:24px 0">No rehearsal history yet.</p>`}
 
-      ${featureOn('stats') ? `
+      ${portalFeatureOn('stats') ? `
       <button class="leaderboard-link-btn" onclick="${previewMode ? `previewLeaderboard('${esc(num)}')` : "navigate('leaderboard')"}">
         📊 View Band Stats &amp; Leaderboard
       </button>` : ''}
@@ -3365,9 +3429,9 @@ function showPortalRehearsalsModal() {
                    : att === 'late'   ? `<span class="portal-badge att-portal-badge-late">Late</span>`
                    : att === 'present'? `<span class="portal-badge portal-badge-present">Present</span>`
                    : '';
-    const mistakeBadge = featureOn('marks') && !STATE.hideNegativeFromPortal && (e.mistakes||0) > 0
+    const mistakeBadge = portalFeatureOn('marks') && !STATE.hideNegativeFromPortal && (e.mistakes||0) > 0
       ? `<span class="portal-badge portal-badge-mistake">✗ ${e.mistakes}</span>` : '';
-    const posBadge = featureOn('marks') && (e.positives||0) > 0
+    const posBadge = portalFeatureOn('marks') && (e.positives||0) > 0
       ? `<span class="portal-badge portal-badge-positive">✓ ${e.positives}</span>` : '';
     const noteText = e.notes ? `<div class="portal-modal-entry-note">${esc(e.notes)}</div>` : '';
     return `
@@ -3968,14 +4032,14 @@ function viewLeaderboardStudent() {
   }
 
   const rehearsalRows = [...(pub.rehearsals || [])].sort((a, b) => b.date.localeCompare(a.date));
-  const songRows = (featureOn('songs') ? (pub.songs || []) : []).map(s => ({
+  const songRows = (portalFeatureOn('songs') ? (pub.songs || []) : []).map(s => ({
     song: s,
     passed: s.passed,
     remaining: s.remaining,
     pct: (s.passed + s.remaining) ? Math.round(s.passed / (s.passed + s.remaining) * 100) : 0,
   }));
 
-  const lbRows = (STATE.marchingLeaderboardEnabled && featureOn('stats') && pub.leaderboard)
+  const lbRows = (STATE.marchingLeaderboardEnabled && portalFeatureOn('stats') && pub.leaderboard)
     ? pub.leaderboard : null;
   const rankingHtml = lbRows ? `
           <div id="lb-sec-ranking-hdr" class="sec-hdr sec-hdr-open lb-marching-hdr" onclick="toggleCollapse('lb-sec-ranking')">

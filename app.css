@@ -1757,6 +1757,37 @@ html, body {
   border-radius: 99px;
 }
 
+/* ── Feature toggle rows (Band Settings) ───────────────────────────────────── */
+
+.feat-toggle-row {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+  margin-bottom: 4px;
+}
+.feat-toggle-row:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+.feat-portal-lbl {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 0 8px 28px;
+  user-select: none;
+}
+.feat-portal-lbl input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+.feat-portal-lbl-dim {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
 /* ── CSV Import ─────────────────────────────────────────────────────────────── */
 
 .import-hint {
