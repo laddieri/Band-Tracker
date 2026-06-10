@@ -1731,30 +1731,30 @@ function showBrandSettingsModal() {
         reappears if you turn a feature back on.
       </p>
       ${[
-        [‘attendance’, ‘Attendance’, ‘Track who’s absent, late, or present’],
-        [‘marks’,      ‘Marks / Student Feedback’, ‘Log positive and mistake marks during rehearsals’],
-        [‘songs’,      ‘Songs’, ‘Music memorization with pass/fail tracking’],
-        [‘stats’,      ‘Stats / Leaderboard’, ‘Rankings built from marks (needs Marks on)’],
+        ['attendance', 'Attendance', 'Track who’s absent, late, or present'],
+        ['marks',      'Marks / Student Feedback', 'Log positive and mistake marks during rehearsals'],
+        ['songs',      'Songs', 'Music memorization with pass/fail tracking'],
+        ['stats',      'Stats / Leaderboard', 'Rankings built from marks (needs Marks on)'],
       ].map(([key, label, desc]) => {
         const featOn   = STATE.features?.[key] !== false;
         const portalOn = STATE.portalVisible?.[key] !== false;
         return `
         <div class="feat-toggle-row">
           <label style="display:flex;align-items:flex-start;gap:10px;padding:8px 0 4px;cursor:pointer">
-            <input type="checkbox" id="feat-${key}" ${featOn ? ‘checked’ : ‘’}
+            <input type="checkbox" id="feat-${key}" ${featOn ? 'checked' : ''}
               style="margin-top:3px;width:18px;height:18px;flex-shrink:0"
-              onchange="handleFeatToggle(‘${key}’)">
+              onchange="handleFeatToggle('${key}')">
             <span>
               <span style="font-weight:600">${label}</span>
               <span style="display:block;font-size:.75rem;color:var(--text-muted)">${desc}</span>
             </span>
           </label>
-          <label class="feat-portal-lbl${!featOn ? ‘ feat-portal-lbl-dim’ : ‘’}" id="feat-portal-lbl-${key}">
-            <input type="checkbox" id="feat-portal-${key}" ${portalOn ? ‘checked’ : ‘’}${!featOn ? ‘ disabled’ : ‘’}>
+          <label class="feat-portal-lbl${!featOn ? ' feat-portal-lbl-dim' : ''}" id="feat-portal-lbl-${key}">
+            <input type="checkbox" id="feat-portal-${key}" ${portalOn ? 'checked' : ''}${!featOn ? ' disabled' : ''}>
             <span>Show to students</span>
           </label>
         </div>`;
-      }).join(‘’)}
+      }).join('')}
     </div>
 
     <div class="form-group">
