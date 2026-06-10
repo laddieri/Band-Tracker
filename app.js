@@ -3385,9 +3385,15 @@ function viewStudentPortal(previewMode = false) {
         </div>
         <div id="portal-sec-history" class="sec-collapsed">
         ${hist.map(({rehearsal: r, entry: e}) => {
-          const evts     = e.events || [];
-          const noteEvts = evts.filter(ev => ev.note?.trim());
-          const hasDetail = e.notes || noteEvts.length > 0;
+          // Mark feedback (events + the entry note) is only shown when Marks is
+          // visible to students; otherwise the history shows just dates and any
+          // attendance badges.
+          const showMarks = portalFeatureOn('marks');
+          const noteEvts  = showMarks
+            ? (e.events || []).filter(ev => ev.note?.trim() && (!STATE.hideNegativeFromPortal || ev.type !== 'mistake'))
+            : [];
+          const entryNote = showMarks ? (e.notes || '') : '';
+          const hasDetail = entryNote || noteEvts.length > 0;
           return `
           <div class="portal-rehearsal-card" id="prc-${esc(r.id)}">
             <div class="portal-rehear-hdr" onclick="togglePortalRehearsal('${esc(r.id)}')">
@@ -3404,8 +3410,8 @@ function viewStudentPortal(previewMode = false) {
               ${hasDetail ? `<span class="portal-chevron">▸</span>` : '<span class="portal-chevron" style="opacity:0">▸</span>'}
             </div>
             <div class="portal-rehearsal-detail">
-              ${e.notes ? `<div class="portal-entry-note">${esc(e.notes)}</div>` : ''}
-              ${noteEvts.filter(ev => !STATE.hideNegativeFromPortal || ev.type !== 'mistake').map(ev => `
+              ${entryNote ? `<div class="portal-entry-note">${esc(entryNote)}</div>` : ''}
+              ${noteEvts.map(ev => `
                 <div class="portal-event-row ${ev.sectionMark ? 'is-section-mark' : ''}">
                   <span class="event-note-type ${ev.type === 'mistake' ? 'is-mistake' : 'is-positive'}">${ev.type === 'mistake' ? '✗' : '✓'}</span>
                   ${ev.sectionMark ? `<span class="section-mark-badge">§ ${esc(ev.section||'Section')}</span>` : ''}
