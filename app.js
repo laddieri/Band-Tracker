@@ -3266,16 +3266,6 @@ function viewStudentPortal(previewMode = false) {
               <div class="portal-stat-value">${hist.length}</div>
               <div class="portal-stat-label">Rehearsals</div>
             </button>
-            ${portalFeatureOn('marks') ? `
-            ${!STATE.hideNegativeFromPortal ? `
-            <button type="button" class="portal-stat portal-stat-btn" onclick="showPortalMistakesModal()">
-              <div class="portal-stat-value portal-stat-mistake">${totalErr}</div>
-              <div class="portal-stat-label">Mistake Marks</div>
-            </button>` : ''}
-            <button type="button" class="portal-stat portal-stat-btn" onclick="showPortalPositivesModal()">
-              <div class="portal-stat-value portal-stat-positive">${totalPos}</div>
-              <div class="portal-stat-label">Positives</div>
-            </button>` : ''}
           </div>
           ${(() => {
             const absences = hist.filter(({entry:e}) => e.attendance === 'absent');
@@ -3299,6 +3289,26 @@ function viewStudentPortal(previewMode = false) {
                   </div>` : ''}
               </div>`;
           })()}
+        </div>
+      ` : ''}
+
+      ${(hist.length > 0 && portalFeatureOn('marks')) ? `
+        <div id="portal-sec-marks-hdr" class="sec-hdr" onclick="toggleCollapse('portal-sec-marks')">
+          <span class="section-title" style="margin:0">Marks</span>
+          <span class="sec-chevron">▾</span>
+        </div>
+        <div id="portal-sec-marks" class="sec-collapsed">
+          <div class="portal-stats">
+            ${!STATE.hideNegativeFromPortal ? `
+            <button type="button" class="portal-stat portal-stat-btn" onclick="showPortalMistakesModal()">
+              <div class="portal-stat-value portal-stat-mistake">${totalErr}</div>
+              <div class="portal-stat-label">Mistake Marks</div>
+            </button>` : ''}
+            <button type="button" class="portal-stat portal-stat-btn" onclick="showPortalPositivesModal()">
+              <div class="portal-stat-value portal-stat-positive">${totalPos}</div>
+              <div class="portal-stat-label">Positives</div>
+            </button>
+          </div>
         </div>
       ` : ''}
 
