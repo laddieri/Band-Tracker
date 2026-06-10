@@ -7333,17 +7333,34 @@ function _parsePywareFile(buffer) {
   if (u8[0]!==0x33||u8[1]!==0x44||u8[2]!==0x4A||u8[3]!==0x56)
     throw new Error('This does not look like a Pyware .3dj file.');
 
-  // Read every PAGE block (one frame of 144 records), keyed by the stable id.
+  // Determine the band's performer count. Each PAGE block tags its performer
+  // count at byte 8 (big-endian u16); bands vary (we've seen 144 and 148), so
+  // take the most common value across all PAGE tags — robust against any
+  // coincidental 'PAGE' bytes in the data.
+  let N = 0;
+  {
+    const tally = {};
+    for (let i = 0; i < u8.length - 10; i++) {
+      if (u8[i]!==0x50||u8[i+1]!==0x41||u8[i+2]!==0x47||u8[i+3]!==0x45) continue;
+      const c = view.getUint16(i + 8, false);
+      if (c >= 1 && c <= 2000) tally[c] = (tally[c] || 0) + 1;
+    }
+    let bestCount = 0;
+    for (const k in tally) if (tally[k] > bestCount) { bestCount = tally[k]; N = +k; }
+  }
+  if (!N) throw new Error('No performer position data found in this file.');
+
+  // Read every PAGE block (one frame of N records), keyed by the stable id.
   const rawFrames = [];
   let firstPage = -1;
   for (let i = 0; i < u8.length - 10; i++) {
     if (u8[i]!==0x50||u8[i+1]!==0x41||u8[i+2]!==0x47||u8[i+3]!==0x45) continue; // 'PAGE'
-    if (view.getUint16(i + 8, false) !== 144) continue;
+    if (view.getUint16(i + 8, false) !== N) continue;
     if (firstPage < 0) firstPage = i;
     const base0 = i + 10;
-    if (base0 + 144 * 20 > u8.length) break;
+    if (base0 + N * 20 > u8.length) break;
     const frame = [];
-    for (let e = 0; e < 144; e++) {
+    for (let e = 0; e < N; e++) {
       const b = base0 + e * 20;
       const xRaw = (u8[b + 13] << 8) | u8[b + 14];
       const yRaw = (u8[b + 15] << 8) | u8[b + 16];
@@ -7355,7 +7372,7 @@ function _parsePywareFile(buffer) {
       });
     }
     rawFrames.push(frame);
-    i += 2889;
+    i += 9 + N * 20; // skip past this block's records to the next tag
   }
   if (!rawFrames.length) throw new Error('No performer position data found in this file.');
 
@@ -7412,7 +7429,7 @@ function _parsePywareFile(buffer) {
         if (Math.abs(b.stepsX - (a.stepsX + c.stepsX)/2) > 0.02 ||
             Math.abs(b.stepsY - (a.stepsY + c.stepsY)/2) > 0.02) bends++;
       }
-      if (bends >= 16 && i - setCounts[setCounts.length-1] > 2) setCounts.push(i);
+      if (bends >= Math.max(8, Math.round(N * 0.1)) && i - setCounts[setCounts.length-1] > 2) setCounts.push(i);
     }
   }
 
