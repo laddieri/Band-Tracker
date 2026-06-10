@@ -657,6 +657,7 @@ let _drillPages      = null; // distinct formation frames: [{label,section,num,s
 let _drillCurrentSet = 0;    // currently viewed frame index in chart modal
 let _drillFlipV      = false; // chart vertical flip (Pyware "facing" orientation)
 let _drillFileName   = null; // original filename of the stored .3dj
+let _drillZoomScale  = 1.0;  // current pinch-zoom scale for the fullscreen chart
 let _drillSelectedNums = []; // student numbers selected via drill
 let _pendingSegment    = ''; // currently selected rehearsal segment in mark modal
 let _pendingStudentCode = ''; // code being verified for anonymous student login
@@ -7674,7 +7675,7 @@ function _drillChartHtml(fs = false) {
   // stepsY off the front sideline (top of the chart).
   const SCALE = 3.5; // px per step
   const FW = Math.round(160 * SCALE), FH = Math.round(84 * SCALE);
-  const ML = 30, MR = 8, MT = 20, MB = 14;
+  const ML = 30, MR = 8, MT = 20, MB = 22;
   const SW = FW + ML + MR, SH = FH + MT + MB;
   const fx = s => (ML + s * SCALE).toFixed(1);
   // Front sideline at the bottom (stepsY = 0). The flip swaps front/back to
@@ -7685,15 +7686,18 @@ function _drillChartHtml(fs = false) {
   const secColor = {};
   (_drillData || []).forEach((sec, i) => { secColor[sec.letter] = _DRILL_COLORS[i % _DRILL_COLORS.length]; });
 
-  // Yard lines + numbers
+  // Yard lines + numbers (top and bottom)
   let lines = '';
   for (let yd = 0; yd <= 100; yd += 5) {
     const sx = fx(yd * 1.6);
     const major = yd % 10 === 0;
     lines += `<line x1="${sx}" y1="${MT}" x2="${sx}" y2="${MT+FH}" stroke="${major?'#fff':'#5a5'}" stroke-width="${major?'0.8':'0.4'}"/>`;
+    // Bottom tick mark on the sideline
+    lines += `<line x1="${sx}" y1="${MT+FH}" x2="${sx}" y2="${(MT+FH+4).toFixed(1)}" stroke="${major?'#aaa':'#666'}" stroke-width="${major?'0.8':'0.5'}"/>`;
     if (major && yd > 0 && yd < 100) {
       const lbl = yd > 50 ? 100 - yd : yd;
       lines += `<text x="${sx}" y="${MT-4}" text-anchor="middle" fill="#aaa" font-size="8" font-family="sans-serif">${lbl}</text>`;
+      lines += `<text x="${sx}" y="${(MT+FH+14).toFixed(1)}" text-anchor="middle" fill="#aaa" font-size="8" font-family="sans-serif">${lbl}</text>`;
     }
   }
   // Hash marks (high-school positions: 28 and 56 steps off the front sideline)
@@ -7774,7 +7778,9 @@ function _drillChartHtml(fs = false) {
 function _drillChartRefresh() {
   const fs = document.getElementById('drill-chart-fs');
   if (fs && !fs.classList.contains('hidden')) {
+    _drillZoomScale = 1.0;
     fs.innerHTML = _drillChartHtml(true);
+    _drillZoomSetup();
     return;
   }
   const root = document.getElementById('drill-chart-root');
@@ -7784,16 +7790,62 @@ function _drillChartRefresh() {
 function drillChartExpand() {
   const fs = document.getElementById('drill-chart-fs');
   if (!fs) return;
+  _drillZoomScale = 1.0;
   fs.innerHTML = _drillChartHtml(true);
   fs.classList.remove('hidden');
   document.addEventListener('keydown', _drillChartFsKeydown);
+  _drillZoomSetup();
 }
 
 function drillChartCollapse() {
   const fs = document.getElementById('drill-chart-fs');
   if (!fs || fs.classList.contains('hidden')) return;
+  _drillZoomScale = 1.0;
   fs.classList.add('hidden');
   document.removeEventListener('keydown', _drillChartFsKeydown);
+}
+
+// Pinch-to-zoom support for the fullscreen chart.
+let _drillPinchInitDist = 0;
+let _drillPinchInitScale = 1.0;
+
+function _drillZoomSetup() {
+  const wrap = document.querySelector('.drill-fs-svg-wrap');
+  if (!wrap) return;
+  wrap.addEventListener('touchstart', _drillOnTouchStart, { passive: false });
+  wrap.addEventListener('touchmove',  _drillOnTouchMove,  { passive: false });
+  wrap.addEventListener('touchend',   _drillOnTouchEnd,   { passive: false });
+}
+
+function _drillOnTouchStart(e) {
+  if (e.touches.length !== 2) return;
+  e.preventDefault();
+  _drillPinchInitDist  = Math.hypot(
+    e.touches[1].clientX - e.touches[0].clientX,
+    e.touches[1].clientY - e.touches[0].clientY
+  );
+  _drillPinchInitScale = _drillZoomScale;
+}
+
+function _drillOnTouchMove(e) {
+  if (e.touches.length !== 2 || !_drillPinchInitDist) return;
+  e.preventDefault();
+  const dist = Math.hypot(
+    e.touches[1].clientX - e.touches[0].clientX,
+    e.touches[1].clientY - e.touches[0].clientY
+  );
+  _drillZoomScale = Math.max(1.0, Math.min(6.0, _drillPinchInitScale * dist / _drillPinchInitDist));
+  const wrap = e.currentTarget;
+  const svg  = wrap.querySelector('svg');
+  if (!svg) return;
+  svg.style.width  = (_drillZoomScale * 100) + '%';
+  svg.style.height = 'auto';
+  // Once zoomed past 1× the container needs to scroll, not center
+  wrap.style.justifyContent = _drillZoomScale > 1.05 ? 'flex-start' : 'center';
+}
+
+function _drillOnTouchEnd(e) {
+  if (e.touches.length < 2) _drillPinchInitDist = 0;
 }
 
 function _drillChartFsKeydown(e) {
