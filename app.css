@@ -3088,7 +3088,7 @@ html, body {
 #drill-chart-fs.hidden { display: none !important; }
 .drill-fs-nav { display:flex; align-items:center; gap:8px; flex-shrink:0; margin-bottom:8px; }
 .drill-fs-nav .drill-chart-setlabel { color:#e0e0e0; }
-.drill-fs-svg-wrap { flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; display:flex; align-items:flex-start; justify-content:center; }
+.drill-fs-svg-wrap { flex:1; min-height:0; overflow:auto; -webkit-overflow-scrolling:touch; touch-action:pan-x pan-y; display:flex; align-items:flex-start; justify-content:center; }
 .drill-fs-bottom { flex-shrink:0; display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:8px; }
 .drill-fs-bottom .drill-chart-legend { margin:0; }
 .drill-fs-bottom .drill-chart-leg-item { color:#aaa; }
