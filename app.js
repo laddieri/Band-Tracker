@@ -64,10 +64,32 @@ const INSTRUMENTS = [
   'Color Guard','Drum Major','Other'
 ];
 
-// Score order: each entry maps to its index in INSTRUMENTS for sorting/display
-const _INSTR_IDX = new Map(INSTRUMENTS.map((n, i) => [n.toLowerCase(), i]));
+// Score order: groups of names that all share the same rank position.
+// Includes full names, abbreviations, and plurals to handle any stored variant.
+const _SCORE_ORDER = [
+  ['Majorette','Majorettes'],
+  ['Piccolo'],
+  ['Flute','Flutes'],
+  ['Oboe'],
+  ['Bassoon'],
+  ['Clarinet','Clarinets'],
+  ['Bass Clarinet'],
+  ['Sax','Saxophone','Saxophones','Alto Sax','Alto Saxophone','Tenor Sax','Tenor Saxophone','Bari Sax','Bari Saxophone','Baritone Sax','Baritone Saxophone'],
+  ['Trumpet','Trumpets'],
+  ['Mellophone','Mello','Mellos','French Horn','Horn','Horns'],
+  ['Trombone','Trombones'],
+  ['Bass Trombone'],
+  ['Baritone','Baritone/Euphonium','Euphonium','Baritones'],
+  ['Tuba','Tubas'],
+  ['Snare Drum','Snare','Tenor Drums','Tenors','Tenor','Bass Drum','Cymbals','Marimba','Xylophone','Vibraphone','Percussion','Perc','Pit'],
+  ['Color Guard','Guard'],
+  ['Drum Major','Drum Majors'],
+  ['Other'],
+];
+const _INSTR_IDX = new Map();
+_SCORE_ORDER.forEach((names, i) => names.forEach(n => _INSTR_IDX.set(n.toLowerCase(), i)));
 function instrOrder(name) {
-  return _INSTR_IDX.get((normInstrument(name) || '').toLowerCase()) ?? INSTRUMENTS.length;
+  return _INSTR_IDX.get((normInstrument(name) || '').toLowerCase()) ?? _SCORE_ORDER.length;
 }
 
 const SECTIONS = ['Woodwinds','Brass','Percussion','Front Ensemble','Color Guard','Leadership'];
