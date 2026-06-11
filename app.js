@@ -54,6 +54,7 @@ function fakeAnimalName(id) {
 }
 
 const INSTRUMENTS = [
+  'Majorette',
   'Piccolo','Flute','Clarinet','Bass Clarinet',
   'Alto Saxophone','Tenor Saxophone','Baritone Saxophone',
   'Trumpet','Mellophone','French Horn',
