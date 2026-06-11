@@ -3281,7 +3281,6 @@ function viewStudentPortal(previewMode = false) {
           ${(() => {
             const absences = hist.filter(({entry:e}) => e.attendance === 'absent');
             const lates    = hist.filter(({entry:e}) => e.attendance === 'late');
-            if (!absences.length && !lates.length) return '';
             return `
               <div class="card mb-12" style="padding:12px 16px">
                 <div class="att-summary-row">
