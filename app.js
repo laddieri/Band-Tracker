@@ -63,6 +63,12 @@ const INSTRUMENTS = [
   'Color Guard','Drum Major','Other'
 ];
 
+// Score order: each entry maps to its index in INSTRUMENTS for sorting/display
+const _INSTR_IDX = new Map(INSTRUMENTS.map((n, i) => [n.toLowerCase(), i]));
+function instrOrder(name) {
+  return _INSTR_IDX.get((normInstrument(name) || '').toLowerCase()) ?? INSTRUMENTS.length;
+}
+
 const SECTIONS = ['Woodwinds','Brass','Percussion','Front Ensemble','Color Guard','Leadership'];
 
 const MISTAKE_PRESETS  = ['Out of step','Missed turn','Poor posture','Late to mark','Wrong direction','Dress/cover issue','Instrument angle','Off the line'];
@@ -711,7 +717,7 @@ function filterAndSortStudents(students, f, scoreMap) {
     switch (f.sortField) {
       case 'name':       va = (a.name||'').toLowerCase();          vb = (b.name||'').toLowerCase(); break;
       case 'number':     va = +a.number||0;                        vb = +b.number||0; break;
-      case 'instrument': va = normInstrument(a.instrument).toLowerCase(); vb = normInstrument(b.instrument).toLowerCase(); break;
+      case 'instrument': va = instrOrder(a.instrument); vb = instrOrder(b.instrument); break;
       case 'section':    va = (a.section||'').toLowerCase();       vb = (b.section||'').toLowerCase(); break;
       case 'grade':      va = GRADE_LEVELS.indexOf(a.grade||'');   vb = GRADE_LEVELS.indexOf(b.grade||''); break;
       case 'column':     va = (a.column||'').toUpperCase();        vb = (b.column||'').toUpperCase(); break;
@@ -2047,7 +2053,7 @@ function startToday() {
 function instrumentsInRoster() {
   const seen = new Set();
   Object.values(DB.getStudents()).forEach(s => { if (s.instrument) seen.add(normInstrument(s.instrument)); });
-  return [...seen].sort();
+  return [...seen].sort((a, b) => instrOrder(a) - instrOrder(b));
 }
 
 function sectionsInRoster() {
