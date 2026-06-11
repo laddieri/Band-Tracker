@@ -5334,13 +5334,17 @@ function buildAttBodyHtml(rid, students, entries) {
 
   if (presentPool.length) {
     const collapsed = _attPresentCollapsed;
+    const filteredPresent = filterAndSortStudents(presentPool, _attFilter, attMap);
+    const countLabel = hasFilter && filteredPresent.length !== presentPool.length
+      ? `${filteredPresent.length} of ${presentPool.length}`
+      : String(presentPool.length);
     html += `
       <div class="att-present-section">
         <button class="att-present-toggle" onclick="toggleAttPresentSection('${esc(rid)}')">
-          <span>✓ Marked Present (${presentPool.length})</span>
+          <span>✓ Marked Present (${countLabel})</span>
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="transition:transform .2s;transform:rotate(${collapsed ? '0' : '180'}deg)"><polyline points="2,4 7,10 12,4"/></svg>
         </button>
-        ${!collapsed ? `<div class="att-present-list">${presentPool.map(s => attStudentRow(rid, s, entries)).join('')}</div>` : ''}
+        ${!collapsed ? `<div class="att-present-list">${filteredPresent.map(s => attStudentRow(rid, s, entries)).join('')}</div>` : ''}
       </div>`;
   }
 
