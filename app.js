@@ -1245,7 +1245,10 @@ function render() {
     }
 
     case 'attendance': {
-      title.textContent = 'Take Attendance';
+      const _attR = STATE.rehearsals.find(r => r.id === _params.rid);
+      title.textContent = _attR
+        ? fmtShort(_attR.date) + (_attR.label ? ` — ${_attR.label}` : '')
+        : 'Take Attendance';
       actions.innerHTML = userBtn();
       main.innerHTML = viewAttendance(_params.rid);
       break;
@@ -5164,24 +5167,36 @@ function confirmMarkCustom(rid, num, type) {
 // ── Attendance Screen ─────────────────────────────────────────────────────────
 
 function viewAttendanceSummary(rid) {
-  const students = Object.values(DB.getStudents()).sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  const students = Object.values(DB.getStudents());
   const entries  = STATE.entries[rid] || {};
 
-  const absent = students.filter(s => entries[s.number]?.attendance === 'absent');
-  const late   = students.filter(s => entries[s.number]?.attendance === 'late');
+  const absent  = students.filter(s => entries[s.number]?.attendance === 'absent');
+  const late    = students.filter(s => entries[s.number]?.attendance === 'late');
   const present = students.length - absent.length - late.length;
 
+  const nonPresent = [...absent, ...late];
+  const attMap = {};
+  nonPresent.forEach(s => { attMap[s.number] = { att: entries[s.number]?.attendance }; });
+  const filtered = filterAndSortStudents(nonPresent, _attFilter, attMap);
+
   const stuRow = s => {
+    const att  = entries[s.number]?.attendance;
     const meta = [fmtPos(s.column, s.row), normInstrument(s.instrument)].filter(Boolean).join(' · ');
-    return `<div class="att-summary-stu-row">
-      <span class="att-stu-name">${esc(s.name || `#${s.number}`)}</span>
-      ${meta ? `<div class="att-stu-meta">${esc(meta)}</div>` : ''}
+    const chip = att === 'absent'
+      ? `<span class="att-summary-chip att-chip-absent" style="flex-shrink:0;font-size:0.7rem;padding:2px 8px">Absent</span>`
+      : `<span class="att-summary-chip att-chip-late"   style="flex-shrink:0;font-size:0.7rem;padding:2px 8px">Late</span>`;
+    return `<div class="att-summary-stu-row" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <div>
+        <span class="att-stu-name">${esc(s.name || `#${s.number}`)}</span>
+        ${meta ? `<div class="att-stu-meta">${esc(meta)}</div>` : ''}
+      </div>
+      ${chip}
     </div>`;
   };
 
-  const section = (label, list, cls) => list.length ? `
-    <div class="att-summary-section-hdr ${cls}">${label} — ${list.length} student${list.length !== 1 ? 's' : ''}</div>
-    <div class="att-summary-list">${list.map(stuRow).join('')}</div>` : '';
+  const listHtml = filtered.length
+    ? filtered.map(stuRow).join('')
+    : `<div class="empty-state"><p>${nonPresent.length ? 'No students match your search.' : 'Everyone was present!'}</p></div>`;
 
   return `
     <div class="att-submitted-banner">✓ Attendance submitted</div>
@@ -5195,12 +5210,15 @@ function viewAttendanceSummary(rid) {
     <button class="btn btn-secondary" style="width:100%;margin-bottom:20px"
             onclick="enterAttModifyMode('${esc(rid)}')">Edit Attendance</button>
 
-    ${section('Absent', absent, 'att-summary-hdr-absent')}
-    ${section('Late',   late,   'att-summary-hdr-late')}
+    ${nonPresent.length ? renderFilterBar('att', _attFilter, [
+      {value:'name',       label:'Name'},
+      {value:'number',     label:'Number'},
+      {value:'instrument', label:'Instrument'},
+      {value:'grade',      label:'Grade'},
+      {value:'attStatus',  label:'Status'},
+    ]) : ''}
 
-    ${!absent.length && !late.length
-      ? `<div class="empty-state"><p>Everyone was present!</p></div>`
-      : ''}
+    <div class="att-summary-list">${listHtml}</div>
   `;
 }
 
