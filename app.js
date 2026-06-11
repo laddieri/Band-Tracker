@@ -2034,7 +2034,7 @@ function viewHome() {
       <div class="section-title">Recent Rehearsals</div>
       ${recent.map(r => {
         const ents = DB.getRehearsalEntries(r.id);
-        const cnt  = Object.keys(ents).length;
+        const cnt  = Object.values(ents).filter(e => e.mistakes > 0 || e.positives > 0 || e.attendance || e.events?.length).length;
         const errs = Object.values(ents).reduce((s,e)=>s+(e.mistakes||0),0);
         const pos  = Object.values(ents).reduce((s,e)=>s+(e.positives||0),0);
         return `
@@ -4493,7 +4493,7 @@ function viewRehearsals() {
       <div class="section-title">${MONTHS[m-1]} ${y}</div>
       <div class="rh-cards-grid">${group.map(r => {
         const ents = DB.getRehearsalEntries(r.id);
-        const cnt  = Object.keys(ents).length;
+        const cnt  = Object.values(ents).filter(e => e.mistakes > 0 || e.positives > 0 || e.attendance || e.events?.length).length;
         const errs = Object.values(ents).reduce((s,e)=>s+(e.mistakes||0),0);
         const pos  = Object.values(ents).reduce((s,e)=>s+(e.positives||0),0);
         const ended    = !!r.ended;
