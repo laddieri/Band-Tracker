@@ -7778,7 +7778,7 @@ function _drillChartHtml(fs = false) {
 function _drillChartRefresh() {
   const fs = document.getElementById('drill-chart-fs');
   if (fs && !fs.classList.contains('hidden')) {
-    _drillZoomScale = 1.0;
+    _drillZoomReset();
     fs.innerHTML = _drillChartHtml(true);
     _drillZoomSetup();
     return;
@@ -7790,7 +7790,7 @@ function _drillChartRefresh() {
 function drillChartExpand() {
   const fs = document.getElementById('drill-chart-fs');
   if (!fs) return;
-  _drillZoomScale = 1.0;
+  _drillZoomReset();
   fs.innerHTML = _drillChartHtml(true);
   fs.classList.remove('hidden');
   document.addEventListener('keydown', _drillChartFsKeydown);
@@ -7800,14 +7800,29 @@ function drillChartExpand() {
 function drillChartCollapse() {
   const fs = document.getElementById('drill-chart-fs');
   if (!fs || fs.classList.contains('hidden')) return;
-  _drillZoomScale = 1.0;
+  _drillZoomReset();
   fs.classList.add('hidden');
   document.removeEventListener('keydown', _drillChartFsKeydown);
 }
 
-// Pinch-to-zoom support for the fullscreen chart.
+// Pinch-to-zoom + single-finger pan for the fullscreen chart.
+// touch-action:none gives JS full control; we handle both gestures manually.
+let _drillPanX = 0;
+let _drillPanY = 0;
+let _drillGestureStartScale = 1.0;
+let _drillGestureStartPanX  = 0;
+let _drillGestureStartPanY  = 0;
 let _drillPinchInitDist = 0;
-let _drillPinchInitScale = 1.0;
+let _drillPinchCX = 0; // pinch center relative to wrap (fixed during gesture)
+let _drillPinchCY = 0;
+let _drillPanTouchX = 0; // single-finger start
+let _drillPanTouchY = 0;
+
+function _drillZoomReset() {
+  _drillZoomScale = 1.0;
+  _drillPanX = 0;
+  _drillPanY = 0;
+}
 
 function _drillZoomSetup() {
   const wrap = document.querySelector('.drill-fs-svg-wrap');
@@ -7817,35 +7832,74 @@ function _drillZoomSetup() {
   wrap.addEventListener('touchend',   _drillOnTouchEnd,   { passive: false });
 }
 
+function _drillApplyZoom(wrap) {
+  const svg = (wrap || document.querySelector('.drill-fs-svg-wrap'))?.querySelector('svg');
+  if (!svg) return;
+  // Clamp pan so SVG always covers the wrap viewport.
+  const wW = svg.parentElement.clientWidth;
+  const wH = svg.parentElement.clientHeight;
+  const sW = svg.clientWidth || wW;   // natural width at scale=1 ≈ wrap width
+  const sH = svg.clientHeight || wH;
+  const maxX = 0;
+  const minX = Math.min(0, wW - sW * _drillZoomScale);
+  const maxY = 0;
+  const minY = Math.min(0, wH - sH * _drillZoomScale);
+  _drillPanX = Math.max(minX, Math.min(maxX, _drillPanX));
+  _drillPanY = Math.max(minY, Math.min(maxY, _drillPanY));
+  svg.style.transformOrigin = '0 0';
+  svg.style.transform = `translate(${_drillPanX}px,${_drillPanY}px) scale(${_drillZoomScale})`;
+}
+
 function _drillOnTouchStart(e) {
-  if (e.touches.length !== 2) return;
   e.preventDefault();
-  _drillPinchInitDist  = Math.hypot(
-    e.touches[1].clientX - e.touches[0].clientX,
-    e.touches[1].clientY - e.touches[0].clientY
-  );
-  _drillPinchInitScale = _drillZoomScale;
+  const wrap = e.currentTarget;
+  const rect = wrap.getBoundingClientRect();
+  if (e.touches.length >= 2) {
+    const t0 = e.touches[0], t1 = e.touches[1];
+    _drillPinchInitDist     = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+    _drillGestureStartScale = _drillZoomScale;
+    _drillGestureStartPanX  = _drillPanX;
+    _drillGestureStartPanY  = _drillPanY;
+    _drillPinchCX = (t0.clientX + t1.clientX) / 2 - rect.left;
+    _drillPinchCY = (t0.clientY + t1.clientY) / 2 - rect.top;
+  } else {
+    _drillPinchInitDist    = 0;
+    _drillPanTouchX        = e.touches[0].clientX;
+    _drillPanTouchY        = e.touches[0].clientY;
+    _drillGestureStartPanX = _drillPanX;
+    _drillGestureStartPanY = _drillPanY;
+  }
 }
 
 function _drillOnTouchMove(e) {
-  if (e.touches.length !== 2 || !_drillPinchInitDist) return;
   e.preventDefault();
-  const dist = Math.hypot(
-    e.touches[1].clientX - e.touches[0].clientX,
-    e.touches[1].clientY - e.touches[0].clientY
-  );
-  _drillZoomScale = Math.max(1.0, Math.min(6.0, _drillPinchInitScale * dist / _drillPinchInitDist));
   const wrap = e.currentTarget;
-  const svg  = wrap.querySelector('svg');
-  if (!svg) return;
-  svg.style.width  = (_drillZoomScale * 100) + '%';
-  svg.style.height = 'auto';
-  // Once zoomed past 1× the container needs to scroll, not center
-  wrap.style.justifyContent = _drillZoomScale > 1.05 ? 'flex-start' : 'center';
+  if (e.touches.length >= 2 && _drillPinchInitDist) {
+    const t0 = e.touches[0], t1 = e.touches[1];
+    const dist     = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+    const newScale = Math.max(1.0, Math.min(6.0, _drillGestureStartScale * dist / _drillPinchInitDist));
+    // Zoom around the pinch center: keep the SVG point under _drillPinchCX/CY fixed.
+    const r = newScale / _drillGestureStartScale;
+    _drillZoomScale = newScale;
+    _drillPanX = _drillPinchCX + (_drillGestureStartPanX - _drillPinchCX) * r;
+    _drillPanY = _drillPinchCY + (_drillGestureStartPanY - _drillPinchCY) * r;
+    _drillApplyZoom(wrap);
+  } else if (e.touches.length === 1 && !_drillPinchInitDist) {
+    _drillPanX = _drillGestureStartPanX + (e.touches[0].clientX - _drillPanTouchX);
+    _drillPanY = _drillGestureStartPanY + (e.touches[0].clientY - _drillPanTouchY);
+    _drillApplyZoom(wrap);
+  }
 }
 
 function _drillOnTouchEnd(e) {
   if (e.touches.length < 2) _drillPinchInitDist = 0;
+  if (e.touches.length === 1) {
+    // Finger lifted during/after pinch — restart single-touch from new position
+    _drillPanTouchX        = e.touches[0].clientX;
+    _drillPanTouchY        = e.touches[0].clientY;
+    _drillGestureStartPanX = _drillPanX;
+    _drillGestureStartPanY = _drillPanY;
+  }
 }
 
 function _drillChartFsKeydown(e) {
