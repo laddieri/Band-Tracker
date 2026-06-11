@@ -2561,6 +2561,16 @@ html, body {
 }
 .att-chip-absent { background: var(--danger-bg); color: var(--danger); }
 .att-chip-late   { background: var(--late-bg); color: var(--late-text); }
+.att-chip-btn {
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  transition: outline-color 0.12s, opacity 0.12s;
+}
+.att-chip-btn:hover { opacity: 0.8; }
+.att-chip-btn-active { outline-color: currentColor; }
 
 .att-date-list {
   display: flex;

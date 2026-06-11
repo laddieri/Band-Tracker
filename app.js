@@ -649,6 +649,7 @@ function navigate(view, params = {}, _fromHistory = false) {
     _attModifyMode       = false;
     _attPresentCollapsed = true;
     _attAbsentCollapsed  = true;
+    _attSummaryStatus    = '';
     _attFilter           = _mkFilter('name', 'asc');
   }
   if (_view === 'roster' && view !== 'roster') {
@@ -681,6 +682,7 @@ let _dashForceHistory = false; // force dashboard into historical view even when
 let _attModifyMode           = false; // true = show edit UI even when attendance is submitted
 let _attPresentCollapsed     = true;  // collapsed state of the "marked present" section
 let _attAbsentCollapsed      = true;  // collapsed state of the "marked absent" section
+let _attSummaryStatus        = '';    // quick-filter on submitted summary: ''|'absent'|'late'|'present'
 let _blockMode  = false;
 let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
 let _drillData       = null; // parsed Pyware sections: [{letter, performers:[label]}]
@@ -5203,21 +5205,27 @@ function viewAttendanceSummary(rid) {
   const students = Object.values(DB.getStudents());
   const entries  = STATE.entries[rid] || {};
 
-  const absent  = students.filter(s => entries[s.number]?.attendance === 'absent');
-  const late    = students.filter(s => entries[s.number]?.attendance === 'late');
-  const present = students.length - absent.length - late.length;
+  const absent   = students.filter(s => entries[s.number]?.attendance === 'absent');
+  const late     = students.filter(s => entries[s.number]?.attendance === 'late');
+  const present  = students.filter(s => entries[s.number]?.attendance !== 'absent' && entries[s.number]?.attendance !== 'late');
 
-  const nonPresent = [...absent, ...late];
+  const displayPool = _attSummaryStatus === 'absent'  ? absent
+                    : _attSummaryStatus === 'late'    ? late
+                    : _attSummaryStatus === 'present' ? present
+                    : [...absent, ...late];
+
   const attMap = {};
-  nonPresent.forEach(s => { attMap[s.number] = { att: entries[s.number]?.attendance }; });
-  const filtered = filterAndSortStudents(nonPresent, _attFilter, attMap);
+  students.forEach(s => { attMap[s.number] = { att: entries[s.number]?.attendance }; });
+  const filtered = filterAndSortStudents(displayPool, _attFilter, attMap);
 
   const stuRow = s => {
     const att  = entries[s.number]?.attendance;
     const meta = [fmtPos(s.column, s.row), normInstrument(s.instrument)].filter(Boolean).join(' · ');
     const chip = att === 'absent'
       ? `<span class="att-summary-chip att-chip-absent" style="flex-shrink:0;font-size:0.7rem;padding:2px 8px">Absent</span>`
-      : `<span class="att-summary-chip att-chip-late"   style="flex-shrink:0;font-size:0.7rem;padding:2px 8px">Late</span>`;
+      : att === 'late'
+      ? `<span class="att-summary-chip att-chip-late"   style="flex-shrink:0;font-size:0.7rem;padding:2px 8px">Late</span>`
+      : '';
     return `<div class="att-summary-stu-row" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <div>
         <span class="att-stu-name">${esc(s.name || `#${s.number}`)}</span>
@@ -5227,32 +5235,48 @@ function viewAttendanceSummary(rid) {
     </div>`;
   };
 
-  const listHtml = filtered.length
-    ? filtered.map(stuRow).join('')
-    : `<div class="empty-state"><p>${nonPresent.length ? 'No students match your search.' : 'Everyone was present!'}</p></div>`;
+  const hasSearch = _attFilter.search || _attFilter.instruments.length || _attFilter.grades.length || _attFilter.sections.length;
+  const emptyMsg  = hasSearch ? 'No students match your search.'
+    : _attSummaryStatus === 'absent'  ? 'No students were absent.'
+    : _attSummaryStatus === 'late'    ? 'No students were late.'
+    : _attSummaryStatus === 'present' ? 'No students were marked present.'
+    : 'Everyone was present!';
+
+  const listHtml = filtered.length ? filtered.map(stuRow).join('') : `<div class="empty-state"><p>${emptyMsg}</p></div>`;
+
+  const chip = (status, count, label, cls) => {
+    const active = _attSummaryStatus === status;
+    return `<button class="att-summary-chip ${cls} att-chip-btn${active ? ' att-chip-btn-active' : ''}"
+      onclick="setAttSummaryStatus('${status}')">${count} ${label}</button>`;
+  };
 
   return `
     <div class="att-submitted-banner">✓ Attendance submitted</div>
 
     <div class="att-screen-summary-bar">
-      <span class="att-summary-chip att-chip-absent">${absent.length} Absent</span>
-      <span class="att-summary-chip att-chip-late">${late.length} Late</span>
-      <span class="att-summary-chip att-chip-present">${present} Present</span>
+      ${chip('absent',  absent.length,  'Absent',  'att-chip-absent')}
+      ${chip('late',    late.length,    'Late',    'att-chip-late')}
+      ${chip('present', present.length, 'Present', 'att-chip-present')}
     </div>
 
     <button class="btn btn-secondary" style="width:100%;margin-bottom:20px"
             onclick="enterAttModifyMode('${esc(rid)}')">Edit Attendance</button>
 
-    ${nonPresent.length ? renderFilterBar('att', _attFilter, [
+    ${renderFilterBar('att', _attFilter, [
       {value:'name',       label:'Name'},
       {value:'number',     label:'Number'},
       {value:'instrument', label:'Instrument'},
       {value:'grade',      label:'Grade'},
       {value:'attStatus',  label:'Status'},
-    ]) : ''}
+    ])}
 
     <div class="att-summary-list">${listHtml}</div>
   `;
+}
+
+function setAttSummaryStatus(status) {
+  _attSummaryStatus = _attSummaryStatus === status ? '' : status;
+  _rerenderForFilter('att');
 }
 
 function enterAttModifyMode(rid) {
