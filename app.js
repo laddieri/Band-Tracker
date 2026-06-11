@@ -648,6 +648,7 @@ function navigate(view, params = {}, _fromHistory = false) {
   if (_view === 'attendance' && view !== 'attendance') {
     _attModifyMode       = false;
     _attPresentCollapsed = true;
+    _attAbsentCollapsed  = true;
     _attFilter           = _mkFilter('name', 'asc');
   }
   if (_view === 'roster' && view !== 'roster') {
@@ -679,6 +680,7 @@ let _activeRid      = null; // which open rehearsal is currently being marked
 let _dashForceHistory = false; // force dashboard into historical view even when rehearsal is open
 let _attModifyMode           = false; // true = show edit UI even when attendance is submitted
 let _attPresentCollapsed     = true;  // collapsed state of the "marked present" section
+let _attAbsentCollapsed      = true;  // collapsed state of the "marked absent" section
 let _blockMode  = false;
 let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
 let _drillData       = null; // parsed Pyware sections: [{letter, performers:[label]}]
@@ -5336,41 +5338,54 @@ function buildAttBodyHtml(rid, students, entries) {
     attMap[s.number] = { att: entries[s.number]?.attendance || 'present' };
   });
 
-  // Students explicitly marked present are hidden from the main list
-  const presentPool = students.filter(s => entries[s.number]?.attendance === 'present');
-  const nonPresent  = students.filter(s => entries[s.number]?.attendance !== 'present');
-  const mainPool    = filterAndSortStudents(nonPresent, _attFilter, attMap);
+  // Absent and present students move to their own collapsible sections
+  const absentPool   = students.filter(s => entries[s.number]?.attendance === 'absent');
+  const presentPool  = students.filter(s => entries[s.number]?.attendance === 'present');
+  const mainStudents = students.filter(s => {
+    const att = entries[s.number]?.attendance;
+    return att !== 'absent' && att !== 'present';
+  });
+  const mainPool = filterAndSortStudents(mainStudents, _attFilter, attMap);
 
   const hasFilter = _attFilter.search || _attFilter.instruments.length ||
                     _attFilter.grades.length  || _attFilter.sections.length;
 
+  const collapsibleSection = (pool, collapsed, toggleFn, icon, label, listCls, toggleCls, sectionCls) => {
+    if (!pool.length) return '';
+    const filtered = filterAndSortStudents(pool, _attFilter, attMap);
+    const countLabel = hasFilter && filtered.length !== pool.length
+      ? `${filtered.length} of ${pool.length}`
+      : String(pool.length);
+    return `
+      <div class="${sectionCls}">
+        <button class="${toggleCls}" onclick="${toggleFn}('${esc(rid)}')">
+          <span>${icon} ${label} (${countLabel})</span>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="transition:transform .2s;transform:rotate(${collapsed ? '0' : '180'}deg)"><polyline points="2,4 7,10 12,4"/></svg>
+        </button>
+        ${!collapsed ? `<div class="${listCls}">${filtered.map(s => attStudentRow(rid, s, entries)).join('')}</div>` : ''}
+      </div>`;
+  };
+
   let html = '';
   if (mainPool.length) {
     html = mainPool.map(s => attStudentRow(rid, s, entries)).join('');
-  } else if (!presentPool.length) {
+  } else if (!absentPool.length && !presentPool.length) {
     const msg = hasFilter ? 'No students match the current filter.' : 'No students in this group.';
     html = `<div class="empty-state" style="padding:24px"><p>${msg}</p></div>`;
   } else if (!hasFilter) {
     html = `<div class="att-all-marked">All students have been marked.</div>`;
   }
 
-  if (presentPool.length) {
-    const collapsed = _attPresentCollapsed;
-    const filteredPresent = filterAndSortStudents(presentPool, _attFilter, attMap);
-    const countLabel = hasFilter && filteredPresent.length !== presentPool.length
-      ? `${filteredPresent.length} of ${presentPool.length}`
-      : String(presentPool.length);
-    html += `
-      <div class="att-present-section">
-        <button class="att-present-toggle" onclick="toggleAttPresentSection('${esc(rid)}')">
-          <span>✓ Marked Present (${countLabel})</span>
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="transition:transform .2s;transform:rotate(${collapsed ? '0' : '180'}deg)"><polyline points="2,4 7,10 12,4"/></svg>
-        </button>
-        ${!collapsed ? `<div class="att-present-list">${filteredPresent.map(s => attStudentRow(rid, s, entries)).join('')}</div>` : ''}
-      </div>`;
-  }
+  html += collapsibleSection(absentPool,  _attAbsentCollapsed,  'toggleAttAbsentSection',  '✗', 'Marked Absent',  'att-absent-list',  'att-absent-toggle',  'att-absent-section');
+  html += collapsibleSection(presentPool, _attPresentCollapsed, 'toggleAttPresentSection', '✓', 'Marked Present', 'att-present-list', 'att-present-toggle', 'att-present-section');
 
   return html;
+}
+
+function toggleAttAbsentSection(rid) {
+  _attAbsentCollapsed = !_attAbsentCollapsed;
+  const el = document.getElementById('att-student-list');
+  if (el) el.innerHTML = buildAttBodyHtml(rid, Object.values(DB.getStudents()), STATE.entries[rid] || {});
 }
 
 function toggleAttPresentSection(rid) {
