@@ -2772,8 +2772,10 @@ html, body {
 /* "All students marked" message */
 .att-all-marked { text-align: center; padding: 16px 0; color: var(--text-muted); font-size: 0.88rem; }
 
-/* Marked-present collapsible section */
-.att-present-section { border-top: 2px solid var(--border); margin-top: 12px; }
+/* Marked-absent / marked-present collapsible sections */
+.att-absent-section,
+.att-present-section  { border-top: 2px solid var(--border); margin-top: 12px; }
+.att-absent-toggle,
 .att-present-toggle {
   display: flex;
   align-items: center;
@@ -2784,12 +2786,15 @@ html, body {
   border: none;
   font-size: 0.85rem;
   font-weight: 600;
-  color: var(--success);
   cursor: pointer;
   font-family: inherit;
   gap: 8px;
 }
+.att-absent-toggle  { color: var(--danger); }
+.att-present-toggle { color: var(--success); }
+.att-absent-toggle:hover,
 .att-present-toggle:hover { opacity: 0.8; }
+.att-absent-list,
 .att-present-list { padding-bottom: 8px; }
 .att-screen-btn-done .att-screen-btn-label { color: var(--success); }
 
