@@ -4583,6 +4583,8 @@ function _attTabFilteredContent() {
     <div class="att-summary-list">${list.map(stuMiniRow).join('')}</div>` : '';
 
   const latestSubmitted = !!latest.attendanceSubmitted;
+  const openReh = STATE.isAdmin ? getActiveRehearsal() : null;
+  const latestIsOpenAndUnsub = openReh && latest.id === openReh.id && !latestSubmitted;
   const recentSection = `
     <div id="att-tab-recent-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('att-tab-recent')">
       <span class="section-title" style="margin:0">Most Recent — ${esc(fmtDate(latest.date))}${latest.label ? ' · ' + esc(latest.label) : ''}</span>
@@ -4603,10 +4605,11 @@ function _attTabFilteredContent() {
       ` : `
         <div class="empty-state" style="padding:12px 0 4px"><p>Attendance not submitted yet.</p></div>
       `}
+      ${!latestIsOpenAndUnsub ? `
       <button class="btn btn-secondary" style="width:100%;margin:12px 0 4px"
               onclick="navigate('attendance',{rid:'${esc(latest.id)}',from:'attendance-tab'})">
         View Full Attendance
-      </button>
+      </button>` : ''}
     </div>`;
 
   // ── Season Absence Summary ────────────────────────────────────────────────
