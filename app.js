@@ -4663,33 +4663,34 @@ function _renderAttendanceChart() {
     const entries = STATE.entries[r.id] || {};
     const absent = Object.values(entries).filter(e => e.attendance === 'absent').length;
     const late   = Object.values(entries).filter(e => e.attendance === 'late').length;
-    return {
-      label: fmtDate(r.date).replace(/\/\d{4}$/, ''),
-      absentPct: (absent / total) * 100,
-      latePct:   (late   / total) * 100,
-    };
+    return { label: fmtDate(r.date).replace(/\/\d{4}$/, ''), absent, late };
   });
 
   if (pts.length < 2) return '';
 
   const W = 360, H = 160, PL = 32, PR = 10, PT = 12, PB = 32;
   const iW = W - PL - PR, iH = H - PT - PB;
-  const maxY = 100;
+  const maxVal = Math.max(...pts.map(p => p.absent), ...pts.map(p => p.late), 1);
+  const tickStep = maxVal <= 5 ? 1 : maxVal <= 10 ? 2 : maxVal <= 25 ? 5 : 10;
+  const maxY = Math.ceil(maxVal / tickStep) * tickStep;
+  const ticks = [];
+  for (let v = 0; v <= maxY; v += tickStep) ticks.push(v);
+
   const xStep = iW / (pts.length - 1);
   const toX = i => PL + i * xStep;
   const toY = v => PT + iH - (v / maxY) * iH;
 
-  const gridLines = [0, 25, 50, 75, 100].map(v => {
+  const gridLines = ticks.map(v => {
     const y = toY(v);
-    return `<line x1="${PL}" y1="${y}" x2="${W - PR}" y2="${y}" stroke="var(--border)" stroke-width="1"/>
-            <text x="${PL - 4}" y="${y + 4}" text-anchor="end" font-size="9" fill="var(--text-muted)">${v}%</text>`;
+    return `<line x1="${PL}" y1="${y}" x2="${W-PR}" y2="${y}" stroke="var(--border)" stroke-width="1"/>
+            <text x="${PL-4}" y="${y+4}" text-anchor="end" font-size="9" fill="var(--text-muted)">${v}</text>`;
   }).join('');
 
   const makePolyline = (color, key) => {
-    const points = pts.map((p, i) => `${toX(i)},${toY(p[key])}`).join(' ');
+    const points = pts.map((p, i) => `${toX(i).toFixed(1)},${toY(p[key]).toFixed(1)}`).join(' ');
     const dots = pts.map((p, i) =>
-      `<circle cx="${toX(i)}" cy="${toY(p[key])}" r="3" fill="${color}">
-        <title>${p.label}: ${p[key].toFixed(1)}%</title>
+      `<circle cx="${toX(i).toFixed(1)}" cy="${toY(p[key]).toFixed(1)}" r="3" fill="${color}">
+        <title>${p.label}: ${p[key]} ${key}</title>
       </circle>`
     ).join('');
     return `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` + dots;
@@ -4697,23 +4698,28 @@ function _renderAttendanceChart() {
 
   const xLabels = pts.map((p, i) => {
     if (pts.length <= 8 || i === 0 || i === pts.length - 1 || i % Math.ceil(pts.length / 6) === 0) {
-      return `<text x="${toX(i)}" y="${H - 4}" text-anchor="middle" font-size="9" fill="var(--text-muted)">${p.label}</text>`;
+      return `<text x="${toX(i).toFixed(1)}" y="${H-4}" text-anchor="middle" font-size="9" fill="var(--text-muted)">${p.label}</text>`;
     }
     return '';
   }).join('');
 
   return `
-    <div class="att-chart-card card mb-12">
-      <div class="att-chart-title">Attendance Over Time</div>
-      <svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;overflow:visible">
-        ${gridLines}
-        ${makePolyline('var(--danger)',  'absentPct')}
-        ${makePolyline('var(--warning)', 'latePct')}
-        ${xLabels}
-      </svg>
-      <div class="att-chart-legend">
-        <span class="att-chart-legend-item"><span class="att-chart-dot" style="background:var(--danger)"></span>Absent</span>
-        <span class="att-chart-legend-item"><span class="att-chart-dot" style="background:var(--warning)"></span>Late</span>
+    <div id="att-tab-chart-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('att-tab-chart')">
+      <span class="section-title" style="margin:0">Attendance Over Time</span>
+      <span class="sec-chevron">▾</span>
+    </div>
+    <div id="att-tab-chart">
+      <div class="att-chart-card card mb-12">
+        <svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;overflow:visible">
+          ${gridLines}
+          ${makePolyline('var(--danger)',  'absent')}
+          ${makePolyline('var(--warning)', 'late')}
+          ${xLabels}
+        </svg>
+        <div class="att-chart-legend">
+          <span class="att-chart-legend-item"><span class="att-chart-dot" style="background:var(--danger)"></span>Absent</span>
+          <span class="att-chart-legend-item"><span class="att-chart-dot" style="background:var(--warning)"></span>Late</span>
+        </div>
       </div>
     </div>`;
 }
