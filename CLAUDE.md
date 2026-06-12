@@ -40,10 +40,15 @@ app doesn't show it" is never a justification. Full model:
 
 ## Architecture notes
 
-- `app.js` is a single file organized by `// ── Section ──` banners: state →
-  listeners → publisher → router → views. Views are template-literal HTML
-  rendered into `#main-content`; interactivity is global functions wired via
-  inline `onclick`.
+- The app is split into ordered plain scripts in `js/` (see `index.html`):
+  `01-core` (state/Firebase/DB) → `02-data` (listeners + publisher) →
+  `03-router` → `04-render` → view files (`05`–`12`) → `13-boot`. They share
+  one global scope — this is NOT ES modules, because interactivity is global
+  functions wired via inline `onclick`. Define things before (file-order) any
+  top-level code that calls them; cross-file calls inside functions are fine.
+- When adding a script file, add it to BOTH `index.html` and the `PRECACHE`
+  list in `sw.js` (and bump the `CACHE` version there).
+- Views are template-literal HTML rendered into `#main-content`.
 - All Firestore access goes through `orgCol(name)` (scoped to
   `orgs/{STATE.orgId}/...`). Role split happens in `startListeners()`:
   directors get full-collection listeners, students get `studentListeners()`.
