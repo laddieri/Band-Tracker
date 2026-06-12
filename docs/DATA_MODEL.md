@@ -30,6 +30,8 @@ The fix for both is **per-org subcollections**.
 orgs/{orgId}                          # org metadata
   ├─ (fields) name, plan, createdAt, createdBy
   ├─ settings/presets                 # was: /settings/presets
+  ├─ settings/public                  # director-published student-safe snapshot
+  ├─ settings/drill                   # Pyware drill data (own doc — can be large)
   ├─ students/{studentNumber}         # was: /students/{studentNumber}
   ├─ rehearsals/{rehearsalId}         # was: /rehearsals/{rehearsalId}
   ├─ entries/{rehearsalId}_{number}   # was: /entries/{...}
