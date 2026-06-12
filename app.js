@@ -362,11 +362,20 @@ async function startListeners() {
       STATE.autoMarks                  = Array.isArray(d.autoMarks) ? d.autoMarks : null;
       STATE.lbWeights                  = d.lbWeights || {};
       STATE.pywareMapping              = d.pywareMapping || {};
+      // One-time migration: drill data used to live in this doc, where a large
+      // Pyware file could push it toward Firestore's 1 MB doc limit and break
+      // every settings save. Move it to its own settings/drill doc.
       if (d.drillSections?.length && d.drillPages?.length) {
-        _drillData     = d.drillSections;
-        _drillPages    = d.drillPages;
-        _drillFlipV    = !!d.drillFlipV;
-        _drillFileName = d.drillFileName || null;
+        const del = firebase.firestore.FieldValue.delete();
+        orgCol('settings').doc('drill').set({
+          drillFileName: d.drillFileName || null,
+          drillSections: d.drillSections,
+          drillPages:    d.drillPages,
+          drillFlipV:    !!d.drillFlipV,
+        }).then(() => orgCol('settings').doc('presets').set(
+          { drillFileName: del, drillSections: del, drillPages: del, drillFlipV: del },
+          { merge: true }
+        )).catch(e => console.error('drill data migration failed:', e));
       }
       if (!STATE.loading) render();
       schedulePublishPublicStats();
@@ -414,6 +423,17 @@ async function startListeners() {
       console.error('songs listener error:', err);
       tick('songs'); // don't hang the app — songs will be empty
     }),
+
+    // Drill (Pyware) data — its own doc so a large file can't bloat presets.
+    orgCol('settings').doc('drill').onSnapshot(doc => {
+      const d = doc.exists ? doc.data() : {};
+      if (d.drillSections?.length && d.drillPages?.length) {
+        _drillData     = d.drillSections;
+        _drillPages    = d.drillPages;
+        _drillFlipV    = !!d.drillFlipV;
+        _drillFileName = d.drillFileName || null;
+      }
+    }, err => console.error('drill settings listener error:', err)),
 
     // Directors of this org, for resolving mark-author uids to names via
     // dirLabel(). Mark events store uids — never emails — because students can
@@ -1870,6 +1890,19 @@ function showBrandSettingsModal() {
       <div id="directors-list" style="font-size:.9rem">Loading…</div>
     </div>
 
+    <div class="form-group">
+      <label class="form-label" style="color:var(--danger)">Start a new season</label>
+      <p style="font-size:.75rem;color:var(--text-muted);margin:-2px 0 8px">
+        Permanently clears rehearsal history, attendance and marks (and
+        optionally song progress) while keeping your roster, student codes and
+        settings. Do this between seasons so student records don't accumulate
+        forever.
+      </p>
+      <button class="btn btn-secondary" style="color:var(--danger)" onclick="showNewSeasonModal()">
+        Start New Season…
+      </button>
+    </div>
+
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveBrandSettings()">Save</button>
@@ -2032,6 +2065,111 @@ async function saveBrandSettings() {
   closeModal();
   showToast('Band settings saved.');
   render();
+}
+
+// ── Season reset ──────────────────────────────────────────────────────────────
+// Clears the per-season records (rehearsals, entries, optionally song
+// progress) while keeping the roster, student codes and settings. Exists so
+// marks/attendance about students don't accumulate across years.
+
+function showNewSeasonModal() {
+  if (!STATE.isAdmin) return;
+  const rehearsalCount = STATE.rehearsals.length;
+  const entryCount     = Object.values(STATE.entries).reduce((n, re) => n + Object.keys(re).length, 0);
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title" style="color:var(--danger)">Start New Season</div>
+    <p style="font-size:.9rem;line-height:1.6;margin-bottom:8px">
+      This permanently deletes <strong>${rehearsalCount} rehearsal${rehearsalCount !== 1 ? 's' : ''}</strong>
+      and <strong>${entryCount} attendance/marks record${entryCount !== 1 ? 's' : ''}</strong>.
+      Your roster, student codes and settings are kept.
+    </p>
+    <p style="font-size:.8rem;color:var(--text-muted);line-height:1.5;margin-bottom:12px">
+      Tip: run <code>scripts/backup-firestore.js</code> first if you want to
+      keep a copy of this season's records.
+    </p>
+    <label style="display:flex;align-items:flex-start;gap:10px;padding:6px 0;cursor:pointer">
+      <input type="checkbox" id="season-clear-songs" checked
+        style="margin-top:3px;width:18px;height:18px;flex-shrink:0">
+      <span style="font-size:.88rem">
+        <span style="font-weight:600">Reset song progress</span>
+        <span style="display:block;font-size:.75rem;color:var(--text-muted)">Clear every student's pass/fail results (keeps the song list)</span>
+      </span>
+    </label>
+    <label style="display:flex;align-items:flex-start;gap:10px;padding:6px 0 12px;cursor:pointer">
+      <input type="checkbox" id="season-delete-songs"
+        style="margin-top:3px;width:18px;height:18px;flex-shrink:0">
+      <span style="font-size:.88rem">
+        <span style="font-weight:600">Also delete the songs themselves</span>
+        <span style="display:block;font-size:.75rem;color:var(--text-muted)">Remove the whole song list, not just the results</span>
+      </span>
+    </label>
+    <div class="form-group" style="margin-bottom:16px">
+      <label class="form-label">Type <strong>RESET</strong> to confirm</label>
+      <input class="form-input" id="season-reset-confirm" type="text"
+             placeholder="RESET" autocomplete="off"
+             oninput="document.getElementById('season-reset-btn').disabled = this.value !== 'RESET'">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="season-reset-btn" disabled onclick="startNewSeason()">Start New Season</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('season-reset-confirm')?.focus(), 80);
+}
+
+async function startNewSeason() {
+  if (!STATE.isAdmin) return;
+  const clearSongProgress = !!document.getElementById('season-clear-songs')?.checked;
+  const deleteSongs       = !!document.getElementById('season-delete-songs')?.checked;
+  closeModal();
+  showToast('Clearing season data…');
+
+  const CHUNK = 500;
+  const deleteAll = async (snap) => {
+    for (let i = 0; i < snap.docs.length; i += CHUNK) {
+      const batch = db.batch();
+      snap.docs.slice(i, i + CHUNK).forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+    }
+  };
+
+  try {
+    // Query the collections directly so orphaned docs are removed too.
+    await deleteAll(await orgCol('entries').get());
+    await deleteAll(await orgCol('rehearsals').get());
+
+    if (deleteSongs) {
+      await deleteAll(await orgCol('songs').get());
+    } else if (clearSongProgress) {
+      const songsSnap = await orgCol('songs').get();
+      for (let i = 0; i < songsSnap.docs.length; i += CHUNK) {
+        const batch = db.batch();
+        songsSnap.docs.slice(i, i + CHUNK).forEach(doc => batch.update(doc.ref, { statuses: {} }));
+        await batch.commit();
+      }
+    }
+
+    if (deleteSongs || clearSongProgress) {
+      // Clear the per-student songStatuses mirrors (what students see).
+      const nums = Object.keys(STATE.students).filter(num =>
+        STATE.students[num]?.songStatuses && Object.keys(STATE.students[num].songStatuses).length);
+      for (let i = 0; i < nums.length; i += CHUNK) {
+        const batch = db.batch();
+        nums.slice(i, i + CHUNK).forEach(num =>
+          batch.update(orgCol('students').doc(num), { songStatuses: {} }));
+        await batch.commit();
+      }
+    }
+  } catch (e) {
+    console.error('season reset failed:', e);
+    showToast('Season reset failed partway — check your connection and retry.');
+    return;
+  }
+
+  _activeRid = null;
+  showToast('New season started.');
+  navigate('rehearsals');
 }
 
 // ── View: Home ────────────────────────────────────────────────────────────────
@@ -2557,6 +2695,12 @@ async function deleteRoster() {
 
   closeModal();
 
+  // Login codes to retire alongside the student docs.
+  const codes = nums
+    .map(num => STATE.students[num]?.studentCode)
+    .filter(Boolean)
+    .map(c => String(c).toUpperCase());
+
   const CHUNK = 500;
   for (let i = 0; i < nums.length; i += CHUNK) {
     const batch = db.batch();
@@ -2564,6 +2708,37 @@ async function deleteRoster() {
       batch.delete(orgCol('students').doc(num));
     });
     await batch.commit().catch(e => { showToast('Delete failed — ' + (e.message || 'check console')); throw e; });
+  }
+
+  // Retire login codes so they can't be used to rejoin as ghost students.
+  for (let i = 0; i < codes.length; i += CHUNK) {
+    const batch = db.batch();
+    codes.slice(i, i + CHUNK).forEach(code => {
+      batch.delete(db.collection('studentCodes').doc(code));
+    });
+    await batch.commit().catch(() => {});
+  }
+
+  // Remove student memberships so existing sessions lose access.
+  try {
+    const memSnap = await db.collection('members')
+      .where('orgId', '==', STATE.orgId).where('role', '==', 'student').get();
+    for (let i = 0; i < memSnap.docs.length; i += CHUNK) {
+      const batch = db.batch();
+      memSnap.docs.slice(i, i + CHUNK).forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+    }
+  } catch (e) { console.error('student membership cleanup failed:', e); }
+
+  // Clear per-student results from song docs.
+  if (STATE.songs.some(song => song.statuses && Object.keys(song.statuses).length)) {
+    const batch = db.batch();
+    STATE.songs.forEach(song => {
+      if (song.statuses && Object.keys(song.statuses).length) {
+        batch.update(orgCol('songs').doc(song.id), { statuses: {} });
+      }
+    });
+    await batch.commit().catch(() => {});
   }
 
   STATE.students = {};
@@ -6296,7 +6471,8 @@ function saveEditStudent(num) {
 }
 
 function confirmDeleteStudent(num) {
-  const sName = STATE.students[num]?.name || `#${num}`;
+  const s     = STATE.students[num];
+  const sName = s?.name || `#${num}`;
   if (!confirm(`Delete ${sName} and all their rehearsal data?\n\nThis cannot be undone.`)) return;
   delete STATE.students[num];
   orgCol('students').doc(num).delete();
@@ -6306,6 +6482,30 @@ function confirmDeleteStudent(num) {
     snap.forEach(doc => batch.delete(doc.ref));
     batch.commit();
   });
+  // Retire their login code so it can't be used to rejoin as a ghost student.
+  if (s?.studentCode) {
+    db.collection('studentCodes').doc(String(s.studentCode).toUpperCase()).delete().catch(() => {});
+  }
+  // Remove their org membership(s) so existing sessions lose access.
+  db.collection('members')
+    .where('orgId', '==', STATE.orgId).where('studentNumber', '==', String(num))
+    .get().then(snap => {
+      const batch = db.batch();
+      snap.forEach(doc => batch.delete(doc.ref));
+      batch.commit();
+    }).catch(() => {});
+  // Remove their results from song docs.
+  const songBatch = db.batch();
+  let songDirty = false;
+  STATE.songs.forEach(song => {
+    if (song.statuses && song.statuses[String(num)] !== undefined) {
+      songBatch.update(orgCol('songs').doc(song.id), {
+        [`statuses.${num}`]: firebase.firestore.FieldValue.delete()
+      });
+      songDirty = true;
+    }
+  });
+  if (songDirty) songBatch.commit().catch(() => {});
   closeModal();
   showToast(`${sName} deleted`);
   navigate('roster');
@@ -7651,12 +7851,12 @@ function _onDrillFileLoaded(file) {
       _drillData     = parsed.sections;
       _drillFileName = file.name;
       _drillFlipV    = false;
-      orgCol('settings').doc('presets').set({
+      orgCol('settings').doc('drill').set({
         drillFileName: file.name,
         drillSections: parsed.sections,
         drillPages:    parsed.pages,
         drillFlipV:    false,
-      }, { merge: true });
+      });
       showDrillPickModal();
     } catch (err) {
       showToast(err.message || 'Failed to read drill file.');
@@ -7736,11 +7936,7 @@ function drillLoadNewFile() {
   _drillData     = null;
   _drillPages    = null;
   _drillFileName = null;
-  const del = firebase.firestore.FieldValue.delete();
-  orgCol('settings').doc('presets').set(
-    { drillFileName: del, drillSections: del, drillPages: del, drillFlipV: del },
-    { merge: true }
-  );
+  orgCol('settings').doc('drill').delete().catch(() => {});
   closeModal();
   setTimeout(() => {
     const inp = document.getElementById('drill-file-input');
@@ -8096,7 +8292,7 @@ function drillChartToggle(label) {
 
 function drillChartFlip() {
   _drillFlipV = !_drillFlipV;
-  orgCol('settings').doc('presets').set({ drillFlipV: _drillFlipV }, { merge: true });
+  orgCol('settings').doc('drill').set({ drillFlipV: _drillFlipV }, { merge: true });
   _drillChartRefresh();
 }
 
