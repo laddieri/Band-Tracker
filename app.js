@@ -163,6 +163,9 @@ const STATE = {
   // (per-rehearsal absence counts, song progress, pseudonymized leaderboard).
   // Students cannot read the raw roster/entries/songs — see firestore.rules.
   publicStats:  null,
+  // uid → email for this org's directors (director clients only; used by
+  // dirLabel to show mark authors without storing emails in entries).
+  dirNames:     {},
   _unsubs:      []
 };
 
@@ -410,7 +413,19 @@ async function startListeners() {
     }, err => {
       console.error('songs listener error:', err);
       tick('songs'); // don't hang the app — songs will be empty
-    })
+    }),
+
+    // Directors of this org, for resolving mark-author uids to names via
+    // dirLabel(). Mark events store uids — never emails — because students can
+    // read their own entries. Not part of the loading gate.
+    db.collection('members')
+      .where('orgId', '==', STATE.orgId)
+      .where('role', '==', 'director')
+      .onSnapshot(snap => {
+        STATE.dirNames = {};
+        snap.docs.forEach(d => { STATE.dirNames[d.id] = d.data().email || ''; });
+        if (!STATE.loading) render();
+      }, err => console.error('directors listener error:', err))
   ];
 
   STATE._unsubs = listeners;
@@ -598,6 +613,7 @@ auth.onAuthStateChanged(user => {
     STATE.entries    = {};
     STATE.songs      = [];
     STATE.publicStats = null;
+    STATE.dirNames   = {};
     _lastPublishedJson = '';
     _authMode        = 'signin';
     render();
@@ -1015,8 +1031,13 @@ function normInstrument(str) {
   return (str || '').replace(/^\d+\s*/, '').trim();
 }
 
-function dirLabel(email) {
-  return email ? email.split('@')[0] : '';
+// Display label for a mark/status author. New data stamps director uids
+// (entries are student-readable, so emails must stay out of them); the uid is
+// resolved through STATE.dirNames. Legacy data stamped emails directly.
+function dirLabel(author) {
+  if (!author) return '';
+  const email = author.includes('@') ? author : STATE.dirNames[author];
+  return email ? email.split('@')[0] : 'Director';
 }
 
 function esc(str) {
@@ -5241,7 +5262,7 @@ function confirmMark(rid, num, type, note) {
   const cur    = ents[num] || { mistakes:0, positives:0, notes:'', events:[] };
   const newVal = (cur[field]||0) + 1;
   const events = [...(cur.events || [])];
-  events.push({ type, note: note || '', segment, ts: Date.now(), by: STATE.user?.email || STATE.user?.uid || '' });
+  events.push({ type, note: note || '', segment, ts: Date.now(), by: STATE.user?.uid || '' });
   if (!STATE.entries[rid]) STATE.entries[rid] = {};
   STATE.entries[rid][num] = { ...cur, [field]: newVal, events };
   fsUpsertEntry(rid, num, { mistakes: STATE.entries[rid][num].mistakes, positives: STATE.entries[rid][num].positives, notes: STATE.entries[rid][num].notes || '', events });
@@ -5836,7 +5857,7 @@ async function confirmGroupMark(rid, groupName, type, note) {
   const field   = type === 'mistake' ? 'mistakes' : 'positives';
   const batch   = db.batch();
   const sectionLabel = isAll ? 'All Students' : groupName;
-  const evt     = { type, note: note || '', segment, ts: Date.now(), by: STATE.user?.email || STATE.user?.uid || '', sectionMark: true, section: sectionLabel };
+  const evt     = { type, note: note || '', segment, ts: Date.now(), by: STATE.user?.uid || '', sectionMark: true, section: sectionLabel };
 
   for (const stu of stuList) {
     const num    = String(stu.number || stu._id);
