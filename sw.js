@@ -1,4 +1,4 @@
-const CACHE = 'band-tracker-v4';
+const CACHE = 'band-tracker-v5';
 
 const PRECACHE = [
   '/',
@@ -19,6 +19,11 @@ const PRECACHE = [
   '/js/12-drill.js',
   '/js/13-boot.js',
   '/firebase-config.js',
+  '/manifest.json',
+  '/icons/icon-32.png',
+  '/icons/icon-180.png',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
   'https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js',
   'https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check-compat.js',
   'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js',

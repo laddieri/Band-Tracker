@@ -213,7 +213,19 @@ function saveEditStudent(num) {
 function confirmDeleteStudent(num) {
   const s     = STATE.students[num];
   const sName = s?.name || `#${num}`;
-  if (!confirm(`Delete ${sName} and all their rehearsal data?\n\nThis cannot be undone.`)) return;
+  showConfirmModal(
+    `Delete ${esc(sName)}?`,
+    `All of <strong>${esc(sName)}</strong>'s rehearsal records, marks, song
+     results and their login code will be permanently deleted. This cannot be
+     undone.`,
+    () => _deleteStudent(num),
+    'Delete'
+  );
+}
+
+function _deleteStudent(num) {
+  const s     = STATE.students[num];
+  const sName = s?.name || `#${num}`;
   delete STATE.students[num];
   orgCol('students').doc(num).delete();
   // Delete all entries for this student
@@ -506,18 +518,26 @@ function reopenRehearsal(rid) {
 }
 
 function confirmDeleteRehearsal(rid) {
-  if (!confirm('Delete this rehearsal and all its data?\n\nThis cannot be undone.')) return;
-  STATE.rehearsals = STATE.rehearsals.filter(r => r.id !== rid);
-  delete STATE.entries[rid];
-  orgCol('rehearsals').doc(rid).delete();
-  orgCol('entries').where('rehearsalId', '==', rid).get().then(snap => {
-    const batch = db.batch();
-    snap.forEach(doc => batch.delete(doc.ref));
-    batch.commit();
-  });
-  closeModal();
-  showToast('Rehearsal deleted');
-  navigate('rehearsals');
+  const r = STATE.rehearsals.find(r => r.id === rid);
+  showConfirmModal(
+    'Delete this rehearsal?',
+    `${r ? `<strong>${fmtDate(r.date)}${r.label ? ' — ' + esc(r.label) : ''}</strong> and a` : 'A'}ll
+     of its attendance and marks records will be permanently deleted. This
+     cannot be undone.`,
+    () => {
+      STATE.rehearsals = STATE.rehearsals.filter(r => r.id !== rid);
+      delete STATE.entries[rid];
+      orgCol('rehearsals').doc(rid).delete();
+      orgCol('entries').where('rehearsalId', '==', rid).get().then(snap => {
+        const batch = db.batch();
+        snap.forEach(doc => batch.delete(doc.ref));
+        batch.commit();
+      });
+      showToast('Rehearsal deleted');
+      navigate('rehearsals');
+    },
+    'Delete'
+  );
 }
 
 // ── CSV Import ────────────────────────────────────────────────────────────────

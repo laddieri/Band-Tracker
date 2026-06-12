@@ -652,24 +652,31 @@ function updateSong(sid) {
 }
 
 function confirmDeleteSong(sid) {
-  if (!confirm('Delete this song and all its memorization data?\n\nThis cannot be undone.')) return;
-  STATE.songs = STATE.songs.filter(s => s.id !== sid);
-  orgCol('songs').doc(sid).delete();
-  // Best-effort cleanup of the per-student songStatuses mirrors.
-  const batch = db.batch();
-  let dirty = false;
-  for (const [num, s] of Object.entries(STATE.students)) {
-    if (s.songStatuses && s.songStatuses[sid] !== undefined) {
-      batch.update(orgCol('students').doc(String(num)), {
-        [`songStatuses.${sid}`]: firebase.firestore.FieldValue.delete()
-      });
-      dirty = true;
-    }
-  }
-  if (dirty) batch.commit().catch(() => {});
-  closeModal();
-  navigate('songs');
-  showToast('Song deleted.');
+  const song = STATE.songs.find(s => s.id === sid);
+  showConfirmModal(
+    'Delete this song?',
+    `<strong>${esc(song?.title || 'This song')}</strong> and all its memorization
+     data will be permanently deleted. This cannot be undone.`,
+    () => {
+      STATE.songs = STATE.songs.filter(s => s.id !== sid);
+      orgCol('songs').doc(sid).delete();
+      // Best-effort cleanup of the per-student songStatuses mirrors.
+      const batch = db.batch();
+      let dirty = false;
+      for (const [num, s] of Object.entries(STATE.students)) {
+        if (s.songStatuses && s.songStatuses[sid] !== undefined) {
+          batch.update(orgCol('students').doc(String(num)), {
+            [`songStatuses.${sid}`]: firebase.firestore.FieldValue.delete()
+          });
+          dirty = true;
+        }
+      }
+      if (dirty) batch.commit().catch(() => {});
+      navigate('songs');
+      showToast('Song deleted.');
+    },
+    'Delete'
+  );
 }
 
 function showStudentPortalPreview(num) {

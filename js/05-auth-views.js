@@ -522,24 +522,29 @@ async function loadDirectorsList() {
   }
 }
 
-async function removeDirector(uid, label) {
-  if (uid === STATE.user?.uid
-      ? !confirm('Remove yourself as a director? You will lose access to this band.')
-      : !confirm(`Remove ${label} as a director? They will lose access to this band.`)) return;
-  try {
-    await db.collection('members').doc(uid).delete();
-    if (uid === STATE.user?.uid) {
-      // We removed our own membership — re-resolve, which routes us to onboarding.
-      closeModal();
-      startListeners();
-      return;
+function removeDirector(uid, label) {
+  const isSelf = uid === STATE.user?.uid;
+  showConfirmModal(
+    isSelf ? 'Remove yourself as a director?' : `Remove ${esc(label)}?`,
+    isSelf ? 'You will lose access to this band.'
+           : `<strong>${esc(label)}</strong> will lose access to this band.`,
+    async () => {
+      try {
+        await db.collection('members').doc(uid).delete();
+        if (isSelf) {
+          // We removed our own membership — re-resolve, which routes us to onboarding.
+          startListeners();
+          return;
+        }
+        showToast('Director removed.');
+      } catch (e) {
+        console.error('removeDirector failed:', e);
+        showToast('Could not remove director.');
+      }
+      // The confirm dialog replaced the Band Settings modal — bring it back.
+      showBrandSettingsModal();
     }
-    showToast('Director removed.');
-    loadDirectorsList();
-  } catch (e) {
-    console.error('removeDirector failed:', e);
-    showToast('Could not remove director.');
-  }
+  );
 }
 
 async function generateInviteCode() {
