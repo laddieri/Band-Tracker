@@ -1457,6 +1457,18 @@ html, body {
   letter-spacing: 0;
   color: var(--text);
 }
+/* Larger section headings on attendance tab */
+.att-tab-view .sec-hdr .section-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text);
+}
+.att-tab-view .sec-hdr {
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 8px;
+}
 .lb-marching-hdr {
   display: flex;
   align-items: center;
