@@ -1,12 +1,26 @@
-const CACHE = 'band-tracker-v3';
+const CACHE = 'band-tracker-v4';
 
 const PRECACHE = [
   '/',
   '/index.html',
   '/app.css',
-  '/app.js',
+  '/js/00-logic.js',
+  '/js/01-core.js',
+  '/js/02-data.js',
+  '/js/03-router.js',
+  '/js/04-render.js',
+  '/js/05-auth-views.js',
+  '/js/06-roster.js',
+  '/js/07-songs-portal.js',
+  '/js/08-stats.js',
+  '/js/09-rehearsal.js',
+  '/js/10-modals-settings.js',
+  '/js/11-reports.js',
+  '/js/12-drill.js',
+  '/js/13-boot.js',
   '/firebase-config.js',
   'https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js',
+  'https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check-compat.js',
   'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js',
   'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js',
 ];
