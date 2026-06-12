@@ -5241,7 +5241,7 @@ function confirmMark(rid, num, type, note) {
   const cur    = ents[num] || { mistakes:0, positives:0, notes:'', events:[] };
   const newVal = (cur[field]||0) + 1;
   const events = [...(cur.events || [])];
-  events.push({ type, note: note || '', segment, ts: Date.now(), by: STATE.user?.uid || '' });
+  events.push({ type, note: note || '', segment, ts: Date.now(), by: STATE.user?.email || STATE.user?.uid || '' });
   if (!STATE.entries[rid]) STATE.entries[rid] = {};
   STATE.entries[rid][num] = { ...cur, [field]: newVal, events };
   fsUpsertEntry(rid, num, { mistakes: STATE.entries[rid][num].mistakes, positives: STATE.entries[rid][num].positives, notes: STATE.entries[rid][num].notes || '', events });
@@ -5836,7 +5836,7 @@ async function confirmGroupMark(rid, groupName, type, note) {
   const field   = type === 'mistake' ? 'mistakes' : 'positives';
   const batch   = db.batch();
   const sectionLabel = isAll ? 'All Students' : groupName;
-  const evt     = { type, note: note || '', segment, ts: Date.now(), by: STATE.user?.uid || '', sectionMark: true, section: sectionLabel };
+  const evt     = { type, note: note || '', segment, ts: Date.now(), by: STATE.user?.email || STATE.user?.uid || '', sectionMark: true, section: sectionLabel };
 
   for (const stu of stuList) {
     const num    = String(stu.number || stu._id);
