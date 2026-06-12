@@ -868,7 +868,17 @@ function _rerenderForFilter(viewId) {
 function _refreshFilterList(viewId) {
   const lists = {
     roster:    ['roster-list',       () => rosterRows(filterAndSortStudents(Object.values(DB.getStudents()), _rosterFilter))],
-    'att-tab': ['att-tab-filtered',  () => _attTabFilteredContent()],
+    'att-tab': () => {
+      const rl = document.getElementById('att-tab-recent-list');
+      const sl = document.getElementById('att-tab-season-list');
+      if (!rl && !sl) return false;
+      const mc = document.getElementById('main-content');
+      const st = mc ? mc.scrollTop : 0;
+      if (rl) rl.innerHTML = _buildRecentListHtml();
+      if (sl) sl.innerHTML = _buildSeasonListHtml();
+      if (mc) mc.scrollTop = st;
+      return true;
+    },
     lb:           ['lb-rank-list',      () => _buildLbRankRows()],
     'song-roster':['song-roster-list', () => _buildSongRosterRows()],
     song:         ['song-student-list', () => {
@@ -878,6 +888,7 @@ function _refreshFilterList(viewId) {
   };
   const entry = lists[viewId];
   if (!entry) return false;
+  if (typeof entry === 'function') return entry();
   const el = document.getElementById(entry[0]);
   if (!el) return false;
   const mc = document.getElementById('main-content');
@@ -4578,24 +4589,27 @@ function viewRehearsals() {
 
 // ── View: Attendance Tab ──────────────────────────────────────────────────────
 
-function _attTabFilteredContent() {
+// Shared sort options for both attendance-tab filter bars
+const _ATT_TAB_SORT_OPTS = [
+  { value: 'absences',   label: 'Most Absent' },
+  { value: 'lates',      label: 'Most Late'   },
+  { value: 'name',       label: 'Name'        },
+  { value: 'instrument', label: 'Instrument'  },
+  { value: 'grade',      label: 'Grade'       },
+];
+
+function _buildRecentListHtml() {
   const rehearsals = [...DB.getRehearsals()].sort((a,b) => b.date.localeCompare(a.date));
-  const students   = Object.values(DB.getStudents()).sort((a,b) => (a.name||'').localeCompare(b.name||''));
   if (!rehearsals.length) return '';
-
-  const filterSublist = list =>
-    filterAndSortStudents(list, { ..._attTabFilter, sortField: 'name', sortDir: 'asc' }, {});
-
-  // ── Most Recent Rehearsal ─────────────────────────────────────────────────
-
-  const latest        = rehearsals[0];
+  const latest = rehearsals[0];
+  if (!latest.attendanceSubmitted) {
+    return `<div class="empty-state" style="padding:12px 0 4px"><p>Attendance not submitted yet.</p></div>`;
+  }
+  const students      = Object.values(DB.getStudents()).sort((a,b) => (a.name||'').localeCompare(b.name||''));
   const latestEntries = STATE.entries[latest.id] || {};
-  const latestAbsent  = filterSublist(students.filter(s => latestEntries[s.number]?.attendance === 'absent'));
-  const latestLate    = filterSublist(students.filter(s => latestEntries[s.number]?.attendance === 'late'));
-  const latestPresent = students.length
-    - students.filter(s => latestEntries[s.number]?.attendance === 'absent').length
-    - students.filter(s => latestEntries[s.number]?.attendance === 'late').length;
-
+  const filterSub     = list => filterAndSortStudents(list, { ..._attTabFilter, sortField: 'name', sortDir: 'asc' }, {});
+  const latestAbsent  = filterSub(students.filter(s => latestEntries[s.number]?.attendance === 'absent'));
+  const latestLate    = filterSub(students.filter(s => latestEntries[s.number]?.attendance === 'late'));
   const stuMiniRow = s => {
     const meta = [fmtPos(s.column, s.row), normInstrument(s.instrument)].filter(Boolean).join(' · ');
     return `<div class="att-summary-stu-row" onclick="navigate('student',{num:'${esc(s.number)}'})" style="cursor:pointer">
@@ -4603,44 +4617,24 @@ function _attTabFilteredContent() {
       ${meta ? `<div class="att-stu-meta">${esc(meta)}</div>` : ''}
     </div>`;
   };
-
   const stuGroup = (label, list, cls) => list.length ? `
     <div class="att-summary-section-hdr ${cls}">${label} — ${list.length} student${list.length !== 1 ? 's' : ''}</div>
     <div class="att-summary-list">${list.map(stuMiniRow).join('')}</div>` : '';
+  if (!latestAbsent.length && !latestLate.length) {
+    const hasF = _attTabFilter.search || _attTabFilter.instruments.length || _attTabFilter.grades.length || _attTabFilter.sections.length;
+    return `<div class="empty-state" style="padding:12px 0 4px"><p>${hasF ? 'No matches for current filter.' : 'Everyone was present!'}</p></div>`;
+  }
+  return stuGroup('Absent', latestAbsent, 'att-summary-hdr-absent')
+       + stuGroup('Late',   latestLate,   'att-summary-hdr-late');
+}
 
-  const latestSubmitted = !!latest.attendanceSubmitted;
-  const openReh = STATE.isAdmin ? getActiveRehearsal() : null;
-  const latestIsOpenAndUnsub = openReh && latest.id === openReh.id && !latestSubmitted;
-  const recentSection = `
-    <div id="att-tab-recent-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('att-tab-recent')">
-      <span class="section-title" style="margin:0">Most Recent — ${esc(fmtDate(latest.date))}${latest.label ? ' · ' + esc(latest.label) : ''}</span>
-      <span class="sec-chevron">▾</span>
-    </div>
-    <div id="att-tab-recent">
-      ${latestSubmitted ? `
-        <div class="att-screen-summary-bar" style="padding:8px 0 10px">
-          <span class="att-summary-chip att-chip-absent">${latestAbsent.length} Absent</span>
-          <span class="att-summary-chip att-chip-late">${latestLate.length} Late</span>
-          <span class="att-summary-chip att-chip-present">${latestPresent} Present</span>
-        </div>
-        ${stuGroup('Absent', latestAbsent, 'att-summary-hdr-absent')}
-        ${stuGroup('Late',   latestLate,   'att-summary-hdr-late')}
-        ${!latestAbsent.length && !latestLate.length
-          ? `<div class="empty-state" style="padding:12px 0 4px"><p>${_attTabFilter.search || _attTabFilter.instruments.length || _attTabFilter.grades.length || _attTabFilter.sections.length ? 'No matches for current filter.' : 'Everyone was present!'}</p></div>`
-          : ''}
-      ` : `
-        <div class="empty-state" style="padding:12px 0 4px"><p>Attendance not submitted yet.</p></div>
-      `}
-      ${!latestIsOpenAndUnsub ? `
-      <button class="btn btn-secondary" style="width:100%;margin:12px 0 4px"
-              onclick="navigate('attendance',{rid:'${esc(latest.id)}',from:'attendance-tab'})">
-        View Full Attendance
-      </button>` : ''}
-    </div>`;
-
-  // ── Season Absence Summary ────────────────────────────────────────────────
-
-  const submitted = rehearsals.filter(r => r.attendanceSubmitted);
+function _buildSeasonListHtml() {
+  const rehearsals = [...DB.getRehearsals()].sort((a,b) => b.date.localeCompare(a.date));
+  const students   = Object.values(DB.getStudents()).sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  const submitted  = rehearsals.filter(r => r.attendanceSubmitted);
+  if (!submitted.length) {
+    return `<div class="empty-state" style="padding:12px 0"><p>No submitted rehearsals yet.</p></div>`;
+  }
   const seasonMap = {};
   for (const r of submitted) {
     const entries = STATE.entries[r.id] || {};
@@ -4653,11 +4647,65 @@ function _attTabFilteredContent() {
       }
     }
   }
-
   const seasonScoreMap = {};
   for (const [num, d] of Object.entries(seasonMap)) seasonScoreMap[num] = { absences: d.absences, lates: d.lates };
-  const seasonStudents  = Object.values(seasonMap).map(d => d.s);
-  const filteredSeason  = filterAndSortStudents(seasonStudents, _attTabFilter, seasonScoreMap);
+  const seasonStudents = Object.values(seasonMap).map(d => d.s);
+  const filtered       = filterAndSortStudents(seasonStudents, _attTabFilter, seasonScoreMap);
+  if (!filtered.length) {
+    return `<div class="empty-state" style="padding:12px 0"><p>${seasonStudents.length ? 'No matches for current filter.' : 'Perfect attendance so far!'}</p></div>`;
+  }
+  return filtered.map(s => {
+    const { absences, lates } = seasonMap[s.number];
+    const meta = [fmtPos(s.column, s.row), normInstrument(s.instrument)].filter(Boolean).join(' · ');
+    return `<div class="att-season-row" onclick="navigate('student',{num:'${esc(s.number)}'})" style="cursor:pointer">
+      <div class="att-stu-info">
+        <span class="att-stu-name att-stu-link">${esc(s.name || `#${s.number}`)}</span>
+        ${meta ? `<div class="att-stu-meta">${esc(meta)}</div>` : ''}
+      </div>
+      <div class="att-season-chips">
+        ${absences ? `<span class="att-summary-chip att-chip-absent">${absences} absent</span>` : ''}
+        ${lates    ? `<span class="att-summary-chip att-chip-late">${lates} late</span>`        : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function _attTabFilteredContent() {
+  const rehearsals = [...DB.getRehearsals()].sort((a,b) => b.date.localeCompare(a.date));
+  const students   = Object.values(DB.getStudents()).sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  if (!rehearsals.length) return '';
+
+  const latest          = rehearsals[0];
+  const latestEntries   = STATE.entries[latest.id] || {};
+  const latestAbsent    = students.filter(s => latestEntries[s.number]?.attendance === 'absent');
+  const latestLate      = students.filter(s => latestEntries[s.number]?.attendance === 'late');
+  const latestPresent   = students.length - latestAbsent.length - latestLate.length;
+  const latestSubmitted = !!latest.attendanceSubmitted;
+  const openReh         = STATE.isAdmin ? getActiveRehearsal() : null;
+  const latestIsOpenAndUnsub = openReh && latest.id === openReh.id && !latestSubmitted;
+
+  const tabFilterBar = renderFilterBar('att-tab', _attTabFilter, _ATT_TAB_SORT_OPTS);
+
+  const recentSection = `
+    <div id="att-tab-recent-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('att-tab-recent')">
+      <span class="section-title" style="margin:0">Most Recent — ${esc(fmtDate(latest.date))}${latest.label ? ' · ' + esc(latest.label) : ''}</span>
+      <span class="sec-chevron">▾</span>
+    </div>
+    <div id="att-tab-recent">
+      ${latestSubmitted ? `
+        <div class="att-screen-summary-bar" style="padding:8px 0 10px">
+          <span class="att-summary-chip att-chip-absent">${latestAbsent.length} Absent</span>
+          <span class="att-summary-chip att-chip-late">${latestLate.length} Late</span>
+          <span class="att-summary-chip att-chip-present">${latestPresent} Present</span>
+        </div>
+        ${tabFilterBar}` : ''}
+      <div id="att-tab-recent-list">${_buildRecentListHtml()}</div>
+      ${!latestIsOpenAndUnsub ? `
+      <button class="btn btn-secondary" style="width:100%;margin:12px 0 4px"
+              onclick="navigate('attendance',{rid:'${esc(latest.id)}',from:'attendance-tab'})">
+        View Full Attendance
+      </button>` : ''}
+    </div>`;
 
   const seasonSection = `
     <div id="att-tab-season-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('att-tab-season')">
@@ -4665,25 +4713,8 @@ function _attTabFilteredContent() {
       <span class="sec-chevron">▾</span>
     </div>
     <div id="att-tab-season">
-      ${!submitted.length
-        ? `<div class="empty-state" style="padding:12px 0"><p>No submitted rehearsals yet.</p></div>`
-        : !filteredSeason.length
-          ? `<div class="empty-state" style="padding:12px 0"><p>${seasonStudents.length ? 'No matches for current filter.' : 'Perfect attendance so far!'}</p></div>`
-          : filteredSeason.map(s => {
-              const { absences, lates } = seasonMap[s.number];
-              const meta = [fmtPos(s.column, s.row), normInstrument(s.instrument)].filter(Boolean).join(' · ');
-              return `<div class="att-season-row" onclick="navigate('student',{num:'${esc(s.number)}'})" style="cursor:pointer">
-                <div class="att-stu-info">
-                  <span class="att-stu-name att-stu-link">${esc(s.name || `#${s.number}`)}</span>
-                  ${meta ? `<div class="att-stu-meta">${esc(meta)}</div>` : ''}
-                </div>
-                <div class="att-season-chips">
-                  ${absences ? `<span class="att-summary-chip att-chip-absent">${absences} absent</span>` : ''}
-                  ${lates    ? `<span class="att-summary-chip att-chip-late">${lates} late</span>`        : ''}
-                </div>
-              </div>`;
-            }).join('')
-      }
+      ${tabFilterBar}
+      <div id="att-tab-season-list">${_buildSeasonListHtml()}</div>
     </div>`;
 
   return recentSection + seasonSection;
@@ -4788,16 +4819,6 @@ function viewAttendanceTab() {
     }
   }
 
-  // ── Filter bar ────────────────────────────────────────────────────────────
-
-  const filterBar = renderFilterBar('att-tab', _attTabFilter, [
-    { value: 'absences',   label: 'Most Absent' },
-    { value: 'lates',      label: 'Most Late'   },
-    { value: 'name',       label: 'Name'        },
-    { value: 'instrument', label: 'Instrument'  },
-    { value: 'grade',      label: 'Grade'       },
-  ]);
-
   // ── Rehearsal History (not affected by filter) ────────────────────────────
 
   const historyRows = rehearsals.map(r => {
@@ -4835,7 +4856,7 @@ function viewAttendanceTab() {
     </div>`;
 
   return _renderAttendanceChart()
-    + attendanceCta + filterBar
+    + attendanceCta
     + `<div id="att-tab-filtered">${_attTabFilteredContent()}</div>`
     + historySection;
 }
