@@ -3653,7 +3653,7 @@ function showDashStatModal(statKey) {
   openModal(`
     <div class="modal-title">${title}</div>
     ${rows.map(s => `
-      <div class="dash-stu-row" onclick="closeModal();navigate('student',{num:'${esc(s.num)}'})">
+      <div class="dash-stu-row" onclick="closeModal();showStudentMarksModal('${esc(s.num)}','${esc(_dashRid||'')}')">
         <span class="dash-stu-name">${esc(s.name)}</span>
         <span class="dash-stu-val ${cls}">${valFn(s)}</span>
         <span class="dash-stu-chevron">›</span>
