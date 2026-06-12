@@ -656,7 +656,8 @@ function navigate(view, params = {}, _fromHistory = false) {
     _rosterFilter = _mkFilter('name', 'asc');
   }
   if (_view === 'attendance-tab' && view !== 'attendance-tab') {
-    _attTabFilter = _mkFilter('absences', 'desc');
+    _attTabFilter       = _mkFilter('absences', 'desc');
+    _attTabRecentStatus = '';
   }
   _view   = view;
   _params = params;
@@ -707,7 +708,8 @@ function _mkFilter(sortField, sortDir) {
 let _rosterFilter  = _mkFilter('name',     'asc');
 let _trackerFilter = _mkFilter('name',     'asc');
 let _attFilter     = _mkFilter('name',     'asc');
-let _attTabFilter  = _mkFilter('absences', 'desc');
+let _attTabFilter       = _mkFilter('absences', 'desc');
+let _attTabRecentStatus = ''; // quick-filter on Most Recent chips: ''|'absent'|'late'|'present'
 let _lbFilter      = _mkFilter('score',    'desc');
 let _songFilter       = _mkFilter('name',     'asc');
 let _songRosterFilter = _mkFilter('passed',   'desc');
@@ -4608,8 +4610,10 @@ function _buildRecentListHtml() {
   const students      = Object.values(DB.getStudents()).sort((a,b) => (a.name||'').localeCompare(b.name||''));
   const latestEntries = STATE.entries[latest.id] || {};
   const filterSub     = list => filterAndSortStudents(list, { ..._attTabFilter, sortField: 'name', sortDir: 'asc' }, {});
-  const latestAbsent  = filterSub(students.filter(s => latestEntries[s.number]?.attendance === 'absent'));
-  const latestLate    = filterSub(students.filter(s => latestEntries[s.number]?.attendance === 'late'));
+  const absent  = students.filter(s => latestEntries[s.number]?.attendance === 'absent');
+  const late    = students.filter(s => latestEntries[s.number]?.attendance === 'late');
+  const present = students.filter(s => latestEntries[s.number]?.attendance !== 'absent' && latestEntries[s.number]?.attendance !== 'late');
+  const hasF = _attTabFilter.search || _attTabFilter.instruments.length || _attTabFilter.grades.length || _attTabFilter.sections.length;
   const stuMiniRow = s => {
     const meta = [fmtPos(s.column, s.row), normInstrument(s.instrument)].filter(Boolean).join(' · ');
     return `<div class="att-summary-stu-row" onclick="navigate('student',{num:'${esc(s.number)}'})" style="cursor:pointer">
@@ -4620,12 +4624,27 @@ function _buildRecentListHtml() {
   const stuGroup = (label, list, cls) => list.length ? `
     <div class="att-summary-section-hdr ${cls}">${label} — ${list.length} student${list.length !== 1 ? 's' : ''}</div>
     <div class="att-summary-list">${list.map(stuMiniRow).join('')}</div>` : '';
-  if (!latestAbsent.length && !latestLate.length) {
-    const hasF = _attTabFilter.search || _attTabFilter.instruments.length || _attTabFilter.grades.length || _attTabFilter.sections.length;
+  if (_attTabRecentStatus === 'absent') {
+    const f = filterSub(absent);
+    return f.length ? stuGroup('Absent', f, 'att-summary-hdr-absent')
+      : `<div class="empty-state" style="padding:12px 0 4px"><p>${hasF ? 'No matches.' : 'No absent students.'}</p></div>`;
+  }
+  if (_attTabRecentStatus === 'late') {
+    const f = filterSub(late);
+    return f.length ? stuGroup('Late', f, 'att-summary-hdr-late')
+      : `<div class="empty-state" style="padding:12px 0 4px"><p>${hasF ? 'No matches.' : 'No late students.'}</p></div>`;
+  }
+  if (_attTabRecentStatus === 'present') {
+    const f = filterSub(present);
+    return f.length ? `<div class="att-summary-list">${f.map(stuMiniRow).join('')}</div>`
+      : `<div class="empty-state" style="padding:12px 0 4px"><p>${hasF ? 'No matches.' : 'No students were marked present.'}</p></div>`;
+  }
+  // Default: absent + late
+  const fA = filterSub(absent), fL = filterSub(late);
+  if (!fA.length && !fL.length) {
     return `<div class="empty-state" style="padding:12px 0 4px"><p>${hasF ? 'No matches for current filter.' : 'Everyone was present!'}</p></div>`;
   }
-  return stuGroup('Absent', latestAbsent, 'att-summary-hdr-absent')
-       + stuGroup('Late',   latestLate,   'att-summary-hdr-late');
+  return stuGroup('Absent', fA, 'att-summary-hdr-absent') + stuGroup('Late', fL, 'att-summary-hdr-late');
 }
 
 function _buildSeasonListHtml() {
@@ -4686,6 +4705,12 @@ function _attTabFilteredContent() {
 
   const tabFilterBar = renderFilterBar('att-tab', _attTabFilter, _ATT_TAB_SORT_OPTS);
 
+  const recentChip = (status, count, label, cls) => {
+    const active = _attTabRecentStatus === status;
+    return `<button class="att-summary-chip ${cls} att-chip-btn${active ? ' att-chip-btn-active' : ''}"
+      onclick="setAttTabRecentStatus('${status}')">${count} ${label}</button>`;
+  };
+
   const recentSection = `
     <div id="att-tab-recent-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('att-tab-recent')">
       <span class="section-title" style="margin:0">Most Recent — ${esc(fmtDate(latest.date))}${latest.label ? ' · ' + esc(latest.label) : ''}</span>
@@ -4694,9 +4719,9 @@ function _attTabFilteredContent() {
     <div id="att-tab-recent">
       ${latestSubmitted ? `
         <div class="att-screen-summary-bar" style="padding:8px 0 10px">
-          <span class="att-summary-chip att-chip-absent">${latestAbsent.length} Absent</span>
-          <span class="att-summary-chip att-chip-late">${latestLate.length} Late</span>
-          <span class="att-summary-chip att-chip-present">${latestPresent} Present</span>
+          ${recentChip('absent',  latestAbsent.length, 'Absent',  'att-chip-absent')}
+          ${recentChip('late',    latestLate.length,   'Late',    'att-chip-late')}
+          ${recentChip('present', latestPresent,       'Present', 'att-chip-present')}
         </div>
         ${tabFilterBar}` : ''}
       <div id="att-tab-recent-list">${_buildRecentListHtml()}</div>
@@ -4718,6 +4743,13 @@ function _attTabFilteredContent() {
     </div>`;
 
   return recentSection + seasonSection;
+}
+
+function setAttTabRecentStatus(status) {
+  _attTabRecentStatus = _attTabRecentStatus === status ? '' : status;
+  const el = document.getElementById('att-tab-filtered');
+  if (el) el.innerHTML = _attTabFilteredContent();
+  else _rerenderForFilter('att-tab');
 }
 
 function _renderAttendanceChart() {
@@ -4855,10 +4887,12 @@ function viewAttendanceTab() {
       ${historyRows}
     </div>`;
 
-  return _renderAttendanceChart()
+  return `<div class="att-tab-view">`
+    + _renderAttendanceChart()
     + attendanceCta
     + `<div id="att-tab-filtered">${_attTabFilteredContent()}</div>`
-    + historySection;
+    + historySection
+    + `</div>`;
 }
 
 // ── View: Rehearsal Detail ────────────────────────────────────────────────────
