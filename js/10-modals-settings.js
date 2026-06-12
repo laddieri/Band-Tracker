@@ -1002,31 +1002,7 @@ function showImportModal() {
   `);
 }
 
-function parseCSVLine(line) {
-  const fields = [];
-  let field = '';
-  let inQ = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (inQ) {
-      if (ch === '"') {
-        if (line[i+1] === '"') { field += '"'; i++; }
-        else inQ = false;
-      } else field += ch;
-    } else {
-      if (ch === '"') inQ = true;
-      else if (ch === ',') { fields.push(field.trim()); field = ''; }
-      else field += ch;
-    }
-  }
-  fields.push(field.trim());
-  return fields;
-}
-
-function parseCSV(text) {
-  return text.replace(/\r\n/g,'\n').replace(/\r/g,'\n')
-    .split('\n').filter(l => l.trim()).map(parseCSVLine);
-}
+// CSV parsing (parseCSVLine/parseCSV/detectCols/normalizeGrade) lives in 00-logic.js.
 
 const STUDENT_FIELD_DEFS = [
   { key: 'instrument', label: 'Instrument',  description: 'Instrument played',                        aliases: 'Instrument, Inst' },
@@ -1037,37 +1013,6 @@ const STUDENT_FIELD_DEFS = [
   { key: 'notes',      label: 'Notes',       description: 'Private director notes for the student',   aliases: 'Notes, Note, Comments, Director Notes' },
 ];
 
-const COL_ALIASES = {
-  number:     ['number','student number','student #','student no','student id','id','#','num','no.','no'],
-  name:       ['name','student name','full name','first name','last name','student'],
-  column:     ['column','col','letter','column letter','file'],
-  row:        ['row','rank','row number','set'],
-  instrument: ['instrument','instruments','inst'],
-  section:    ['section','part','group','ensemble'],
-  grade:      ['grade','grade level','year','class year'],
-  notes:      ['notes','note','comments','comment','director notes']
-};
-
-function normalizeGrade(val) {
-  const num = val.replace(/[^\d]/g, '');
-  const mapped = { '8':'8th','9':'9th','10':'10th','11':'11th','12':'12th' };
-  return mapped[num] || val;
-}
-
-function detectCols(headers) {
-  const norm = headers.map(h => h.toLowerCase().trim());
-  const map = {};
-  for (const [field, aliases] of Object.entries(COL_ALIASES)) {
-    const idx = norm.findIndex(h => aliases.includes(h));
-    if (idx !== -1) map[field] = idx;
-  }
-  for (const cf of (STATE.customStudentFields || [])) {
-    const idx = norm.findIndex(h => h === cf.label.toLowerCase().trim());
-    if (idx !== -1 && map[cf.key] === undefined) map[cf.key] = idx;
-  }
-  return map;
-}
-
 function handleCSVFile(input) {
   const file = input.files[0];
   if (!file) return;
@@ -1077,7 +1022,7 @@ function handleCSVFile(input) {
       const rows = parseCSV(e.target.result);
       if (rows.length < 2) { showImportError('File appears to be empty or has only a header row.'); return; }
       const headers = rows[0];
-      const colMap  = detectCols(headers);
+      const colMap  = detectCols(headers, STATE.customStudentFields || []);
       if (colMap.number === undefined) {
         showImportError(
           `Could not find a student number column.<br>

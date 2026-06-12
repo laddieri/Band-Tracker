@@ -201,37 +201,18 @@ function showStudentMarksModal(num, rid) {
 }
 
 function _lbW() {
-  const w = STATE.lbWeights || {};
-  return {
-    positive: w.positive ?? 1,
-    negative: w.negative ?? 1,
-    absent:   w.absent   ?? 1,
-    late:     w.late     ?? 0.5,
-    song:     w.song     ?? 1,
-  };
+  return lbWeights(STATE.lbWeights);
 }
 
 // Scores every student from the raw data (director clients only — students
 // can't read the inputs). Shared by the admin leaderboard view and the
 // settings/public publisher.
 function _scoreStudents() {
-  const w = _lbW();
-  return Object.entries(STATE.students).map(([docId, s]) => {
-    const songPoints = DB.getSongs().reduce((sum, song) => {
-      return sum + (song.statuses?.[String(s.number)]?.status === 'passed' ? 1 : 0);
-    }, 0);
-    const score = songPoints * w.song + Object.values(STATE.entries).reduce((sum, rehEntries) => {
-      const e = rehEntries[String(s.number)];
-      if (!e) return sum;
-      return sum + (featureOn('marks') ? (e.positives || 0) * w.positive : 0)
-                 - (featureOn('marks') && STATE.countNegativeInScore ? (e.mistakes || 0) * w.negative : 0)
-                 - (featureOn('attendance') && e.attendance === 'absent' ? w.absent : 0)
-                 - (featureOn('attendance') && e.attendance === 'late'   ? w.late   : 0);
-    }, 0);
-    return { docId, s, score, name: fakeAnimalName(docId),
-      positives: featureOn('marks') ? Object.values(STATE.entries).reduce((sum, re) => sum + (re[String(s.number)]?.positives || 0), 0) : 0,
-      mistakes:  featureOn('marks') ? Object.values(STATE.entries).reduce((sum, re) => sum + (re[String(s.number)]?.mistakes  || 0), 0) : 0 };
-  });
+  return scoreStudentsCore(STATE.students, STATE.entries, DB.getSongs(), _lbW(), {
+    marksOn:       featureOn('marks'),
+    attendanceOn:  featureOn('attendance'),
+    countNegative: STATE.countNegativeInScore,
+  }, STATE.pseudonymSalt);
 }
 
 function _buildLbRankRows() {

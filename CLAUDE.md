@@ -61,6 +61,10 @@ app doesn't show it" is never a justification. Full model:
 
 ## Checks
 
-- `node --check app.js` — CI runs this on every PR (`syntax.yml`).
+- `node --check` on every JS file — CI runs this on every PR (`syntax.yml`).
+- `npm run test:unit` — unit tests for the pure logic in `js/00-logic.js`
+  (scoring, published stats, auto marks, pseudonyms, CSV parsing). Also runs
+  in CI on every PR. Keep `00-logic.js` free of Firebase/STATE/DOM so it
+  stays requireable from Node; bind it to STATE via thin wrappers elsewhere.
 - `npm run test:rules` — Firestore rules tests against the emulator.
 - There is no build step; do not introduce one casually.

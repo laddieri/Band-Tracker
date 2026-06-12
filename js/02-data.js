@@ -258,33 +258,22 @@ let _publishTimer      = null;
 let _lastPublishedJson = '';
 
 function computePublicStats() {
-  const students = Object.values(STATE.students);
-  const total    = students.length;
-
-  const rehearsals = STATE.rehearsals.map(r => ({
-    date:   r.date,
-    label:  r.label || '',
-    absent: Object.values(STATE.entries[r.id] || {}).filter(e => e.attendance === 'absent').length,
-  }));
-
-  const songs = (featureOn('songs') ? STATE.songs : []).map(song => {
-    const passed = students.filter(s => song.statuses?.[String(s.number)]?.status === 'passed').length;
-    return {
-      id: song.id, title: song.title || '', dueDate: song.dueDate || '',
-      category: song.category || '', passed, remaining: Math.max(0, total - passed),
-    };
+  return buildPublicStats({
+    students:   STATE.students,
+    entries:    STATE.entries,
+    rehearsals: STATE.rehearsals,
+    songs:      STATE.songs,
+    weights:    _lbW(),
+    salt:       STATE.pseudonymSalt,
+    flags: {
+      songsOn:            featureOn('songs'),
+      statsOn:            featureOn('stats'),
+      marksOn:            featureOn('marks'),
+      attendanceOn:       featureOn('attendance'),
+      countNegative:      STATE.countNegativeInScore,
+      leaderboardEnabled: STATE.marchingLeaderboardEnabled,
+    },
   });
-
-  // Pseudonymized ranking — published only while the leaderboard is enabled.
-  // Rows carry the student number so each student can find their own row;
-  // names and per-event details are never included.
-  const leaderboard = (STATE.marchingLeaderboardEnabled && featureOn('stats'))
-    ? _scoreStudents()
-        .sort((a, b) => b.score - a.score)
-        .map(({ docId, name, score }) => ({ num: docId, name, score }))
-    : null;
-
-  return { rehearsals, songs, leaderboard };
 }
 
 function schedulePublishPublicStats() {

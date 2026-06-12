@@ -22,38 +22,9 @@ function toggleTheme() {
   showUserMenu();
 }
 
-const FAKE_ADJECTIVES = [
-  'Fluffy','Speedy','Grumpy','Happy','Sleepy','Bouncy','Sparkly','Wobbly',
-  'Snappy','Fuzzy','Silly','Jolly','Brave','Clever','Dizzy','Fancy',
-  'Gentle','Hungry','Jumpy','Lazy','Mighty','Noisy','Orange','Peppy',
-  'Quirky','Rusty','Sassy','Tiny','Vivid','Wavy','Zappy','Cheeky',
-  'Dozy','Eager','Frisky','Goofy','Hasty','Inky','Lumpy','Misty',
-  'Nutty','Plucky','Rainy','Soggy','Wacky','Zippy','Bumpy','Curly',
-  'Droopy','Flaky'
-];
-const FAKE_ANIMALS = [
-  'Panda','Giraffe','Alligator','Penguin','Flamingo','Hedgehog','Capybara',
-  'Platypus','Narwhal','Axolotl','Wombat','Lemur','Tapir','Okapi','Quokka',
-  'Pangolin','Echidna','Manatee','Sloth','Armadillo','Salamander','Gecko',
-  'Chameleon','Toucan','Cockatoo','Cassowary','Kiwi','Meerkat','Mongoose',
-  'Ocelot','Wolverine','Badger','Otter','Ferret','Chinchilla','Capybara',
-  'Binturong','Tarantula','Axolotl','Dugong','Aardvark','Numbat','Kakapo',
-  'Fossa','Saiga','Blobfish','Tardigrade','Mudskipper','Shoebill','Potoo'
-];
-
-function _strHash(str) {
-  let h = 5381;
-  for (let i = 0; i < str.length; i++) {
-    h = Math.imul(h, 31) + str.charCodeAt(i) | 0;
-  }
-  return Math.abs(h);
-}
-
+// Pseudonym for the current band's salt (pure core lives in 00-logic.js).
 function fakeAnimalName(id) {
-  const h   = _strHash(String(id) + STATE.pseudonymSalt);
-  const adj = FAKE_ADJECTIVES[h % FAKE_ADJECTIVES.length];
-  const ani = FAKE_ANIMALS[Math.floor(h / FAKE_ADJECTIVES.length) % FAKE_ANIMALS.length];
-  return `${adj} ${ani}`;
+  return pseudonymFor(id, STATE.pseudonymSalt);
 }
 
 const INSTRUMENTS = [

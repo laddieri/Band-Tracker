@@ -1,4 +1,4 @@
-name: Syntax Check
+name: Syntax Check + Unit Tests
 
 # Fast guard: parse every committed JS file on each PR so a syntax error
 # (e.g. smart/curly quotes pasted in as string delimiters) can't reach main
@@ -31,3 +31,5 @@ jobs:
           echo "Checking:"; echo "$files"
           for f in $files; do node --check "$f"; done
           echo "All JS files parsed successfully."
+      - name: Unit tests (pure logic in js/00-logic.js)
+        run: npm run test:unit

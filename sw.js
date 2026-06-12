@@ -4,6 +4,7 @@ const PRECACHE = [
   '/',
   '/index.html',
   '/app.css',
+  '/js/00-logic.js',
   '/js/01-core.js',
   '/js/02-data.js',
   '/js/03-router.js',

@@ -1087,28 +1087,11 @@ function _getAutoMarks() {
 }
 
 function _checkAutoMarkCondition(mark, att, mistakes) {
-  if (att === 'absent') return false;
-  switch (mark.condition) {
-    case 'on_time':     return att !== 'late';
-    case 'no_mistakes': return mistakes === 0;
-    case 'present':     return true;
-    default:            return true;
-  }
+  return checkAutoMarkCondition(mark, att, mistakes); // pure core in 00-logic.js
 }
 
 function _computeAutoMarkEvents(entry, r) {
-  const att        = entry.attendance || 'present';
-  const baseEvents = (entry.events || []).filter(e => !e.auto);
-  const mistakes   = baseEvents.filter(e => e.type === 'mistake').length;
-  const events     = [...baseEvents];
-  for (const mark of _getAutoMarks()) {
-    const whenOk = mark.when === 'start' ? !!r.attendanceSubmitted : !!r.ended;
-    if (!whenOk) continue;
-    if (_checkAutoMarkCondition(mark, att, mistakes)) {
-      events.push({ type: mark.type || 'positive', note: mark.note, ts: Date.now(), by: 'system', auto: true });
-    }
-  }
-  return events;
+  return computeAutoMarkEvents(entry, r, _getAutoMarks());
 }
 
 function _recalcAutoBonuses(rid, num) {
