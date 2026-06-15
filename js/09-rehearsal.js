@@ -1,6 +1,17 @@
 // Band Tracker — js/09-rehearsal.js — Rehearsals list, attendance tab/screen, rehearsal detail, group marks, block nav.
 // Plain script sharing global scope; load order is set in index.html.
 
+// In-scope students for a rehearsal (full roster when the rehearsal targets the
+// whole band). Accepts a rehearsal object or its id. Use this — not the raw
+// roster — anywhere a rehearsal's attendance/feedback candidates are listed, so
+// a sectional only shows the students it applies to. The pure membership test
+// lives in 00-logic.js (rehearsalIncludesStudent).
+function rehearsalStudents(rOrId) {
+  const r   = typeof rOrId === 'string' ? STATE.rehearsals.find(x => x.id === rOrId) : rOrId;
+  const all = Object.values(DB.getStudents());
+  return r?.scope ? all.filter(s => rehearsalIncludesStudent(s, r.scope)) : all;
+}
+
 // ── View: Rehearsals List ─────────────────────────────────────────────────────
 
 function viewRehearsals() {
@@ -64,6 +75,7 @@ function viewRehearsals() {
                     <span class="rh-badge rh-badge-open">Open</span>
                     ${isActive ? `<span class="rh-badge rh-badge-active">Active</span>` : ''}
                     ${featureOn('attendance') && attDone ? `<span class="rh-badge rh-badge-att">Attendance ✓</span>` : ''}
+                    ${r.scope ? `<span class="rh-badge rh-badge-scope">👥 ${esc(rehearsalScopeLabel(r.scope))}</span>` : ''}
                   </div>
                 </div>
                 <div class="flex gap-6 items-center">
@@ -101,6 +113,7 @@ function viewRehearsals() {
                 <div class="rh-status-row">
                   <span class="rh-badge rh-badge-ended">Ended</span>
                   ${featureOn('attendance') && attDone ? `<span class="rh-badge rh-badge-att">Attendance ✓</span>` : ''}
+                  ${r.scope ? `<span class="rh-badge rh-badge-scope">👥 ${esc(rehearsalScopeLabel(r.scope))}</span>` : ''}
                 </div>
               </div>
               <div class="flex gap-6 items-center">
@@ -225,7 +238,8 @@ function _attTabFilteredContent() {
   const latestEntries   = STATE.entries[latest.id] || {};
   const latestAbsent    = students.filter(s => latestEntries[s.number]?.attendance === 'absent');
   const latestLate      = students.filter(s => latestEntries[s.number]?.attendance === 'late');
-  const latestPresent   = students.length - latestAbsent.length - latestLate.length;
+  const latestTotal     = latest.scope ? rehearsalStudents(latest).length : students.length;
+  const latestPresent   = latestTotal - latestAbsent.length - latestLate.length;
   const latestSubmitted = !!latest.attendanceSubmitted;
   const openReh         = STATE.isAdmin ? getActiveRehearsal() : null;
   const latestIsOpenAndUnsub = openReh && latest.id === openReh.id && !latestSubmitted;
@@ -382,7 +396,7 @@ function viewAttendanceTab() {
 
   const historyRows = rehearsals.map(r => {
     const entries = STATE.entries[r.id] || {};
-    const total   = students.length;
+    const total   = r.scope ? rehearsalStudents(r).length : students.length;
     const absent  = Object.values(entries).filter(e => e.attendance === 'absent').length;
     const late    = Object.values(entries).filter(e => e.attendance === 'late').length;
     const present = total - absent - late;
@@ -396,6 +410,7 @@ function viewAttendanceTab() {
           <div>
             <div class="font-bold">${fmtDate(r.date)}</div>
             ${r.label ? `<div class="text-muted text-sm mt-4">${esc(r.label)}</div>` : ''}
+            ${r.scope ? `<div class="text-muted text-sm mt-4">👥 ${esc(rehearsalScopeLabel(r.scope))}</div>` : ''}
           </div>
           ${attDone
             ? `<span class="rh-badge rh-badge-att">Submitted ✓</span>`
@@ -546,12 +561,14 @@ function viewRehearsal(rid) {
   } else {
     const searchVal    = _trackerFilter.search;
     const isNameSearch = searchVal.trim() && !/^\d+$/.test(searchVal.trim());
-    const suggestions  = isNameSearch ? studentSuggestions(searchVal, _trackerFilter.instruments[0] || '', _trackerFilter.grades[0] || '') : [];
+    // Tracker candidates are limited to the students this rehearsal applies to.
+    const scopePool    = rehearsalStudents(r);
+    const suggestions  = isNameSearch ? studentSuggestions(searchVal, _trackerFilter.instruments[0] || '', _trackerFilter.grades[0] || '', scopePool) : [];
     const activeFilterCount = _trackerFilter.instruments.length + _trackerFilter.grades.length + _trackerFilter.sections.length;
     // Only show the full student list when a filter is active — not by default
     const showAllForFilter = !searchVal.trim() && activeFilterCount > 0;
     const allFiltered = showAllForFilter
-      ? filterAndSortStudents(Object.values(students), _trackerFilter)
+      ? filterAndSortStudents(scopePool, _trackerFilter)
       : [];
     const activeFilterLabel = [
       ..._trackerFilter.instruments,
@@ -618,7 +635,7 @@ function viewRehearsal(rid) {
   const allEntries  = STATE.entries[rid] || {};
   const attAbsent   = Object.values(allEntries).filter(e => e.attendance === 'absent').length;
   const attLate     = Object.values(allEntries).filter(e => e.attendance === 'late').length;
-  const totalRoster = Object.keys(STATE.students).length;
+  const totalRoster = rehearsalStudents(r).length;
   const attSummary  = (attAbsent || attLate) ? [
     attAbsent ? `${attAbsent} absent` : '',
     attLate   ? `${attLate} late`     : '',
@@ -784,7 +801,7 @@ function confirmMarkCustom(rid, num, type) {
 // ── Attendance Screen ─────────────────────────────────────────────────────────
 
 function viewAttendanceSummary(rid) {
-  const students = Object.values(DB.getStudents());
+  const students = rehearsalStudents(rid);
   const entries  = STATE.entries[rid] || {};
 
   const absent   = students.filter(s => entries[s.number]?.attendance === 'absent');
@@ -881,10 +898,10 @@ function confirmModifyAttendance(rid) {
 
 function viewAttendance(rid) {
   const r        = STATE.rehearsals.find(r => r.id === rid);
-  const students = Object.values(DB.getStudents());
+  const students = rehearsalStudents(r);
   const entries  = STATE.entries[rid] || {};
   if (!students.length) {
-    return `<div class="empty-state"><p>No students in the roster yet.</p></div>`;
+    return `<div class="empty-state"><p>${r?.scope ? 'No students match this rehearsal’s groups.' : 'No students in the roster yet.'}</p></div>`;
   }
 
   const submitted = r?.attendanceSubmitted || false;
@@ -991,13 +1008,13 @@ function buildAttBodyHtml(rid, students, entries) {
 function toggleAttAbsentSection(rid) {
   _attAbsentCollapsed = !_attAbsentCollapsed;
   const el = document.getElementById('att-student-list');
-  if (el) el.innerHTML = buildAttBodyHtml(rid, Object.values(DB.getStudents()), STATE.entries[rid] || {});
+  if (el) el.innerHTML = buildAttBodyHtml(rid, rehearsalStudents(rid), STATE.entries[rid] || {});
 }
 
 function toggleAttPresentSection(rid) {
   _attPresentCollapsed = !_attPresentCollapsed;
   const el = document.getElementById('att-student-list');
-  if (el) el.innerHTML = buildAttBodyHtml(rid, Object.values(DB.getStudents()), STATE.entries[rid] || {});
+  if (el) el.innerHTML = buildAttBodyHtml(rid, rehearsalStudents(rid), STATE.entries[rid] || {});
 }
 
 // filterAttendanceList replaced by updateFilter / unified filter bar
@@ -1027,7 +1044,7 @@ function attStudentRow(rid, s, entries) {
 
 async function markAllPresent(rid) {
   const entries  = STATE.entries[rid] || {};
-  const students = Object.values(DB.getStudents());
+  const students = rehearsalStudents(rid);
   // Mark only unchecked students (attendance === null/undefined) as 'present'.
   // Leave absent/late entries untouched.
   const unchecked = students.filter(s => !entries[s.number]?.attendance);
@@ -1181,7 +1198,7 @@ function submitAttendance(rid) {
   r.attendanceSubmitted = true;
   orgCol('rehearsals').doc(rid).set({ attendanceSubmitted: true }, { merge: true });
   if (_getAutoMarks().some(m => m.when === 'start')) {
-    Object.keys(STATE.students).forEach(num => _recalcAutoBonuses(rid, num));
+    rehearsalStudents(r).forEach(s => _recalcAutoBonuses(rid, String(s.number ?? s._id)));
   }
   showToast('Attendance submitted.');
   _attModifyMode = false;
@@ -1201,7 +1218,7 @@ function showMarkAllModal(rid) {
     instParts.join(', '),
     gradeParts.map(g => g + ' Grade').join(', ')
   ].filter(Boolean).join(', ') || 'entire band';
-  const count = Object.values(STATE.students).filter(s =>
+  const count = rehearsalStudents(rid).filter(s =>
     (!instParts.length  || instParts.includes(normInstrument(s.instrument))) &&
     (!gradeParts.length || gradeParts.includes(s.grade || ''))
   ).length;
@@ -1287,9 +1304,11 @@ function showGroupMarkModal(rid, groupName, type) {
   const segments    = r?.segments || [];
   const isAll       = groupName === '__all__';
   const displayName = isAll ? 'All Students' : groupName;
+  // Group marks are confined to the rehearsal's in-scope students.
+  const scopePool   = rehearsalStudents(rid);
   const students    = isAll
-    ? Object.values(DB.getStudents())
-    : Object.values(DB.getStudents()).filter(s => _groupMatches(s, groupName));
+    ? scopePool
+    : scopePool.filter(s => _groupMatches(s, groupName));
 
   const segHtml = segments.length ? `
     <div class="form-label" style="margin-bottom:7px">Which part of rehearsal?</div>
@@ -1338,10 +1357,11 @@ function confirmGroupMarkCustom(rid, groupName, type) {
 async function confirmGroupMark(rid, groupName, type, note) {
   const segment = _pendingSegment;
   closeModal();
-  const isAll   = groupName === '__all__';
-  const stuList = isAll
-    ? Object.values(STATE.students)
-    : Object.values(STATE.students).filter(s => _groupMatches(s, groupName));
+  const isAll    = groupName === '__all__';
+  const scopePool = rehearsalStudents(rid);
+  const stuList  = isAll
+    ? scopePool
+    : scopePool.filter(s => _groupMatches(s, groupName));
   if (!stuList.length) { showToast('No students found.'); return; }
   const field   = type === 'mistake' ? 'mistakes' : 'positives';
   const batch   = db.batch();

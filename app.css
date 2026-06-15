@@ -256,6 +256,7 @@ html, body {
 .rh-badge-ended  { background: var(--bg); color: var(--text-muted); border: 1px solid var(--border); }
 .rh-badge-att    { background: var(--success-bg); color: var(--success); }
 .rh-badge-active { background: var(--amber-bg); color: var(--amber-text); border: 1px solid var(--amber-border); }
+.rh-badge-scope  { background: var(--primary-tint); color: var(--primary); text-transform: none; letter-spacing: 0; }
 
 .rh-card-actions { display: flex; gap: 8px; margin-top: 12px; }
 .rh-card-actions .btn { flex: 1; }
