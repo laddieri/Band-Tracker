@@ -327,14 +327,26 @@ function _rehearsalScopeFields(scope = null) {
       </div>
     </div>`;
 
+  // Collapsed by default; auto-expanded when editing a rehearsal that already
+  // has a scope so the director can see/change it.
+  const hasScope = sel.instruments.size || sel.sections.size || sel.grades.size;
+  const open     = !!hasScope;
+  const summary  = hasScope ? rehearsalScopeLabel(scope) : 'Full band';
+
   return `
     <div class="form-group">
-      <label class="form-label">Who's attending?</label>
-      <p class="form-hint" style="margin:0 0 8px">Leave everything unchecked for the full band, or pick the groups rehearsing.</p>
-      <div class="sfb-panel">
-        ${group('Instruments', instruments, 'reh-scope-inst', sel.instruments)}
-        ${group('Sections',    sections,    'reh-scope-sect', sel.sections)}
-        ${group('Grades',      grades,      'reh-scope-grade', sel.grades)}
+      <div id="reh-scope-sec-hdr" class="sec-hdr ${open ? 'sec-hdr-open' : ''}" style="margin-top:0"
+           onclick="toggleCollapse('reh-scope-sec')">
+        <span class="form-label" style="margin:0">Who's attending? <span style="font-weight:400;color:var(--text-muted)">· ${esc(summary)}</span></span>
+        <span class="sec-chevron">▾</span>
+      </div>
+      <div id="reh-scope-sec" class="${open ? '' : 'sec-collapsed'}">
+        <p class="form-hint" style="margin:0 0 8px">Leave everything unchecked for the full band, or pick the groups rehearsing.</p>
+        <div class="sfb-panel">
+          ${group('Instruments', instruments, 'reh-scope-inst', sel.instruments)}
+          ${group('Sections',    sections,    'reh-scope-sect', sel.sections)}
+          ${group('Grades',      grades,      'reh-scope-grade', sel.grades)}
+        </div>
       </div>
     </div>`;
 }
