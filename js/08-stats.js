@@ -426,10 +426,17 @@ function viewLeaderboard() {
     absent: Object.values(STATE.entries[r.id] || {}).filter(e => e.attendance === 'absent').length,
   }));
 
+  // Song progress is measured only over students who memorize music, so
+  // excluded groups (e.g. majorettes) don't dilute the percentages.
+  const memStudents = new Set(
+    Object.values(STATE.students).filter(s => !memExcluded(s)).map(s => String(s.number))
+  );
+  const songTotal = memStudents.size;
   const songRows = DB.getSongs().map(song => {
-    const passed    = Object.values(song.statuses || {}).filter(s => s.status === 'passed').length;
-    const remaining = Math.max(0, totalStudents - passed);
-    const pct       = totalStudents ? Math.round(passed / totalStudents * 100) : 0;
+    const passed    = Object.entries(song.statuses || {})
+      .filter(([num, s]) => s.status === 'passed' && memStudents.has(String(num))).length;
+    const remaining = Math.max(0, songTotal - passed);
+    const pct       = songTotal ? Math.round(passed / songTotal * 100) : 0;
     return { song, passed, remaining, pct };
   });
 
@@ -640,7 +647,7 @@ function viewStudent(num) {
       `;
     })() : ''}
 
-    ${DB.getSongs().length ? (() => {
+    ${(DB.getSongs().length && !memExcluded(s)) ? (() => {
       const allSongs   = DB.getSongs();
       const remaining  = allSongs.filter(song => song.statuses?.[String(num)]?.status !== 'passed');
       const completed  = allSongs.filter(song => song.statuses?.[String(num)]?.status === 'passed');

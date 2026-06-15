@@ -5,7 +5,7 @@
 
 function _buildSongRosterRows() {
   const songs    = STATE.songs;
-  const students = Object.values(DB.getStudents());
+  const students = Object.values(DB.getStudents()).filter(s => !memExcluded(s));
   const total    = songs.length;
 
   const scoreMap = {};
@@ -98,7 +98,9 @@ function showStudentSongProgress(num) {
 
 function viewSongs() {
   const songs = STATE.songs;
-  const total = Object.keys(STATE.students).length;
+  // Count only students who memorize music, so progress isn't diluted by
+  // excluded groups (e.g. majorettes).
+  const total = Object.values(STATE.students).filter(s => !memExcluded(s)).length;
   const cats  = STATE.songCategories;
 
   if (songs.length === 0) {
@@ -200,6 +202,7 @@ function viewSong(sid) {
   if (!song) return `<div class="empty-state"><p>Song not found.</p></div>`;
 
   const students = Object.values(DB.getStudents())
+    .filter(s => !memExcluded(s))
     .sort((a,b) => (a.name||'').localeCompare(b.name||''));
   const statuses  = song.statuses || {};
   const getStatus = num => statuses[String(num)]?.status || 'not_attempted';
@@ -284,7 +287,7 @@ function toggleSongHidePassed(sid) {
   const el = document.getElementById('song-student-list');
   if (el) {
     const song = STATE.songs.find(s => s.id === sid);
-    if (song) el.innerHTML = songStudentRows(sid, Object.values(DB.getStudents()), song.statuses || {});
+    if (song) el.innerHTML = songStudentRows(sid, Object.values(DB.getStudents()).filter(s => !memExcluded(s)), song.statuses || {});
   }
   // Refresh the toggle chip appearance
   document.querySelectorAll('.inst-filter-row .inst-chip').forEach(btn => {
@@ -423,6 +426,7 @@ function _applySongStatus(sid, num, song, status, note = '') {
   const listEl = document.getElementById('song-student-list');
   if (listEl) {
     const students = Object.values(DB.getStudents())
+      .filter(s => !memExcluded(s))
       .sort((a,b) => (a.name||'').localeCompare(b.name||''));
     listEl.innerHTML = songStudentRows(sid, students, song.statuses || {});
   } else if (_view === 'student') {
@@ -468,6 +472,13 @@ function showSongOptionsModal() {
         <div>
           <div class="options-menu-label">Manage Categories</div>
           <div class="options-menu-sub">${STATE.songCategories.length ? STATE.songCategories.join(', ') : 'No categories yet'}</div>
+        </div>
+      </button>
+      <button class="options-menu-item" onclick="closeModal();showMemorizationExclusionsModal()">
+        <div class="options-menu-icon">🚫</div>
+        <div>
+          <div class="options-menu-label">Memorization Exclusions</div>
+          <div class="options-menu-sub">${STATE.memorizationExclusions.length ? STATE.memorizationExclusions.join(', ') : 'Everyone memorizes music'}</div>
         </div>
       </button>
     </div>
@@ -564,6 +575,81 @@ async function _saveSongCategories() {
   } catch(e) {
     console.error('Failed to save song categories:', e);
     showToast('Failed to save categories.');
+  }
+}
+
+// ── Memorization exclusions ───────────────────────────────────────────────────
+// Directors can drop instruments or sections (e.g. majorettes) from the music
+// memorization lists. Excluded students are left out of the Songs progress
+// roster, per-song lists and aggregates, and see no "Songs to Memorize" in
+// their portal. Stored on settings/presets and published to settings/public.
+
+// The instrument and section names offered as exclusion options: what's in the
+// roster, plus anything already excluded so it stays toggleable if the roster
+// changes.
+function _memExclusionGroups() {
+  const exclSet = new Set(STATE.memorizationExclusions || []);
+  const instruments = [...new Set([
+    ...instrumentsInRoster(),
+    ...[...exclSet].filter(n => (STATE.instruments || []).includes(n)),
+  ])].sort((a, b) => instrOrder(a) - instrOrder(b));
+  const sections = [...new Set([
+    ...sectionsInRoster(),
+    ...[...exclSet].filter(n => (STATE.sections || []).includes(n)),
+  ])].sort();
+  return { instruments, sections, exclSet };
+}
+
+function _renderMemExclusionBody() {
+  const { instruments, sections, exclSet } = _memExclusionGroups();
+  if (!instruments.length && !sections.length)
+    return `<div class="preset-empty">Add instruments or sections to students first, then choose which groups skip memorization.</div>`;
+  const group = (title, items) => !items.length ? '' : `
+    <div class="sfb-group">
+      <div class="sfb-group-label">${title}</div>
+      <div class="sfb-checks">
+        ${items.map(item => `
+          <label class="sfb-check-label">
+            <input type="checkbox" class="sfb-checkbox" ${exclSet.has(item) ? 'checked' : ''}
+                   onchange="toggleMemExclusion('${esc(item)}',this.checked)">
+            <span>${esc(item)}</span>
+          </label>`).join('')}
+      </div>
+    </div>`;
+  return group('Instruments', instruments) + group('Sections', sections);
+}
+
+function showMemorizationExclusionsModal() {
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Memorization Exclusions</div>
+    <p class="form-hint" style="margin:0 0 12px">
+      Pick instruments or groups that don't memorize music (e.g. majorettes).
+      They're removed from the song lists and progress, and won't see
+      "Songs to Memorize" in their portal.
+    </p>
+    <div class="preset-section">${_renderMemExclusionBody()}</div>
+    <div class="modal-actions" style="margin-top:10px">
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Done</button>
+    </div>
+  `);
+}
+
+function toggleMemExclusion(name, checked) {
+  const set = new Set(STATE.memorizationExclusions || []);
+  if (checked) set.add(name); else set.delete(name);
+  STATE.memorizationExclusions = [...set];
+  _saveMemExclusions();
+}
+
+async function _saveMemExclusions() {
+  try {
+    await orgCol('settings').doc('presets').set(
+      { memorizationExclusions: STATE.memorizationExclusions }, { merge: true }
+    );
+  } catch(e) {
+    console.error('Failed to save memorization exclusions:', e);
+    showToast('Failed to save exclusions.');
   }
 }
 
@@ -723,6 +809,8 @@ function portalPseudonym(num) {
 // (settings/public) with the songStatuses mirror on their own student doc.
 function _portalSongs(num) {
   if (!portalFeatureOn('songs')) return [];
+  // Students in an excluded group (e.g. majorettes) don't memorize music.
+  if (memExcluded(STATE.students[String(num)])) return [];
   if (STATE.isAdmin) {
     return STATE.songs.map(song => ({
       id: song.id, title: song.title, dueDate: song.dueDate || '',
