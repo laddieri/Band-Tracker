@@ -120,6 +120,9 @@ const STATE = {
   marchingLeaderboardEnabled: false,
   pseudonymSalt:              '',
   songCategories:             [],
+  // Instrument/section names excluded from song memorization (e.g. majorettes).
+  // Director-configured in the Songs tab; published to students via settings/public.
+  memorizationExclusions:     [],
   bandName:                   '',
   bandLogo:                   '',
   // Band-wide feature toggles (default on; missing = on, so existing bands keep
@@ -146,6 +149,13 @@ const STATE = {
 function hasField(key) {
   const af = STATE.activeStudentFields;
   return !af || af.includes(key);
+}
+
+// Whether a student is excluded from song memorization (bound to STATE; pure
+// core lives in 00-logic.js). Excluded students drop out of the memorization
+// lists, song progress and the student portal's "Songs to Memorize".
+function memExcluded(student) {
+  return isMemorizationExcluded(student, STATE.memorizationExclusions);
 }
 
 // ── DB read layer (same API as before — views unchanged) ──────────────────────

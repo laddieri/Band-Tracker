@@ -43,6 +43,22 @@ function pseudonymFor(id, salt) {
   return `${adj} ${ani}`;
 }
 
+// ── Memorization exclusions ───────────────────────────────────────────────────
+
+// Whether a student is excluded from song memorization. `exclusions` is a flat
+// list of instrument and/or section names (e.g. ['Majorette']); a student is
+// excluded when their instrument (leading number stripped, like normInstrument)
+// or section matches any of them. Used to keep groups that don't memorize music
+// out of the memorization lists and song progress aggregates.
+function isMemorizationExcluded(student, exclusions) {
+  if (!student || !exclusions) return false;
+  const set = exclusions instanceof Set ? exclusions : new Set(exclusions);
+  if (!set.size) return false;
+  const inst = String(student.instrument || '').replace(/^\d+\s*/, '').trim();
+  const sect = String(student.section || '').trim();
+  return (!!inst && set.has(inst)) || (!!sect && set.has(sect));
+}
+
 // ── Leaderboard scoring ───────────────────────────────────────────────────────
 
 // Resolve stored weights to effective values (missing → defaults).
@@ -90,9 +106,13 @@ function scoreStudentsCore(students, entries, songs, weights, flags, salt) {
 // pseudonymized leaderboard (null while disabled).
 //   flags: { songsOn, statsOn, marksOn, attendanceOn, countNegative,
 //            leaderboardEnabled }
-function buildPublicStats({ students, entries, rehearsals, songs, weights, flags, salt }) {
+//   memExclusions: instrument/section names excluded from memorization
+function buildPublicStats({ students, entries, rehearsals, songs, weights, flags, salt, memExclusions }) {
   const studentList = Object.values(students);
-  const total       = studentList.length;
+  // Song progress is measured over students who actually memorize music, so
+  // excluded groups (e.g. majorettes) don't inflate the "remaining" counts.
+  const memList = studentList.filter(s => !isMemorizationExcluded(s, memExclusions));
+  const total   = memList.length;
 
   const rehearsalRows = rehearsals.map(r => ({
     date:   r.date,
@@ -101,7 +121,7 @@ function buildPublicStats({ students, entries, rehearsals, songs, weights, flags
   }));
 
   const songRows = (flags.songsOn ? songs : []).map(song => {
-    const passed = studentList.filter(s => song.statuses?.[String(s.number)]?.status === 'passed').length;
+    const passed = memList.filter(s => song.statuses?.[String(s.number)]?.status === 'passed').length;
     return {
       id: song.id, title: song.title || '', dueDate: song.dueDate || '',
       category: song.category || '', passed, remaining: Math.max(0, total - passed),
@@ -214,6 +234,7 @@ function detectCols(headers, customFields = []) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     FAKE_ADJECTIVES, FAKE_ANIMALS, _strHash, pseudonymFor,
+    isMemorizationExcluded,
     lbWeights, scoreStudentsCore, buildPublicStats,
     checkAutoMarkCondition, computeAutoMarkEvents,
     parseCSVLine, parseCSV, COL_ALIASES, normalizeGrade, detectCols,

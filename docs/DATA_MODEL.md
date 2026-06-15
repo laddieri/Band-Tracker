@@ -145,10 +145,12 @@ What a **student** can read (everything else is director-only):
 
 Because students can't read the raw data, **director clients publish a
 sanitized snapshot** to `orgs/{orgId}/settings/public` (debounced, deduped by
-content hash): band name/logo, feature flags, song categories, plus derived
-stats — per-rehearsal absence counts, per-song passed/remaining aggregates,
-and the pseudonymized leaderboard (`{num, pseudonym, score}`, only while the
-leaderboard is enabled).
+content hash): band name/logo, feature flags, song categories, the
+memorization-exclusion list (instruments/sections that skip song memorization,
+e.g. majorettes), plus derived stats — per-rehearsal absence counts, per-song
+passed/remaining aggregates (computed over only the students who memorize
+music), and the pseudonymized leaderboard (`{num, pseudonym, score}`, only
+while the leaderboard is enabled).
 
 This needs no Cloud Functions: all band data is director-written, so a
 director's client is online whenever the data changes and the snapshot stays

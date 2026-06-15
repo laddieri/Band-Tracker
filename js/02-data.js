@@ -55,6 +55,7 @@ async function startListeners() {
       STATE.marchingLeaderboardEnabled = !!d.marchingLeaderboardEnabled;
       STATE.pseudonymSalt              = d.pseudonymSalt || '';
       STATE.songCategories             = d.songCategories || [];
+      STATE.memorizationExclusions     = Array.isArray(d.memorizationExclusions) ? d.memorizationExclusions : [];
       STATE.bandName                   = d.bandName || '';
       STATE.bandLogo                   = d.bandLogo || '';
       STATE.features = {
@@ -188,6 +189,7 @@ function studentListeners() {
       STATE.marchingLeaderboardEnabled = !!d.marchingLeaderboardEnabled;
       STATE.hideNegativeFromPortal     = !!d.hideNegativeFromPortal;
       STATE.songCategories             = d.songCategories || [];
+      STATE.memorizationExclusions     = Array.isArray(d.memorizationExclusions) ? d.memorizationExclusions : [];
       STATE.features = {
         attendance: d.features?.attendance !== false,
         marks:      d.features?.marks      !== false,
@@ -265,6 +267,7 @@ function computePublicStats() {
     songs:      STATE.songs,
     weights:    _lbW(),
     salt:       STATE.pseudonymSalt,
+    memExclusions: STATE.memorizationExclusions,
     flags: {
       songsOn:            featureOn('songs'),
       statsOn:            featureOn('stats'),
@@ -289,6 +292,7 @@ function schedulePublishPublicStats() {
       marchingLeaderboardEnabled: STATE.marchingLeaderboardEnabled,
       hideNegativeFromPortal:     !!STATE.hideNegativeFromPortal,
       songCategories:             STATE.songCategories,
+      memorizationExclusions:     STATE.memorizationExclusions,
       stats:                      computePublicStats(),
     };
     const json = JSON.stringify(pub);

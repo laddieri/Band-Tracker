@@ -149,6 +149,42 @@ describe('buildPublicStats', () => {
     assert.deepStrictEqual(
       L.buildPublicStats({ ...args, flags: { ...flags, songsOn: false } }).songs, []);
   });
+  it('excludes memorization-excluded students from song aggregates', () => {
+    // Riley (#7) is a majorette: drop her from the denominator (and her own
+    // statuses) so "remaining" reflects only students who memorize music.
+    const studs = {
+      '42': { number: '42', name: 'Sam' },
+      '7':  { number: '7',  name: 'Riley', instrument: 'Majorette' },
+    };
+    const { songs: rows } = L.buildPublicStats(
+      { ...args, students: studs, memExclusions: ['Majorette'] });
+    assert.strictEqual(rows[0].passed, 1);     // only Sam passed
+    assert.strictEqual(rows[0].remaining, 0);  // Sam is the only eligible student
+  });
+});
+
+// ── Memorization exclusions ───────────────────────────────────────────────────
+
+describe('isMemorizationExcluded', () => {
+  it('is false when there are no exclusions', () => {
+    assert.strictEqual(L.isMemorizationExcluded({ instrument: 'Majorette' }, []), false);
+    assert.strictEqual(L.isMemorizationExcluded({ instrument: 'Majorette' }, undefined), false);
+  });
+  it('matches on instrument (leading number stripped, like normInstrument)', () => {
+    assert.strictEqual(L.isMemorizationExcluded({ instrument: 'Majorette' }, ['Majorette']), true);
+    assert.strictEqual(L.isMemorizationExcluded({ instrument: '12 Majorette' }, ['Majorette']), true);
+    assert.strictEqual(L.isMemorizationExcluded({ instrument: 'Flute' }, ['Majorette']), false);
+  });
+  it('matches on section', () => {
+    assert.strictEqual(L.isMemorizationExcluded({ section: 'Color Guard' }, ['Color Guard']), true);
+  });
+  it('accepts a Set of exclusions', () => {
+    assert.strictEqual(L.isMemorizationExcluded({ instrument: 'Majorette' }, new Set(['Majorette'])), true);
+  });
+  it('is false for a student with no instrument or section', () => {
+    assert.strictEqual(L.isMemorizationExcluded({}, ['Majorette']), false);
+    assert.strictEqual(L.isMemorizationExcluded(null, ['Majorette']), false);
+  });
 });
 
 // ── Auto marks ────────────────────────────────────────────────────────────────
