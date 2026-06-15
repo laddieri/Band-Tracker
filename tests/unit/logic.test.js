@@ -163,6 +163,48 @@ describe('buildPublicStats', () => {
   });
 });
 
+// ── Rehearsal scope ───────────────────────────────────────────────────────────
+
+describe('rehearsalIncludesStudent', () => {
+  const brassFr = { instrument: 'Trumpet', section: 'Brass', grade: '9th' };
+  it('includes everyone when there is no scope', () => {
+    assert.strictEqual(L.rehearsalIncludesStudent(brassFr, null), true);
+    assert.strictEqual(L.rehearsalIncludesStudent(brassFr, undefined), true);
+  });
+  it('includes everyone when the scope is all-empty', () => {
+    assert.strictEqual(
+      L.rehearsalIncludesStudent(brassFr, { instruments: [], sections: [], grades: [] }), true);
+  });
+  it('matches on instrument (leading number stripped)', () => {
+    assert.strictEqual(L.rehearsalIncludesStudent({ instrument: '3 Trumpet' }, { instruments: ['Trumpet'] }), true);
+    assert.strictEqual(L.rehearsalIncludesStudent({ instrument: 'Flute' }, { instruments: ['Trumpet'] }), false);
+  });
+  it('matches on section or grade (union across categories)', () => {
+    assert.strictEqual(L.rehearsalIncludesStudent({ section: 'Brass' }, { sections: ['Brass'] }), true);
+    assert.strictEqual(L.rehearsalIncludesStudent({ grade: '9th' }, { grades: ['9th'] }), true);
+    // A flute freshman is in scope for a "9th grade" rehearsal even though the
+    // instrument doesn't match — any matching category includes the student.
+    assert.strictEqual(
+      L.rehearsalIncludesStudent({ instrument: 'Flute', grade: '9th' }, { instruments: ['Trumpet'], grades: ['9th'] }), true);
+  });
+  it('excludes a student who matches no selected group', () => {
+    assert.strictEqual(
+      L.rehearsalIncludesStudent({ instrument: 'Flute', section: 'Woodwinds', grade: '10th' },
+        { instruments: ['Trumpet'], sections: ['Brass'], grades: ['9th'] }), false);
+  });
+});
+
+describe('rehearsalScopeLabel', () => {
+  it('is empty for the full band', () => {
+    assert.strictEqual(L.rehearsalScopeLabel(null), '');
+  });
+  it('joins instruments, sections and labelled grades', () => {
+    assert.strictEqual(
+      L.rehearsalScopeLabel({ instruments: ['Trumpet'], sections: ['Brass'], grades: ['9th'] }),
+      'Trumpet, Brass, 9th Grade');
+  });
+});
+
 // ── Memorization exclusions ───────────────────────────────────────────────────
 
 describe('isMemorizationExcluded', () => {

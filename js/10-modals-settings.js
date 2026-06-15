@@ -277,6 +277,7 @@ function showNewRehearsalModal() {
       <input class="form-input" id="m-label" type="text"
              placeholder="e.g. Evening, Full Band, Sectional…" autocomplete="off">
     </div>
+    ${_rehearsalScopeFields()}
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveNewRehearsal()">Create</button>
@@ -289,12 +290,63 @@ function saveNewRehearsal() {
   if (!date) { showToast('Date is required'); return; }
   const id = genId();
   const r  = { id, date, label: document.getElementById('m-label').value.trim() };
+  const scope = _readRehearsalScope();
+  if (scope) r.scope = scope;
   STATE.rehearsals.unshift(r);
   STATE.rehearsals.sort((a,b) => b.date.localeCompare(a.date));
   orgCol('rehearsals').doc(id).set(r);
   closeModal();
   _activeRid = id;
   navigate('attendance-tab');
+}
+
+// ── Rehearsal scope (who attends) ─────────────────────────────────────────────
+// A rehearsal defaults to the full band. Directors can limit it to instruments,
+// sections and/or grades; a student attends if they match any checked group.
+
+function _rehearsalScopeFields(scope = null) {
+  const instruments = instrumentsInRoster();
+  const sections    = sectionsInRoster();
+  const grades      = gradesInRoster();
+  if (!instruments.length && !sections.length && !grades.length) return '';
+
+  const sel = {
+    instruments: new Set(scope?.instruments || []),
+    sections:    new Set(scope?.sections    || []),
+    grades:      new Set(scope?.grades      || []),
+  };
+  const group = (title, items, cls, set) => !items.length ? '' : `
+    <div class="sfb-group">
+      <div class="sfb-group-label">${title}</div>
+      <div class="sfb-checks">
+        ${items.map(item => `
+          <label class="sfb-check-label">
+            <input type="checkbox" class="sfb-checkbox ${cls}" value="${esc(item)}" ${set.has(item) ? 'checked' : ''}>
+            <span>${esc(item)}</span>
+          </label>`).join('')}
+      </div>
+    </div>`;
+
+  return `
+    <div class="form-group">
+      <label class="form-label">Who's attending?</label>
+      <p class="form-hint" style="margin:0 0 8px">Leave everything unchecked for the full band, or pick the groups rehearsing.</p>
+      <div class="sfb-panel">
+        ${group('Instruments', instruments, 'reh-scope-inst', sel.instruments)}
+        ${group('Sections',    sections,    'reh-scope-sect', sel.sections)}
+        ${group('Grades',      grades,      'reh-scope-grade', sel.grades)}
+      </div>
+    </div>`;
+}
+
+// Reads the checked scope from the open modal. null = full band.
+function _readRehearsalScope() {
+  const get = cls => [...document.querySelectorAll('.' + cls + ':checked')].map(c => c.value);
+  const instruments = get('reh-scope-inst');
+  const sections    = get('reh-scope-sect');
+  const grades      = get('reh-scope-grade');
+  if (!instruments.length && !sections.length && !grades.length) return null;
+  return { instruments, sections, grades };
 }
 
 function showEndedRehearsalOptions(rid) {
@@ -340,6 +392,7 @@ function showRehearsalEditModal(rid) {
       <input class="form-input" id="m-label" type="text" value="${esc(r.label||'')}"
              placeholder="e.g. Evening, Full Band…" autocomplete="off">
     </div>
+    ${_rehearsalScopeFields(r.scope || null)}
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveRehearsalEdit('${esc(rid)}')">Save</button>
@@ -408,11 +461,16 @@ function selectSegment(name) {
 function saveRehearsalEdit(rid) {
   const idx = STATE.rehearsals.findIndex(r => r.id === rid);
   if (idx === -1) return;
+  const scope = _readRehearsalScope();
   const patch = {
     date:  document.getElementById('m-date').value,
-    label: document.getElementById('m-label').value.trim()
+    label: document.getElementById('m-label').value.trim(),
+    // Persist the scope, or clear it back to full band when nothing is checked.
+    scope: scope || firebase.firestore.FieldValue.delete(),
   };
-  STATE.rehearsals[idx] = { ...STATE.rehearsals[idx], ...patch };
+  const next = { ...STATE.rehearsals[idx], date: patch.date, label: patch.label };
+  if (scope) next.scope = scope; else delete next.scope;
+  STATE.rehearsals[idx] = next;
   orgCol('rehearsals').doc(rid).set(patch, { merge: true });
   closeModal();
   showToast('Rehearsal updated');
@@ -447,13 +505,15 @@ async function endRehearsal(rid) {
   const r = STATE.rehearsals.find(r => r.id === rid);
   if (!r) return;
   const entries  = STATE.entries[rid] || {};
-  const students = STATE.students;
+  // Only the rehearsal's in-scope students earn end-of-rehearsal auto marks.
+  const students = rehearsalStudents(r);
   const batch    = db.batch();
   let autoCount = 0;
 
   r.ended = true; // set before _computeAutoMarkEvents so 'end' marks are included
 
-  for (const [num] of Object.entries(students)) {
+  for (const stu of students) {
+    const num    = String(stu.number ?? stu._id);
     const entry  = entries[num] || { mistakes: 0, positives: 0, notes: '', events: [] };
     const events = _computeAutoMarkEvents(entry, r);
     const newAuto = events.filter(e => e.auto).length;

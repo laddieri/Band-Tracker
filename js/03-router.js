@@ -312,7 +312,7 @@ function updateFilter(viewId, field, value) {
       _activeNum = null;
       const el = document.getElementById('tracker-suggestions');
       if (el) {
-        const matches = studentSuggestions(trimmed, _trackerFilter.instruments[0] || '', _trackerFilter.grades[0] || '');
+        const matches = studentSuggestions(trimmed, _trackerFilter.instruments[0] || '', _trackerFilter.grades[0] || '', rehearsalStudents(rid));
         el.innerHTML = matches.length
           ? matches.map(s => `
               <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">

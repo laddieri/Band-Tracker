@@ -125,10 +125,10 @@ function instrumentFilterChips(activeFilter, fnName, fnFirstArg) {
     </div>`;
 }
 
-function studentSuggestions(query, instrumentFilter, gradeFilter) {
+function studentSuggestions(query, instrumentFilter, gradeFilter, pool = null) {
   const q = query.toLowerCase().trim();
   if (!q) return [];
-  return Object.values(DB.getStudents()).filter(s => {
+  return (pool || Object.values(DB.getStudents())).filter(s => {
     if (instrumentFilter && normInstrument(s.instrument) !== instrumentFilter) return false;
     if (gradeFilter && (s.grade || '') !== gradeFilter) return false;
     return (s.name||'').toLowerCase().includes(q) ||

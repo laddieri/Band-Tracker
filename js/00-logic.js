@@ -43,6 +43,36 @@ function pseudonymFor(id, salt) {
   return `${adj} ${ani}`;
 }
 
+// ── Rehearsal scope ───────────────────────────────────────────────────────────
+
+// A rehearsal can target a subset of the band. `scope` is
+// { instruments, sections, grades } (any may be omitted/empty). A student is
+// included when they match ANY selected value across the three categories.
+// No scope, or an all-empty scope, means the full band attends.
+function rehearsalIncludesStudent(student, scope) {
+  if (!scope) return true;
+  const instruments = scope.instruments || [];
+  const sections    = scope.sections    || [];
+  const grades      = scope.grades      || [];
+  if (!instruments.length && !sections.length && !grades.length) return true;
+  if (!student) return false;
+  const inst = String(student.instrument || '').replace(/^\d+\s*/, '').trim();
+  return instruments.includes(inst)
+      || sections.includes(String(student.section || ''))
+      || grades.includes(String(student.grade || ''));
+}
+
+// Human-readable label for a rehearsal scope (badges/headers). '' = full band.
+function rehearsalScopeLabel(scope) {
+  if (!scope) return '';
+  const parts = [
+    ...(scope.instruments || []),
+    ...(scope.sections    || []),
+    ...(scope.grades      || []).map(g => /^\d/.test(g) ? `${g} Grade` : g),
+  ];
+  return parts.join(', ');
+}
+
 // ── Memorization exclusions ───────────────────────────────────────────────────
 
 // Whether a student is excluded from song memorization. `exclusions` is a flat
@@ -234,6 +264,7 @@ function detectCols(headers, customFields = []) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     FAKE_ADJECTIVES, FAKE_ANIMALS, _strHash, pseudonymFor,
+    rehearsalIncludesStudent, rehearsalScopeLabel,
     isMemorizationExcluded,
     lbWeights, scoreStudentsCore, buildPublicStats,
     checkAutoMarkCondition, computeAutoMarkEvents,
