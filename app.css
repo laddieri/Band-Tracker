@@ -2795,6 +2795,63 @@ html, body {
 /* "All students marked" message */
 .att-all-marked { text-align: center; padding: 16px 0; color: var(--text-muted); font-size: 0.88rem; }
 
+/* ── Take Attendance by Block ──────────────────────────────────────────────── */
+.blk-att-screen { padding-bottom: 8px; }
+.blk-att-hdr {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 4px;
+}
+.blk-att-title { font-size: 1.5rem; font-weight: 800; color: var(--text); }
+.blk-att-progress { font-size: 0.85rem; font-weight: 600; color: var(--text-muted); }
+.blk-att-hint { font-size: 0.85rem; color: var(--text-muted); margin: 0 0 14px; }
+
+.blk-att-list { display: flex; flex-direction: column; gap: 10px; }
+.blk-att-stu {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; gap: 12px;
+  padding: 20px 18px;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: background .12s, border-color .12s, color .12s, transform .06s;
+  text-align: left;
+}
+.blk-att-stu:active { transform: scale(.985); }
+.blk-att-stu-name { font-size: 1.25rem; font-weight: 700; color: var(--text); line-height: 1.2; }
+.blk-att-stu-pos {
+  font-size: 0.8rem; font-weight: 700; color: var(--text-muted);
+  background: var(--surface-raised); border-radius: 20px; padding: 3px 10px; flex-shrink: 0;
+}
+.blk-att-stu.blk-att-absent {
+  background: var(--danger); border-color: var(--danger);
+}
+.blk-att-stu.blk-att-absent .blk-att-stu-name { color: #fff; }
+.blk-att-stu.blk-att-absent .blk-att-stu-pos { background: rgba(255,255,255,.25); color: #fff; }
+
+/* Footer action row (inline, sits above the bottom nav) */
+.blk-att-footer {
+  display: flex; gap: 8px;
+  margin-top: 20px;
+}
+.blk-att-next { flex: 1; font-size: 1rem; font-weight: 700; padding: 14px; }
+.blk-att-back { flex: 0 0 auto; padding: 14px 16px; }
+
+/* Review list */
+.blk-att-review-list { display: flex; flex-direction: column; gap: 8px; }
+.blk-att-review-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  padding: 14px 16px;
+  background: var(--danger-bg);
+  border: 1.5px solid var(--danger);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.blk-att-review-name { font-size: 1rem; font-weight: 700; color: var(--danger); }
+.blk-att-review-meta { font-size: 0.78rem; color: var(--text-muted); }
+.blk-att-review-x { margin-left: auto; font-size: 0.95rem; font-weight: 700; color: var(--danger); }
+
 /* Marked-absent / marked-present collapsible sections */
 .att-absent-section,
 .att-present-section  { border-top: 2px solid var(--border); margin-top: 12px; }
