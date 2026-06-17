@@ -81,6 +81,8 @@ let _attModifyMode           = false; // true = show edit UI even when attendanc
 let _attPresentCollapsed     = true;  // collapsed state of the "marked present" section
 let _attAbsentCollapsed      = true;  // collapsed state of the "marked absent" section
 let _attSummaryStatus        = '';    // quick-filter on submitted summary: ''|'absent'|'late'|'present'
+let _blockAttIdx    = 0;     // column index in the "take attendance by block" flow
+let _blockAttReview = false; // true = showing the block-attendance review/submit screen
 let _blockMode  = false;
 let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
 let _drillData       = null; // parsed Pyware sections: [{letter, performers:[label]}]

@@ -930,6 +930,10 @@ function viewAttendance(rid) {
       ${unmarked > 0 ? `<span class="att-summary-chip att-chip-unmarked">${unmarked} Remaining</span>` : ''}
     </div>
 
+    <button class="btn btn-secondary btn-full" style="margin-bottom:12px" onclick="startBlockAttendance('${esc(rid)}')">
+      ▦ Take Attendance by Block
+    </button>
+
     ${renderFilterBar('att', _attFilter, [
       {value:'name',      label:'Name'},
       {value:'number',    label:'Number'},
@@ -1203,6 +1207,167 @@ function submitAttendance(rid) {
   showToast('Attendance submitted.');
   _attModifyMode = false;
   reRender(rid);
+}
+
+// ── Take Attendance by Block ──────────────────────────────────────────────────
+// Column-by-column attendance: one column on screen at a time, each student a
+// big tappable name that toggles absent (red). Marking only records absences —
+// everyone else is present by default on submit, like the standard flow.
+
+// Ordered column groups for the rehearsal's in-scope roster. Columns follow the
+// A–L order; students with no column fall into a trailing "No Column" group.
+function _blockAttGroups(rid) {
+  const byCol = {};
+  for (const s of rehearsalStudents(rid)) {
+    const col = String(s.column || '').toUpperCase().trim();
+    (byCol[col] = byCol[col] || []).push(s);
+  }
+  const byRow = list => list.slice().sort((a, b) =>
+    (+a.row || 0) - (+b.row || 0) || (a.name || '').localeCompare(b.name || ''));
+  const groups = [];
+  for (const c of COLUMNS) if (byCol[c]?.length) groups.push({ key: c, label: `Column ${c}`, students: byRow(byCol[c]) });
+  // Any non-standard column letters, then the unassigned group.
+  Object.keys(byCol).filter(c => c && !COLUMNS.includes(c)).sort()
+    .forEach(c => groups.push({ key: c, label: `Column ${c}`, students: byRow(byCol[c]) }));
+  if (byCol['']?.length)
+    groups.push({ key: '', label: 'No Column', students: byCol[''].slice().sort((a, b) => (a.name || '').localeCompare(b.name || '')) });
+  return groups;
+}
+
+function startBlockAttendance(rid) {
+  _blockAttIdx    = 0;
+  _blockAttReview = false;
+  navigate('attendance-block', { rid, from: _params.from });
+}
+
+function viewAttendanceBlock(rid) {
+  const groups  = _blockAttGroups(rid);
+  const entries = STATE.entries[rid] || {};
+  if (!groups.length) {
+    return `<div class="empty-state"><p>No students to take attendance for.</p></div>`;
+  }
+
+  const isAbsent = s => entries[s.number]?.attendance === 'absent';
+  const allAbsent = () => groups.flatMap(g => g.students).filter(isAbsent);
+
+  // ── Review screen ──────────────────────────────────────────────────────────
+  if (_blockAttReview) {
+    const absentees = allAbsent().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    const rows = absentees.length
+      ? absentees.map(s => {
+          const pos = fmtPos(s.column, s.row);
+          const meta = [pos, normInstrument(s.instrument)].filter(Boolean).join(' · ');
+          return `
+            <button class="blk-att-review-row" onclick="blockToggleAbsent('${esc(rid)}','${esc(s.number)}')">
+              <span class="blk-att-review-name">${esc(s.name || `#${s.number}`)}</span>
+              ${meta ? `<span class="blk-att-review-meta">${esc(meta)}</span>` : ''}
+              <span class="blk-att-review-x">✕</span>
+            </button>`;
+        }).join('')
+      : `<div class="empty-state" style="padding:24px"><p>Everybody's here — no absences recorded.</p></div>`;
+    return `
+      <div class="blk-att-screen">
+        <div class="blk-att-hdr">
+          <div class="blk-att-title">Review Absences</div>
+          <div class="blk-att-progress">${absentees.length} absent</div>
+        </div>
+        <p class="blk-att-hint">Tap a name to remove them from the absent list.</p>
+        <div class="blk-att-review-list">${rows}</div>
+        <div class="blk-att-footer">
+          <button class="btn btn-secondary blk-att-back" onclick="blockAttBack('${esc(rid)}')">← Back</button>
+          <button class="btn btn-primary blk-att-next" onclick="blockAttSubmit('${esc(rid)}')">Submit Attendance</button>
+        </div>
+      </div>`;
+  }
+
+  // ── Column screen ──────────────────────────────────────────────────────────
+  const idx     = Math.min(_blockAttIdx, groups.length - 1);
+  const group   = groups[idx];
+  const isLast  = idx >= groups.length - 1;
+  const colAbsent = group.students.filter(isAbsent).length;
+
+  const nextLabel = isLast
+    ? (colAbsent ? `${colAbsent} absent. Review` : `Everybody's here. Review`)
+    : (colAbsent ? `${colAbsent} absent. Next column` : `Everybody's here. Next column`);
+
+  const stuBtns = group.students.map(s => {
+    const pos = fmtPos(s.column, s.row);
+    return `
+      <button class="blk-att-stu ${isAbsent(s) ? 'blk-att-absent' : ''}" id="blkstu-${esc(s.number)}"
+              onclick="blockToggleAbsent('${esc(rid)}','${esc(s.number)}')">
+        <span class="blk-att-stu-name">${esc(s.name || `#${s.number}`)}</span>
+        ${pos ? `<span class="blk-att-stu-pos">${esc(pos)}</span>` : ''}
+      </button>`;
+  }).join('');
+
+  return `
+    <div class="blk-att-screen">
+      <div class="blk-att-hdr">
+        <div class="blk-att-title">${esc(group.label)}</div>
+        <div class="blk-att-progress">${idx + 1} of ${groups.length}</div>
+      </div>
+      <p class="blk-att-hint">Tap a student to mark them absent.</p>
+      <div class="blk-att-list">${stuBtns}</div>
+      <div class="blk-att-footer">
+        ${idx > 0 ? `<button class="btn btn-secondary blk-att-back" onclick="blockAttBack('${esc(rid)}')">←</button>` : ''}
+        <button class="btn ${colAbsent ? 'btn-danger' : 'btn-primary'} blk-att-next" onclick="blockAttNext('${esc(rid)}')">${nextLabel}</button>
+      </div>
+    </div>`;
+}
+
+function _reRenderBlockAtt(rid) {
+  const mc = document.getElementById('main-content');
+  if (!mc) return;
+  const st = mc.scrollTop;
+  mc.innerHTML = viewAttendanceBlock(rid);
+  mc.scrollTop = st;
+}
+
+function blockToggleAbsent(rid, num) {
+  const ents = DB.getRehearsalEntries(rid);
+  const cur  = ents[num] || { mistakes: 0, positives: 0, notes: '', events: [] };
+  const next = cur.attendance === 'absent' ? null : 'absent';
+  if (!STATE.entries[rid]) STATE.entries[rid] = {};
+  STATE.entries[rid][num] = { ...cur, attendance: next };
+  const docId = `${rid}_${String(num)}`;
+  if (!next) {
+    orgCol('entries').doc(docId).update({
+      attendance: firebase.firestore.FieldValue.delete()
+    }).catch(() => {});
+  } else {
+    fsUpsertEntry(rid, num, {
+      mistakes:  cur.mistakes  || 0,
+      positives: cur.positives || 0,
+      notes:     cur.notes     || '',
+      events:    cur.events    || [],
+      attendance: next
+    });
+  }
+  _recalcAutoBonuses(rid, num);
+  _reRenderBlockAtt(rid);
+}
+
+function blockAttNext(rid) {
+  const groups = _blockAttGroups(rid);
+  if (_blockAttIdx >= groups.length - 1) _blockAttReview = true;
+  else _blockAttIdx++;
+  _reRenderBlockAtt(rid);
+  const mc = document.getElementById('main-content');
+  if (mc) mc.scrollTop = 0;
+}
+
+function blockAttBack(rid) {
+  if (_blockAttReview) _blockAttReview = false;
+  else if (_blockAttIdx > 0) _blockAttIdx--;
+  else { navigate('attendance', { rid, from: _params.from }); return; }
+  _reRenderBlockAtt(rid);
+  const mc = document.getElementById('main-content');
+  if (mc) mc.scrollTop = 0;
+}
+
+function blockAttSubmit(rid) {
+  submitAttendance(rid);
+  navigate('attendance', { rid, from: _params.from || 'attendance-tab' });
 }
 
 // ── Group Marks ───────────────────────────────────────────────────────────────

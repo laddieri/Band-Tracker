@@ -109,9 +109,9 @@ function render() {
       match === _view ||
       (_view === 'student'    && match === 'roster') ||
       (_view === 'rehearsal'  && match === 'rehearsals') ||
-      (_view === 'attendance' && _params.from === 'attendance-tab' && match === 'attendance-tab') ||
-      (_view === 'attendance' && _params.from === 'rehearsals' && match === 'rehearsals') ||
-      (_view === 'attendance' && _params.from !== 'attendance-tab' && _params.from !== 'rehearsals' && match === 'rehearsals') ||
+      ((_view === 'attendance' || _view === 'attendance-block') && _params.from === 'attendance-tab' && match === 'attendance-tab') ||
+      ((_view === 'attendance' || _view === 'attendance-block') && _params.from === 'rehearsals' && match === 'rehearsals') ||
+      ((_view === 'attendance' || _view === 'attendance-block') && _params.from !== 'attendance-tab' && _params.from !== 'rehearsals' && match === 'rehearsals') ||
       (_view === 'song'       && match === 'songs')
     );
     // Hide tabs for disabled features (and the admin-only tabs for students).
@@ -190,6 +190,16 @@ function render() {
         : 'Take Attendance';
       actions.innerHTML = userBtn();
       main.innerHTML = viewAttendance(_params.rid);
+      break;
+    }
+
+    case 'attendance-block': {
+      const _blkR = STATE.rehearsals.find(r => r.id === _params.rid);
+      title.textContent = _blkR
+        ? fmtShort(_blkR.date) + (_blkR.label ? ` — ${_blkR.label}` : '')
+        : 'Take Attendance';
+      actions.innerHTML = userBtn();
+      main.innerHTML = viewAttendanceBlock(_params.rid);
       break;
     }
 
