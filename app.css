@@ -87,6 +87,10 @@ html, body {
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
+  /* The fixed header and bottom nav live inside #app (height:100dvh); only
+     #main-content scrolls. Clip the document so a long page can never scroll
+     the whole app — header/nav included — off the screen on mobile. */
+  overflow: hidden;
 }
 
 #app {
@@ -164,7 +168,13 @@ html, body {
 
 #main-content {
   flex: 1;
+  /* min-height:0 lets this flex item shrink below its content height so it
+     scrolls internally instead of stretching #app past 100dvh (which would
+     push the header/nav off-screen). */
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 16px;
   padding-bottom: calc(var(--nav-h) + 12px);
 }
