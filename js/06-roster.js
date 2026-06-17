@@ -233,6 +233,7 @@ function rosterRows(list) {
 function showRosterOptionsModal() {
   const students = Object.values(DB.getStudents());
   const missingCodes = students.filter(s => !s.studentCode).length;
+  const assignedSpots = students.filter(s => s.column && s.row != null && s.row !== '').length;
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Roster Options</div>
@@ -272,6 +273,20 @@ function showRosterOptionsModal() {
           <div class="options-menu-sub">Add, edit, or remove band sections</div>
         </div>
       </button>
+      <button class="options-menu-item" onclick="closeModal();showAssignBlockSpotsModal()">
+        <div class="options-menu-icon">▦</div>
+        <div>
+          <div class="options-menu-label">Assign Block Spots</div>
+          <div class="options-menu-sub">${assignedSpots ? `${assignedSpots} assigned · ` : ''}Auto-fill columns A–L, rows 1–12</div>
+        </div>
+      </button>
+      <button class="options-menu-item options-menu-item-danger" onclick="closeModal();showDeleteBlockSpotsModal()">
+        <div class="options-menu-icon">🧹</div>
+        <div>
+          <div class="options-menu-label">Delete Block Spots</div>
+          <div class="options-menu-sub">Clear every student's column &amp; row</div>
+        </div>
+      </button>
       <button class="options-menu-item" onclick="closeModal();randomizePseudonyms()">
         <div class="options-menu-icon">🎲</div>
         <div>
@@ -291,6 +306,88 @@ function showRosterOptionsModal() {
       <button class="btn btn-secondary btn-full" onclick="closeModal()">Cancel</button>
     </div>
   `);
+}
+
+// ── Block spots (column/row auto-assignment) ──────────────────────────────────
+// A testing/setup helper: fills the block column by column (A1–A12, B1–B12, …)
+// so the "Take Attendance by Block" flow has data to work with. Students beyond
+// the 144 available spots (12 columns × 12 rows) are left unassigned.
+
+function showAssignBlockSpotsModal() {
+  const students = Object.values(DB.getStudents());
+  if (!students.length) { showToast('No students in the roster yet.'); return; }
+  const cap      = COLUMNS.length * ROWS.length;
+  const overflow = Math.max(0, students.length - cap);
+  showConfirmModal(
+    'Assign Block Spots?',
+    `This fills the block column by column (A1–A12, B1–B12, …) for all ${students.length}
+     student${students.length !== 1 ? 's' : ''}, <strong>overwriting any existing column/row</strong>.${
+      overflow ? ` The ${overflow} student${overflow !== 1 ? 's' : ''} beyond the ${cap} spots will be left unassigned.` : ''}`,
+    () => assignBlockSpots(),
+    'Assign', 'btn-primary'
+  );
+}
+
+async function assignBlockSpots() {
+  const students = Object.values(DB.getStudents())
+    .sort((a, b) => (+a.number || 0) - (+b.number || 0) || String(a.number).localeCompare(String(b.number)));
+  const cap = COLUMNS.length * ROWS.length;
+  const assignments = students.map((s, i) => i < cap
+    ? { s, column: COLUMNS[Math.floor(i / ROWS.length)], row: ROWS[i % ROWS.length] }
+    : { s, column: '', row: '' });
+
+  const CHUNK = 500;
+  for (let i = 0; i < assignments.length; i += CHUNK) {
+    const batch = db.batch();
+    assignments.slice(i, i + CHUNK).forEach(({ s, column, row }) => {
+      batch.update(orgCol('students').doc(s.number), { column, row });
+    });
+    await batch.commit().catch(e => { showToast('Failed — ' + (e.message || 'check console')); throw e; });
+  }
+  for (const { s, column, row } of assignments) {
+    STATE.students[s.number] = { ...STATE.students[s.number], column, row };
+  }
+
+  const assignedN = Math.min(students.length, cap);
+  showToast(`${assignedN} spot${assignedN !== 1 ? 's' : ''} assigned${
+    students.length > cap ? `, ${students.length - cap} left unassigned` : ''}.`);
+  render();
+}
+
+function showDeleteBlockSpotsModal() {
+  const assigned = Object.values(DB.getStudents())
+    .filter(s => s.column || (s.row != null && s.row !== '')).length;
+  if (!assigned) { showToast('No block spots assigned.'); return; }
+  showConfirmModal(
+    'Delete Block Spots?',
+    `This clears the column and row for all ${assigned} assigned student${assigned !== 1 ? 's' : ''}.
+     Their other info is unchanged.`,
+    () => deleteBlockSpots(),
+    'Delete', 'btn-danger'
+  );
+}
+
+async function deleteBlockSpots() {
+  const students = Object.values(DB.getStudents())
+    .filter(s => s.column || (s.row != null && s.row !== ''));
+  if (!students.length) { showToast('No block spots to delete.'); return; }
+
+  const del   = firebase.firestore.FieldValue.delete();
+  const CHUNK = 500;
+  for (let i = 0; i < students.length; i += CHUNK) {
+    const batch = db.batch();
+    students.slice(i, i + CHUNK).forEach(s => {
+      batch.update(orgCol('students').doc(s.number), { column: del, row: del });
+    });
+    await batch.commit().catch(e => { showToast('Failed — ' + (e.message || 'check console')); throw e; });
+  }
+  for (const s of students) {
+    const ns = { ...STATE.students[s.number] };
+    delete ns.column; delete ns.row;
+    STATE.students[s.number] = ns;
+  }
+  showToast('Block spots cleared.');
+  render();
 }
 
 function showManageFieldsModal() {
