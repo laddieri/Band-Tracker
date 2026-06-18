@@ -100,7 +100,42 @@ html, body {
   max-width: 600px;
   margin: 0 auto;
   background: var(--bg);
+  position: relative; /* positioning context for the pull-to-refresh indicator */
 }
+
+/* ── Pull-to-refresh ─────────────────────────────────────────────────────── */
+/* Native pull-to-refresh can't fire once the page itself is non-scrolling (so
+   the header/nav stay pinned), so this is a custom gesture on #main-content.
+   The indicator is driven by js/13-boot.js. */
+#ptr-indicator {
+  position: absolute;
+  top: calc(var(--header-h) + 6px);
+  left: 50%;
+  width: 34px;
+  height: 34px;
+  margin-left: -17px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  box-shadow: var(--shadow-md);
+  opacity: 0;
+  transform: translateY(0);
+  pointer-events: none;
+  z-index: 6;
+}
+#ptr-indicator.ptr-snap { transition: transform .25s ease, opacity .25s ease; }
+.ptr-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2.5px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+}
+#ptr-indicator.ptr-refreshing .ptr-spinner { animation: ptr-spin .7s linear infinite; }
+@keyframes ptr-spin { to { transform: rotate(360deg); } }
 
 /* ── Header ──────────────────────────────────────────────────────────────── */
 
