@@ -853,12 +853,6 @@ function viewStudentPortal(previewMode = false) {
           <span class="sec-chevron">▾</span>
         </div>
         <div id="portal-sec-attendance" class="sec-collapsed">
-          <div class="portal-stats">
-            <button type="button" class="portal-stat portal-stat-btn" onclick="showPortalRehearsalsModal()">
-              <div class="portal-stat-value">${hist.length}</div>
-              <div class="portal-stat-label">Rehearsals</div>
-            </button>
-          </div>
           ${(() => {
             const absences = hist.filter(({entry:e}) => e.attendance === 'absent');
             const lates    = hist.filter(({entry:e}) => e.attendance === 'late');
@@ -1021,37 +1015,6 @@ function viewStudentPortal(previewMode = false) {
         📊 View Band Stats &amp; Leaderboard
       </button>` : ''}
     </div>`;
-}
-
-function showPortalRehearsalsModal() {
-  const num  = STATE.studentNum;
-  const hist = DB.getStudentHistory(num);
-  if (!hist.length) {
-    openModal(`<div class="modal-title">Rehearsal History</div><p class="empty-state" style="padding:24px 0">No rehearsal history yet.</p>`);
-    return;
-  }
-  const rows = hist.map(({rehearsal: r, entry: e}) => {
-    const att = e.attendance;
-    const attBadge = att === 'absent' ? `<span class="portal-badge att-portal-badge-absent">Absent</span>`
-                   : att === 'late'   ? `<span class="portal-badge att-portal-badge-late">Late</span>`
-                   : att === 'present'? `<span class="portal-badge portal-badge-present">Present</span>`
-                   : '';
-    const mistakeBadge = portalFeatureOn('marks') && !STATE.hideNegativeFromPortal && (e.mistakes||0) > 0
-      ? `<span class="portal-badge portal-badge-mistake">✗ ${e.mistakes}</span>` : '';
-    const posBadge = portalFeatureOn('marks') && (e.positives||0) > 0
-      ? `<span class="portal-badge portal-badge-positive">✓ ${e.positives}</span>` : '';
-    const noteText = e.notes ? `<div class="portal-modal-entry-note">${esc(e.notes)}</div>` : '';
-    return `
-      <div class="portal-modal-row">
-        <div class="portal-modal-row-info">
-          <div class="portal-modal-date">${fmtDate(r.date)}</div>
-          ${r.label ? `<div class="portal-modal-label">${esc(r.label)}</div>` : ''}
-          ${noteText}
-        </div>
-        <div class="portal-badges" style="flex-shrink:0">${attBadge}${mistakeBadge}${posBadge}</div>
-      </div>`;
-  }).join('');
-  openModal(`<div class="modal-title">Rehearsal History</div><div class="portal-modal-list">${rows}</div>`);
 }
 
 function showPortalMistakesModal() {
