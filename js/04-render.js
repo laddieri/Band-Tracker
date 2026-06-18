@@ -131,6 +131,10 @@ function render() {
 
   actions.innerHTML = '';
 
+  // The block-attendance screen pins its "Next column" footer to the bottom, so
+  // it drops #main-content's bottom padding to sit flush above the nav.
+  main.classList.toggle('mc-block-att', _view === 'attendance-block');
+
   // New bands: guide admin to roster on login before any students exist
   if (STATE.isAdmin && _view === 'rehearsals' && !Object.keys(STATE.students).length) {
     _view = 'roster';
