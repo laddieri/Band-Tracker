@@ -135,6 +135,9 @@ function render() {
   // The block-attendance screen pins its "Next column" footer to the bottom, so
   // it drops #main-content's bottom padding to sit flush above the nav.
   main.classList.toggle('mc-block-att', _view === 'attendance-block');
+  // The Drill tab fills the content area with an immersive, zoomable chart
+  // (header + nav stay put), so it drops #main-content's padding/scroll.
+  main.classList.toggle('mc-drill', _view === 'drill');
 
   // New bands: guide admin to roster on login before any students exist
   if (STATE.isAdmin && _view === 'rehearsals' && !Object.keys(STATE.students).length) {
@@ -218,6 +221,7 @@ function render() {
       title.textContent = 'Field Chart';
       actions.innerHTML = (STATE.isAdmin ? optBtn('showDrillOptionsModal()') : '') + userBtn();
       main.innerHTML = viewDrill();
+      if (typeof _drillViewSetup === 'function') _drillViewSetup();
       break;
 
     case 'song': {
