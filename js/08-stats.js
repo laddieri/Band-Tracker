@@ -232,14 +232,16 @@ function _buildLbRankRows() {
   return scored.map(({ docId, s, name, score }, i) => {
     const isMe = docId === myDocId;
     const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
+    const click = STATE.isAdmin ? `onclick="navigate('student',{num:'${esc(s.number)}'})"` : '';
     return `
-    <div class="lb-rank-row ${isMe ? 'lb-rank-me' : ''} ${i % 2 === 1 ? 'lb-stat-row-alt' : ''}">
+    <div class="lb-rank-row ${isMe ? 'lb-rank-me' : ''} ${i % 2 === 1 ? 'lb-stat-row-alt' : ''} ${STATE.isAdmin ? 'lb-row-clickable' : ''}" ${click}>
       <span class="lb-rank-medal">${medal}</span>
       <span class="lb-rank-name">
         ${esc(name)}${isMe ? ' <span class="lb-you-badge">you</span>' : ''}
         ${STATE.isAdmin ? `<span class="lb-real-name">${esc(s.name || `#${s.number}`)}</span>` : ''}
       </span>
       <span class="lb-rank-score ${score > 0 ? 'lb-val-ok' : score < 0 ? 'lb-val-warn' : ''}">${score > 0 ? '+' : ''}${score}</span>
+      ${STATE.isAdmin ? `<span class="lb-row-chevron">›</span>` : ''}
     </div>`;
   }).join('');
 }
@@ -255,6 +257,14 @@ function _lbAttendanceSectionHtml(rehearsalRows) {
   const seasonTotal  = rehearsalRows.reduce((s, r) => s + r.absent, 0);
   const seasonAvg    = rehearsalRows.length ? (seasonTotal / rehearsalRows.length).toFixed(1) : '—';
 
+  // Director-only drill-downs: a single rehearsal opens its attendance screen;
+  // the week/season aggregates open a breakdown modal. Students see the same
+  // card as plain, non-clickable rows.
+  const chevron     = `<span class="lb-row-chevron">›</span>`;
+  const recentClick = STATE.isAdmin && last && last.id;
+  const weekClick   = STATE.isAdmin && weekRows.length > 0;
+  const seasonClick = STATE.isAdmin && rehearsalRows.length > 0;
+
   return `
       <div id="lb-sec-attendance-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('lb-sec-attendance')">
         <span class="section-title" style="margin:0">Band Attendance Data</span>
@@ -263,7 +273,8 @@ function _lbAttendanceSectionHtml(rehearsalRows) {
       <div id="lb-sec-attendance">
         <div class="card mb-12" style="padding:0;overflow:hidden">
           ${last ? `
-          <div class="lb-stat-row">
+          <div class="lb-stat-row ${recentClick ? 'lb-row-clickable' : ''}"
+               ${recentClick ? `onclick="navigate('attendance',{rid:'${esc(last.id)}',from:'leaderboard'})"` : ''}>
             <div class="lb-stat-label">
               Most recent rehearsal
               <div class="lb-stat-sub">${fmtDate(last.date)}${last.label ? ' — ' + esc(last.label) : ''}</div>
@@ -271,11 +282,13 @@ function _lbAttendanceSectionHtml(rehearsalRows) {
             <div class="lb-stat-val ${last.absent > 0 ? 'lb-val-warn' : 'lb-val-ok'}">
               ${last.absent} absent
             </div>
+            ${recentClick ? chevron : ''}
           </div>` : `
           <div class="lb-stat-row">
             <div class="lb-stat-label">No rehearsals yet</div>
           </div>`}
-          <div class="lb-stat-row lb-stat-row-alt">
+          <div class="lb-stat-row lb-stat-row-alt ${weekClick ? 'lb-row-clickable' : ''}"
+               ${weekClick ? `onclick="showLbAttendanceModal('week')"` : ''}>
             <div class="lb-stat-label">
               This week
               <div class="lb-stat-sub">${fmtDate(mon)} – ${fmtDate(fri)} · ${weekRows.length} rehearsal${weekRows.length !== 1 ? 's' : ''}</div>
@@ -283,16 +296,52 @@ function _lbAttendanceSectionHtml(rehearsalRows) {
             <div class="lb-stat-val ${weekAbsences > 0 ? 'lb-val-warn' : 'lb-val-ok'}">
               ${weekRows.length ? `${weekAbsences} absent` : '—'}
             </div>
+            ${weekClick ? chevron : ''}
           </div>
-          <div class="lb-stat-row">
+          <div class="lb-stat-row ${seasonClick ? 'lb-row-clickable' : ''}"
+               ${seasonClick ? `onclick="showLbAttendanceModal('season')"` : ''}>
             <div class="lb-stat-label">
               Season average
               <div class="lb-stat-sub">${rehearsalRows.length} rehearsal${rehearsalRows.length !== 1 ? 's' : ''} total</div>
             </div>
             <div class="lb-stat-val">${seasonAvg !== '—' ? `${seasonAvg} / rehearsal` : '—'}</div>
+            ${seasonClick ? chevron : ''}
           </div>
         </div>
       </div>`;
+}
+
+// Director-only breakdown of absences by rehearsal (scope: 'week' | 'season').
+// Each row links to that rehearsal's attendance screen.
+function showLbAttendanceModal(scope) {
+  const { mon, fri } = currentWeekRange();
+  let rows = [...STATE.rehearsals]
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .map(r => ({ r, absent: Object.values(STATE.entries[r.id] || {}).filter(e => e.attendance === 'absent').length }));
+  if (scope === 'week') rows = rows.filter(({ r }) => r.date >= mon && r.date <= fri);
+
+  const title = scope === 'week' ? 'This Week’s Attendance' : 'Season Attendance';
+  if (!rows.length) {
+    openModal(`<div class="modal-title">${title}</div><p class="empty-state" style="padding:24px 0">No rehearsals in range.</p>`);
+    return;
+  }
+  const total = rows.reduce((s, x) => s + x.absent, 0);
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">${title}</div>
+    <div class="form-hint" style="margin:0 0 12px">${total} absence${total !== 1 ? 's' : ''} across ${rows.length} rehearsal${rows.length !== 1 ? 's' : ''}</div>
+    <div class="card" style="padding:0;overflow:hidden">
+      ${rows.map(({ r, absent }) => `
+        <div class="dash-stu-row" onclick="closeModal();navigate('attendance',{rid:'${esc(r.id)}',from:'leaderboard'})">
+          <span class="dash-stu-name">${fmtDate(r.date)}${r.label ? ` · ${esc(r.label)}` : ''}</span>
+          <span class="dash-stu-val ${absent > 0 ? 'dash-val-mis' : ''}">${absent} absent</span>
+          <span class="dash-stu-chevron">›</span>
+        </div>`).join('')}
+    </div>
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Done</button>
+    </div>
+  `);
 }
 
 // Renders the "Songs to Memorize" progress section from aggregate rows
@@ -301,8 +350,13 @@ function _lbAttendanceSectionHtml(rehearsalRows) {
 function _lbSongsSectionHtml(songRows) {
   if (!songRows.length) return '';
   const cats = STATE.songCategories;
-  const lbSongRow = ({ song, passed, remaining, pct }, i) => `
-    <div class="lb-song-row ${i % 2 === 1 ? 'lb-stat-row-alt' : ''}">
+  // Directors can open each song's detail page; the published student rows have
+  // no song id, so they stay non-clickable.
+  const lbSongRow = ({ song, passed, remaining, pct }, i) => {
+    const sid = STATE.isAdmin && song.id ? song.id : null;
+    return `
+    <div class="lb-song-row ${i % 2 === 1 ? 'lb-stat-row-alt' : ''} ${sid ? 'lb-row-clickable' : ''}"
+         ${sid ? `onclick="navigate('song',{sid:'${esc(sid)}'})"` : ''}>
       <div class="lb-song-info">
         <div class="lb-song-title">${esc(song.title)}</div>
         ${song.dueDate ? `<div class="lb-song-due ${song.dueDate < today() && remaining > 0 ? 'song-overdue' : ''}">Due ${fmtDate(song.dueDate)}</div>` : ''}
@@ -312,7 +366,9 @@ function _lbSongsSectionHtml(songRows) {
         <span class="lb-count-pass">${passed} passed</span>
         <span class="lb-count-rem">${remaining} left</span>
       </div>
+      ${sid ? `<span class="lb-row-chevron">›</span>` : ''}
     </div>`;
+  };
 
   let body;
   if (!cats.length) {
@@ -421,6 +477,7 @@ function viewLeaderboard() {
   const totalStudents = Object.keys(STATE.students).length;
 
   const rehearsalRows = rehearsals.map(r => ({
+    id:     r.id,
     date:   r.date,
     label:  r.label || '',
     absent: Object.values(STATE.entries[r.id] || {}).filter(e => e.attendance === 'absent').length,
