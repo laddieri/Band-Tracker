@@ -521,9 +521,9 @@ function drillChartCycleLabels() {
 function _drillChartRefresh() {
   const fs = document.getElementById('drill-chart-fs');
   if (fs && !fs.classList.contains('hidden')) {
-    _drillZoomReset();
     fs.innerHTML = _drillChartSelect ? _drillChartHtml(true) : _drillViewFsHtml();
     _drillZoomSetup();
+    _drillApplyZoom(); // keep the current pan/zoom across re-renders (e.g. tap-to-select)
     return;
   }
   const root = document.getElementById('drill-chart-root');
@@ -563,6 +563,9 @@ let _drillPinchCX = 0; // pinch center relative to wrap (fixed during gesture)
 let _drillPinchCY = 0;
 let _drillPanTouchX = 0; // single-finger start
 let _drillPanTouchY = 0;
+let _drillTapStartX = 0, _drillTapStartY = 0; // for tap-vs-pan discrimination
+let _drillTapMoved  = false;
+let _drillWasPinch  = false;
 
 function _drillZoomReset() {
   _drillZoomScale = 1.0;
@@ -601,6 +604,7 @@ function _drillOnTouchStart(e) {
   const wrap = e.currentTarget;
   const rect = wrap.getBoundingClientRect();
   if (e.touches.length >= 2) {
+    _drillWasPinch = true;
     const t0 = e.touches[0], t1 = e.touches[1];
     _drillPinchInitDist     = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
     _drillGestureStartScale = _drillZoomScale;
@@ -609,6 +613,10 @@ function _drillOnTouchStart(e) {
     _drillPinchCX = (t0.clientX + t1.clientX) / 2 - rect.left;
     _drillPinchCY = (t0.clientY + t1.clientY) / 2 - rect.top;
   } else {
+    _drillWasPinch         = false; // first finger down: assume a tap until proven a pan/pinch
+    _drillTapMoved         = false;
+    _drillTapStartX        = e.touches[0].clientX;
+    _drillTapStartY        = e.touches[0].clientY;
     _drillPinchInitDist    = 0;
     _drillPanTouchX        = e.touches[0].clientX;
     _drillPanTouchY        = e.touches[0].clientY;
@@ -631,6 +639,7 @@ function _drillOnTouchMove(e) {
     _drillPanY = _drillPinchCY + (_drillGestureStartPanY - _drillPinchCY) * r;
     _drillApplyZoom(wrap);
   } else if (e.touches.length === 1 && !_drillPinchInitDist) {
+    if (Math.hypot(e.touches[0].clientX - _drillTapStartX, e.touches[0].clientY - _drillTapStartY) > 8) _drillTapMoved = true;
     _drillPanX = _drillGestureStartPanX + (e.touches[0].clientX - _drillPanTouchX);
     _drillPanY = _drillGestureStartPanY + (e.touches[0].clientY - _drillPanTouchY);
     _drillApplyZoom(wrap);
@@ -638,13 +647,32 @@ function _drillOnTouchMove(e) {
 }
 
 function _drillOnTouchEnd(e) {
+  if (e.touches.length === 0) {
+    // All fingers up. A clean single-finger touch with no real movement is a
+    // tap — forward it to the dot underneath (preventDefault suppressed the
+    // browser's own click), so selecting/inspecting marchers works zoomed too.
+    if (!_drillWasPinch && !_drillTapMoved) _drillFsTapAt(e.changedTouches[0]);
+    _drillWasPinch      = false;
+    _drillPinchInitDist = 0;
+    return;
+  }
   if (e.touches.length < 2) _drillPinchInitDist = 0;
   if (e.touches.length === 1) {
     // Finger lifted during/after pinch — restart single-touch from new position
+    _drillTapMoved         = true; // tail of a multi-finger gesture, never a tap
     _drillPanTouchX        = e.touches[0].clientX;
     _drillPanTouchY        = e.touches[0].clientY;
     _drillGestureStartPanX = _drillPanX;
     _drillGestureStartPanY = _drillPanY;
+  }
+}
+
+// Translate a tap in the fullscreen chart into a click on the dot under it.
+function _drillFsTapAt(touch) {
+  if (!touch) return;
+  const el = document.elementFromPoint(touch.clientX, touch.clientY);
+  if (el && el.closest && el.closest('.drill-fs-svg-wrap')) {
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
   }
 }
 
