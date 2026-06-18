@@ -377,6 +377,15 @@ function showDrillChartModal() {
   openModal(`<div id="drill-chart-root">${_drillChartHtml()}</div>`);
 }
 
+// Field geometry, shared by the SVG builder and the sticky fullscreen axis so
+// the two never drift. 100 yards = 160 steps wide × 84 steps deep.
+const _DRILL_GEOM = (() => {
+  const SCALE = 3.5; // px per step
+  const FW = Math.round(160 * SCALE), FH = Math.round(84 * SCALE);
+  const ML = 30, MR = 8, MT = 20, MB = 22;
+  return { SCALE, FW, FH, ML, MR, MT, MB, SW: FW + ML + MR, SH: FH + MT + MB };
+})();
+
 // Shared field SVG. `positions` is one set's performers. Options:
 //   fs         — fullscreen sizing (width:100%) vs fixed width
 //   labelMode  — 0 none · 1 drill labels (A1) · 2 mapped student names
@@ -387,10 +396,7 @@ function _drillFieldSvg(positions, opts = {}) {
 
   // 100 yards = 160 steps wide × 84 steps deep; coords are already in steps
   // (stepsX from the west goal, stepsY off the front sideline).
-  const SCALE = 3.5; // px per step
-  const FW = Math.round(160 * SCALE), FH = Math.round(84 * SCALE);
-  const ML = 30, MR = 8, MT = 20, MB = 22;
-  const SW = FW + ML + MR, SH = FH + MT + MB;
+  const { SCALE, FW, FH, ML, MR, MT, MB, SW, SH } = _DRILL_GEOM;
   const fx = s => (ML + s * SCALE).toFixed(1);
   // Front sideline at the bottom (stepsY = 0); flip swaps front/back to match
   // Pyware's "facing" setting if a file was built the other way.
@@ -508,7 +514,7 @@ function _drillChartHtml(fs = false) {
         <button class="btn btn-sm btn-secondary" onclick="drillChartFlip()" title="Flip facing">⇅</button>
         <button class="btn btn-sm btn-secondary" onclick="drillChartCollapse()" title="Exit fullscreen" style="margin-left:4px">&#x2715;</button>
       </div>
-      <div class="drill-fs-svg-wrap">${svgField}</div>
+      <div class="drill-fs-svg-wrap">${svgField}<div class="drill-fs-axis" id="drill-fs-axis"></div></div>
       <div class="drill-fs-bottom">
         ${legend ? `<div class="drill-chart-legend" style="flex:1">${legend}</div>` : '<div></div>'}
         <button class="btn btn-primary btn-sm" onclick="applyDrillSelection()">Apply Selection</button>
@@ -621,6 +627,48 @@ function _drillApplyZoom(wrap) {
   _drillPanY = Math.max(minY, Math.min(maxY, _drillPanY));
   svg.style.transformOrigin = '0 0';
   svg.style.transform = `translate(${_drillPanX}px,${_drillPanY}px) scale(${_drillZoomScale})`;
+  _drillRenderFsAxis(svg);
+}
+
+// Sticky yard-number ruler for the zoomed fullscreen chart: pins to the screen
+// edge nearest the closer sideline and tracks the visible yard lines, so a yard
+// reference stays on screen no matter how far you pan/zoom.
+function _drillRenderFsAxis(svg) {
+  const axis = document.getElementById('drill-fs-axis');
+  if (!axis) return;
+  const wrap = axis.parentElement;
+  svg = svg || wrap.querySelector('svg');
+  if (!svg) { axis.innerHTML = ''; return; }
+  // Only needed once zoomed in — at fit, the chart's own numbers are visible.
+  if (_drillZoomScale <= 1.05) { axis.style.display = 'none'; axis.innerHTML = ''; return; }
+  axis.style.display = '';
+
+  const { SCALE, FH, ML, MT, SW } = _DRILL_GEOM;
+  const wW = wrap.clientWidth, wH = wrap.clientHeight;
+  const k  = wW / SW;                 // px per svg-unit at scale 1 (svg is width:100%)
+  const s  = _drillZoomScale;
+  const toScreenX = v => _drillPanX + v * k * s;
+  const toScreenY = v => _drillPanY + v * k * s;
+
+  // Which sideline is nearer the viewport centre?
+  const vyCenter = (wH / 2 - _drillPanY) / (k * s);
+  const stepsYCenter = _drillFlipV ? (vyCenter - MT) / SCALE : (MT + FH - vyCenter) / SCALE;
+  const frontCloser = stepsYCenter <= 42;
+  const frontSvgY = _drillFlipV ? MT : (MT + FH); // stepsY = 0
+  const backSvgY  = _drillFlipV ? (MT + FH) : MT;  // stepsY = 84
+  const pinBottom = toScreenY(frontCloser ? frontSvgY : backSvgY) > wH / 2;
+
+  axis.classList.toggle('drill-fs-axis--bottom', pinBottom);
+  axis.classList.toggle('drill-fs-axis--top', !pinBottom);
+
+  let html = '';
+  for (let yd = 10; yd <= 90; yd += 10) {
+    const xs = toScreenX(ML + yd * 1.6 * SCALE);
+    if (xs < 10 || xs > wW - 10) continue; // off-screen horizontally
+    const lbl = yd > 50 ? 100 - yd : yd;
+    html += `<span class="drill-fs-axis-num" style="left:${xs.toFixed(1)}px">${lbl}</span>`;
+  }
+  axis.innerHTML = html;
 }
 
 function _drillOnTouchStart(e) {
@@ -954,7 +1002,7 @@ function _drillViewFsHtml() {
       <button class="btn btn-sm btn-secondary" onclick="drillChartFlip()" title="Flip facing">⇅</button>
       <button class="btn btn-sm btn-secondary" onclick="drillChartCollapse()" title="Exit fullscreen" style="margin-left:4px">&#x2715;</button>
     </div>
-    <div class="drill-fs-svg-wrap">${svgField}</div>
+    <div class="drill-fs-svg-wrap">${svgField}<div class="drill-fs-axis" id="drill-fs-axis"></div></div>
     <div class="drill-fs-bottom">
       ${readout || (legend ? `<div class="drill-chart-legend" style="flex:1">${legend}</div>` : '<div></div>')}
     </div>`;
