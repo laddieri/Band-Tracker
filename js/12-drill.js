@@ -189,10 +189,34 @@ function _onDrillFileLoaded(file) {
 let _drillActiveSection = 0;
 let _drillChecked = new Set(); // selected performer indices
 
+// Drill labels are "section letter + front-to-back rank" (e.g. "A1"), which
+// matches the block-grid spot students already carry (column letter + row
+// number). So a performer labelled "A1" maps to the student at column A, row 1
+// with no manual setup. An explicit pywareMapping entry (mapping modal) still
+// overrides the position match.
+function _drillPosIndex() {
+  const idx = {};
+  Object.values(STATE.students || {}).forEach(s => {
+    const pos = fmtPos(s.column, s.row);
+    if (pos) idx[pos.toUpperCase()] = s.number;
+  });
+  return idx;
+}
+
+// Effective label → student-number map (position match + explicit overrides).
+function drillLabelMap() {
+  return { ..._drillPosIndex(), ...(STATE.pywareMapping || {}) };
+}
+
+function drillStudentByLabel(label) {
+  const m = STATE.pywareMapping || {};
+  if (m[label]) return m[label];
+  return _drillPosIndex()[(label || '').toUpperCase()] || null;
+}
+
 // One performer row in the picker / mapping grid, keyed by drill label ("A1").
 function _drillPerfRowHtml(perfLabel) {
-  const mapping    = STATE.pywareMapping || {};
-  const studentNum = mapping[perfLabel];
+  const studentNum = drillStudentByLabel(perfLabel);
   const student    = studentNum ? STATE.students[studentNum] : null;
   const checked    = _drillChecked.has(perfLabel);
   const name       = student ? (student.name || `#${studentNum}`) : perfLabel;
@@ -214,7 +238,7 @@ function showDrillPickModal() {
   _drillChecked = new Set();
 
   const sections = _drillData;
-  const mapping  = STATE.pywareMapping || {};
+  const mapping  = drillLabelMap();
   const unmappedCount = sections.flatMap(s => s.performers).filter(lbl => !mapping[lbl]).length;
 
   const renderSectionTabs = () => sections.map((s, i) =>
@@ -306,7 +330,7 @@ function drillClearAll() {
 }
 
 function applyDrillSelection() {
-  const mapping = STATE.pywareMapping || {};
+  const mapping = drillLabelMap();
   const unmapped = [];
   const studentNums = [];
   for (const label of _drillChecked) {
@@ -415,7 +439,7 @@ function _drillFieldSvg(positions, opts = {}) {
   }
 
   // Performers (+ optional labels)
-  const mapping = STATE.pywareMapping || {};
+  const mapping = labelMode === 2 ? drillLabelMap() : {};
   let dots = '', labels = '';
   for (const p of positions) {
     if (p.stepsX < -10 || p.stepsX > 170 || p.stepsY < -5 || p.stepsY > 90) continue; // safety
@@ -724,12 +748,15 @@ function _renderDrillMappingModal() {
     `<button class="drill-tab${i === _drillMappingSection ? ' drill-tab--active' : ''}"
        onclick="drillMappingSetSection(${i})">${esc(s.letter)}</button>`).join('');
 
+  const posIdx = _drillPosIndex();
   const sec = sections[_drillMappingSection];
   const rows = sec.performers.map(label => {
-    const currentNum = mapping[label] || '';
+    // Pre-select the effective student: explicit override, else block-spot match.
+    const currentNum = mapping[label] || posIdx[label.toUpperCase()] || '';
+    const auto = !mapping[label] && posIdx[label.toUpperCase()];
     return `
       <div class="drill-map-row">
-        <div class="drill-map-pos">${esc(label)}</div>
+        <div class="drill-map-pos">${esc(label)}${auto ? `<span class="drill-map-auto" title="Matched to block spot ${esc(label)}">auto</span>` : ''}</div>
         <select class="drill-map-select form-input" data-label="${esc(label)}"
           onchange="drillMappingChange('${esc(label)}', this.value)">
           ${studentOptions.replace(`value="${esc(currentNum)}"`, `value="${esc(currentNum)}" selected`)}
@@ -740,7 +767,7 @@ function _renderDrillMappingModal() {
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Drill Position Mapping</div>
-    <p class="modal-sub" style="margin:0 0 10px">Link each drill position to a student in your roster. Saved automatically.</p>
+    <p class="modal-sub" style="margin:0 0 10px">Positions are matched to students by their block spot (column&nbsp;+&nbsp;row) automatically — "auto" rows need no setup. Override any that differ. Saved automatically.</p>
     <div class="drill-tabs">${renderSectionTabs()}</div>
     <div class="drill-map-list" id="drill-map-list">${rows}</div>
     <div class="modal-actions" style="margin-top:12px">
@@ -943,7 +970,7 @@ function drillShowPerfInfo(label) {
   if (!_drillPages) return;
   const p = _drillPages[_drillCurrentSet].performers.find(x => x.label === label);
   if (!p) return;
-  const num = (STATE.pywareMapping || {})[label];
+  const num = drillStudentByLabel(label);
   const st  = num ? STATE.students[num] : null;
   const co  = _drillCoord(p.stepsX, p.stepsY);
   const row = (k, v) => `<div class="drill-info-row"><span>${k}</span><span>${v}</span></div>`;
@@ -976,7 +1003,7 @@ function drillTracePerformer(label) {
 
 // "A1" or "A1 · Jane" when mapped — used for the search box + hints.
 function _drillTraceDisplay(label) {
-  const num = (STATE.pywareMapping || {})[label];
+  const num = drillStudentByLabel(label);
   const st  = num ? STATE.students[num] : null;
   return st && st.name ? `${label} · ${st.name}` : label;
 }
@@ -990,7 +1017,7 @@ function _drillResolveLabel(q) {
   const byLabel = perfs.find(p => p.label.toLowerCase() === q)
               || perfs.find(p => p.label.toLowerCase().startsWith(q));
   if (byLabel) return byLabel.label;
-  const mapping = STATE.pywareMapping || {};
+  const mapping = drillLabelMap();
   for (const p of perfs) {
     const num = mapping[p.label];
     if (!num) continue;
