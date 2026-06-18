@@ -3247,17 +3247,15 @@ html, body {
 .drill-fs-trace { color:#ffd23f; font-size:0.8rem; font-weight:600; flex:1; }
 
 /* Sticky yard-number ruler shown while the fullscreen chart is zoomed in. */
-.drill-fs-axis { position:absolute; left:0; right:0; height:0; pointer-events:none; z-index:5; }
-.drill-fs-axis--top { top:0; }
-.drill-fs-axis--bottom { bottom:0; }
+.drill-fs-axis { position:absolute; inset:0; pointer-events:none; z-index:5; }
 .drill-fs-axis-num {
   position:absolute; transform:translateX(-50%);
   background:rgba(10,26,10,.85); color:#fff; font-size:0.72rem; font-weight:700;
   padding:2px 6px; border-radius:4px; line-height:1.1; white-space:nowrap;
   box-shadow:0 1px 3px rgba(0,0,0,.4);
 }
-.drill-fs-axis--top .drill-fs-axis-num { top:4px; }
-.drill-fs-axis--bottom .drill-fs-axis-num { bottom:4px; }
+.drill-fs-axis-num--top { top:4px; }
+.drill-fs-axis-num--bottom { bottom:4px; }
 
 /* ── Drill tab (standalone field-chart viewer) ─────────────────────────────── */
 .drill-view { display:flex; flex-direction:column; }

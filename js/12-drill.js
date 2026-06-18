@@ -630,8 +630,8 @@ function _drillApplyZoom(wrap) {
   _drillRenderFsAxis(svg);
 }
 
-// Sticky yard-number ruler for the zoomed fullscreen chart: pins to the screen
-// edge nearest the closer sideline and tracks the visible yard lines, so a yard
+// Sticky yard-number ruler for the zoomed fullscreen chart: pins a row to both
+// the top and bottom screen edges and tracks the visible yard lines, so a yard
 // reference stays on screen no matter how far you pan/zoom.
 function _drillRenderFsAxis(svg) {
   const axis = document.getElementById('drill-fs-axis');
@@ -643,30 +643,20 @@ function _drillRenderFsAxis(svg) {
   if (_drillZoomScale <= 1.05) { axis.style.display = 'none'; axis.innerHTML = ''; return; }
   axis.style.display = '';
 
-  const { SCALE, FH, ML, MT, SW } = _DRILL_GEOM;
-  const wW = wrap.clientWidth, wH = wrap.clientHeight;
+  const { SCALE, ML, SW } = _DRILL_GEOM;
+  const wW = wrap.clientWidth;
   const k  = wW / SW;                 // px per svg-unit at scale 1 (svg is width:100%)
   const s  = _drillZoomScale;
   const toScreenX = v => _drillPanX + v * k * s;
-  const toScreenY = v => _drillPanY + v * k * s;
-
-  // Which sideline is nearer the viewport centre?
-  const vyCenter = (wH / 2 - _drillPanY) / (k * s);
-  const stepsYCenter = _drillFlipV ? (vyCenter - MT) / SCALE : (MT + FH - vyCenter) / SCALE;
-  const frontCloser = stepsYCenter <= 42;
-  const frontSvgY = _drillFlipV ? MT : (MT + FH); // stepsY = 0
-  const backSvgY  = _drillFlipV ? (MT + FH) : MT;  // stepsY = 84
-  const pinBottom = toScreenY(frontCloser ? frontSvgY : backSvgY) > wH / 2;
-
-  axis.classList.toggle('drill-fs-axis--bottom', pinBottom);
-  axis.classList.toggle('drill-fs-axis--top', !pinBottom);
 
   let html = '';
   for (let yd = 10; yd <= 90; yd += 10) {
     const xs = toScreenX(ML + yd * 1.6 * SCALE);
     if (xs < 10 || xs > wW - 10) continue; // off-screen horizontally
-    const lbl = yd > 50 ? 100 - yd : yd;
-    html += `<span class="drill-fs-axis-num" style="left:${xs.toFixed(1)}px">${lbl}</span>`;
+    const lbl  = yd > 50 ? 100 - yd : yd;
+    const left = `left:${xs.toFixed(1)}px`;
+    html += `<span class="drill-fs-axis-num drill-fs-axis-num--top" style="${left}">${lbl}</span>`;
+    html += `<span class="drill-fs-axis-num drill-fs-axis-num--bottom" style="${left}">${lbl}</span>`;
   }
   axis.innerHTML = html;
 }
