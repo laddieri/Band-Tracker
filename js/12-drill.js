@@ -175,7 +175,10 @@ function _onDrillFileLoaded(file) {
         drillPages:    parsed.pages,
         drillFlipV:    false,
       });
-      showDrillPickModal();
+      _drillTraceLabel = null; _drillSearchQuery = ''; _drillCurrentSet = 0;
+      // From the Drill tab, land straight on the chart; otherwise (tracker) show
+      // the performer picker as before.
+      if (_view === 'drill') render(); else showDrillPickModal();
     } catch (err) {
       showToast(err.message || 'Failed to read drill file.');
     }
@@ -345,9 +348,117 @@ function showDrillChartModal() {
     showToast('No set position data found in this file.');
     return;
   }
-  _drillCurrentSet = 0;
+  _drillCurrentSet  = 0;
+  _drillChartSelect = true; // opened from the tracker to pick performers
   openModal(`<div id="drill-chart-root">${_drillChartHtml()}</div>`);
 }
+
+// Shared field SVG. `positions` is one set's performers. Options:
+//   fs         — fullscreen sizing (width:100%) vs fixed width
+//   labelMode  — 0 none · 1 drill labels (A1) · 2 mapped student names
+//   traceLabel — draw this performer's path across every set + highlight them
+//   selectMode — tap toggles selection (tracker) vs opens an info popup (viewer)
+function _drillFieldSvg(positions, opts = {}) {
+  const { fs = false, labelMode = 0, traceLabel = null, selectMode = false, fsView = false } = opts;
+
+  // 100 yards = 160 steps wide × 84 steps deep; coords are already in steps
+  // (stepsX from the west goal, stepsY off the front sideline).
+  const SCALE = 3.5; // px per step
+  const FW = Math.round(160 * SCALE), FH = Math.round(84 * SCALE);
+  const ML = 30, MR = 8, MT = 20, MB = 22;
+  const SW = FW + ML + MR, SH = FH + MT + MB;
+  const fx = s => (ML + s * SCALE).toFixed(1);
+  // Front sideline at the bottom (stepsY = 0); flip swaps front/back to match
+  // Pyware's "facing" setting if a file was built the other way.
+  const fy = s => (_drillFlipV ? (MT + s * SCALE) : (MT + FH - s * SCALE)).toFixed(1);
+
+  const secColor = {};
+  (_drillData || []).forEach((sec, i) => { secColor[sec.letter] = _DRILL_COLORS[i % _DRILL_COLORS.length]; });
+
+  // Yard lines + numbers (top and bottom)
+  let lines = '';
+  for (let yd = 0; yd <= 100; yd += 5) {
+    const sx = fx(yd * 1.6);
+    const major = yd % 10 === 0;
+    lines += `<line x1="${sx}" y1="${MT}" x2="${sx}" y2="${MT+FH}" stroke="${major?'#fff':'#5a5'}" stroke-width="${major?'0.8':'0.4'}"/>`;
+    lines += `<line x1="${sx}" y1="${MT+FH}" x2="${sx}" y2="${(MT+FH+4).toFixed(1)}" stroke="${major?'#aaa':'#666'}" stroke-width="${major?'0.8':'0.5'}"/>`;
+    if (major && yd > 0 && yd < 100) {
+      const lbl = yd > 50 ? 100 - yd : yd;
+      lines += `<text x="${sx}" y="${MT-4}" text-anchor="middle" fill="#aaa" font-size="8" font-family="sans-serif">${lbl}</text>`;
+      lines += `<text x="${sx}" y="${(MT+FH+14).toFixed(1)}" text-anchor="middle" fill="#aaa" font-size="8" font-family="sans-serif">${lbl}</text>`;
+    }
+  }
+  // Hash marks (HS: 28 and 56 steps off the front sideline)
+  for (const hs of [28, 56]) {
+    const hy = fy(hs);
+    for (let yd = 0; yd <= 100; yd += 5) {
+      const sx = parseFloat(fx(yd * 1.6));
+      lines += `<line x1="${(sx-3).toFixed(1)}" y1="${hy}" x2="${(sx+3).toFixed(1)}" y2="${hy}" stroke="#fff" stroke-width="0.5"/>`;
+    }
+  }
+
+  // Trace path of one performer across every set.
+  let trace = '';
+  if (traceLabel && _drillPages) {
+    const pts = [];
+    _drillPages.forEach((pg, i) => {
+      const tp = pg.performers.find(p => p.label === traceLabel);
+      if (tp) pts.push({ i, x: fx(tp.stepsX), y: fy(tp.stepsY) });
+    });
+    if (pts.length > 1) {
+      trace += `<polyline points="${pts.map(p => `${p.x},${p.y}`).join(' ')}" fill="none" stroke="#ffd23f" stroke-width="1.4" stroke-dasharray="3 2" opacity="0.9" pointer-events="none"/>`;
+    }
+    pts.forEach(p => {
+      const cur = p.i === _drillCurrentSet;
+      trace += `<circle cx="${p.x}" cy="${p.y}" r="${cur ? 2.6 : 1.8}" fill="#ffd23f" opacity="${cur ? 1 : 0.65}" pointer-events="none"/>`;
+    });
+  }
+
+  // Performers (+ optional labels)
+  const mapping = STATE.pywareMapping || {};
+  let dots = '', labels = '';
+  for (const p of positions) {
+    if (p.stepsX < -10 || p.stepsX > 170 || p.stepsY < -5 || p.stepsY > 90) continue; // safety
+    const sx = fx(p.stepsX), sy = fy(p.stepsY);
+    const col     = secColor[p.section] || '#888';
+    const sel     = selectMode && _drillChecked.has(p.label);
+    const isTrace = traceLabel && p.label === traceLabel;
+    const tap     = selectMode ? `drillChartToggle('${esc(p.label)}')`
+                  : fsView     ? `drillFsTapPerf('${esc(p.label)}')`
+                  :              `drillShowPerfInfo('${esc(p.label)}')`;
+    dots += `<circle cx="${sx}" cy="${sy}" r="7" fill="transparent" onclick="${tap}" style="cursor:pointer"/>`;
+    if (sel || isTrace) dots += `<circle cx="${sx}" cy="${sy}" r="6.5" fill="none" stroke="${isTrace ? '#ffd23f' : '#fff'}" stroke-width="1.8"/>`;
+    dots += `<circle cx="${sx}" cy="${sy}" r="${(sel||isTrace)?'4.5':'3'}" fill="${col}" pointer-events="none"/>`;
+    if (labelMode) {
+      let txt = p.label;
+      if (labelMode === 2) {
+        const num = mapping[p.label];
+        const st  = num ? STATE.students[num] : null;
+        txt = st ? (st.name ? st.name.split(/\s+/)[0] : `#${num}`) : p.label;
+      }
+      labels += `<text x="${sx}" y="${(parseFloat(sy)-5).toFixed(1)}" text-anchor="middle" fill="#fff" font-size="4.6" font-family="sans-serif" pointer-events="none" style="paint-order:stroke;stroke:#000;stroke-width:0.7px;stroke-linejoin:round">${esc(txt)}</text>`;
+    }
+  }
+
+  return `
+    <svg viewBox="0 0 ${SW} ${SH}" xmlns="http://www.w3.org/2000/svg" style="display:block;${fs ? 'width:100%;height:auto' : `width:${SW}px;max-width:100%`}">
+      <rect x="${ML}" y="${MT}" width="${FW}" height="${FH}" fill="#1f5c1f"/>
+      <rect x="${ML}" y="${MT}" width="${FW}" height="${FH}" fill="none" stroke="#fff" stroke-width="1.2"/>
+      ${lines}${trace}${dots}${labels}
+      <text x="${(ML-3)}" y="${fy(0)}" text-anchor="end" fill="#777" font-size="7" font-family="sans-serif" dominant-baseline="middle">F</text>
+      <text x="${(ML-3)}" y="${fy(84)}" text-anchor="end" fill="#777" font-size="7" font-family="sans-serif" dominant-baseline="middle">B</text>
+    </svg>`;
+}
+
+function _drillLegendHtml() {
+  return (_drillData || []).map((sec, i) => {
+    const c = _DRILL_COLORS[i % _DRILL_COLORS.length];
+    return `<span class="drill-chart-leg-item"><svg width="10" height="10" style="flex-shrink:0"><circle cx="5" cy="5" r="4" fill="${c}"/></svg>${esc(sec.letter)}</span>`;
+  }).join('');
+}
+
+// Cycle text for the labels toggle button.
+const _DRILL_LABEL_TEXT = ['Labels: off', 'Labels: drill #', 'Labels: names'];
 
 function _drillChartHtml(fs = false) {
   const idx       = _drillCurrentSet;
@@ -358,70 +469,8 @@ function _drillChartHtml(fs = false) {
   const prevDisabled = idx <= 0;
   const nextDisabled = idx >= total - 1;
 
-  // Field SVG: 100 yards = 160 steps wide × 84 steps deep.
-  // Performer coords are already in steps: stepsX from the west goal line,
-  // stepsY off the front sideline (top of the chart).
-  const SCALE = 3.5; // px per step
-  const FW = Math.round(160 * SCALE), FH = Math.round(84 * SCALE);
-  const ML = 30, MR = 8, MT = 20, MB = 22;
-  const SW = FW + ML + MR, SH = FH + MT + MB;
-  const fx = s => (ML + s * SCALE).toFixed(1);
-  // Front sideline at the bottom (stepsY = 0). The flip swaps front/back to
-  // match Pyware's "facing" setting if a file was built the other way.
-  const fy = s => (_drillFlipV ? (MT + s * SCALE) : (MT + FH - s * SCALE)).toFixed(1);
-
-  // One color per section letter (consistent with the legend).
-  const secColor = {};
-  (_drillData || []).forEach((sec, i) => { secColor[sec.letter] = _DRILL_COLORS[i % _DRILL_COLORS.length]; });
-
-  // Yard lines + numbers (top and bottom)
-  let lines = '';
-  for (let yd = 0; yd <= 100; yd += 5) {
-    const sx = fx(yd * 1.6);
-    const major = yd % 10 === 0;
-    lines += `<line x1="${sx}" y1="${MT}" x2="${sx}" y2="${MT+FH}" stroke="${major?'#fff':'#5a5'}" stroke-width="${major?'0.8':'0.4'}"/>`;
-    // Bottom tick mark on the sideline
-    lines += `<line x1="${sx}" y1="${MT+FH}" x2="${sx}" y2="${(MT+FH+4).toFixed(1)}" stroke="${major?'#aaa':'#666'}" stroke-width="${major?'0.8':'0.5'}"/>`;
-    if (major && yd > 0 && yd < 100) {
-      const lbl = yd > 50 ? 100 - yd : yd;
-      lines += `<text x="${sx}" y="${MT-4}" text-anchor="middle" fill="#aaa" font-size="8" font-family="sans-serif">${lbl}</text>`;
-      lines += `<text x="${sx}" y="${(MT+FH+14).toFixed(1)}" text-anchor="middle" fill="#aaa" font-size="8" font-family="sans-serif">${lbl}</text>`;
-    }
-  }
-  // Hash marks (high-school positions: 28 and 56 steps off the front sideline)
-  for (const hs of [28, 56]) {
-    const hy = fy(hs);
-    for (let yd = 0; yd <= 100; yd += 5) {
-      const sx = parseFloat(fx(yd * 1.6));
-      lines += `<line x1="${(sx-3).toFixed(1)}" y1="${hy}" x2="${(sx+3).toFixed(1)}" y2="${hy}" stroke="#fff" stroke-width="0.5"/>`;
-    }
-  }
-
-  // Performers
-  let dots = '';
-  for (const p of positions) {
-    if (p.stepsX < -10 || p.stepsX > 170 || p.stepsY < -5 || p.stepsY > 90) continue; // safety
-    const sx = fx(p.stepsX), sy = fy(p.stepsY);
-    const col = secColor[p.section] || '#888';
-    const sel = _drillChecked.has(p.label);
-    dots += `<circle cx="${sx}" cy="${sy}" r="7" fill="transparent" onclick="drillChartToggle('${esc(p.label)}')" style="cursor:pointer"/>`;
-    if (sel) dots += `<circle cx="${sx}" cy="${sy}" r="6" fill="none" stroke="#fff" stroke-width="1.5"/>`;
-    dots += `<circle cx="${sx}" cy="${sy}" r="${sel?'4.5':'3'}" fill="${col}" pointer-events="none"/>`;
-  }
-
-  const legend = (_drillData || []).map((sec, i) => {
-    const c = _DRILL_COLORS[i % _DRILL_COLORS.length];
-    return `<span class="drill-chart-leg-item"><svg width="10" height="10" style="flex-shrink:0"><circle cx="5" cy="5" r="4" fill="${c}"/></svg>${esc(sec.letter)}</span>`;
-  }).join('');
-
-  const svgField = `
-    <svg viewBox="0 0 ${SW} ${SH}" xmlns="http://www.w3.org/2000/svg" style="display:block;${fs ? 'width:100%;height:auto' : `width:${SW}px;max-width:100%`}">
-      <rect x="${ML}" y="${MT}" width="${FW}" height="${FH}" fill="#1f5c1f"/>
-      <rect x="${ML}" y="${MT}" width="${FW}" height="${FH}" fill="none" stroke="#fff" stroke-width="1.2"/>
-      ${lines}${dots}
-      <text x="${(ML-3)}" y="${fy(0)}" text-anchor="end" fill="#777" font-size="7" font-family="sans-serif" dominant-baseline="middle">F</text>
-      <text x="${(ML-3)}" y="${fy(84)}" text-anchor="end" fill="#777" font-size="7" font-family="sans-serif" dominant-baseline="middle">B</text>
-    </svg>`;
+  const legend   = _drillLegendHtml();
+  const svgField = _drillFieldSvg(positions, { fs, labelMode: _drillLabelMode, traceLabel: null, selectMode: true });
 
   const expandIcon = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1 5V1h4M13 5V1H9M1 9v4h4M13 9v4H9"/></svg>`;
 
@@ -431,6 +480,7 @@ function _drillChartHtml(fs = false) {
         <button class="btn btn-sm btn-secondary" onclick="drillChartNav(-1)"${prevDisabled?' disabled':''}>&#8592;</button>
         <span class="drill-chart-setlabel">${navLabel}</span>
         <button class="btn btn-sm btn-secondary" onclick="drillChartNav(1)"${nextDisabled?' disabled':''}>&#8594;</button>
+        <button class="btn btn-sm btn-secondary" onclick="drillChartCycleLabels()" title="Toggle labels">${_drillLabelMode ? '🏷' : '🏷'}</button>
         <button class="btn btn-sm btn-secondary" onclick="drillChartFlip()" title="Flip facing">⇅</button>
         <button class="btn btn-sm btn-secondary" onclick="drillChartCollapse()" title="Exit fullscreen" style="margin-left:4px">&#x2715;</button>
       </div>
@@ -454,7 +504,7 @@ function _drillChartHtml(fs = false) {
     </div>
     ${legend ? `<div class="drill-chart-legend">${legend}</div>` : ''}
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:6px">
-      <span style="font-size:.72rem;color:var(--text-muted)">Front sideline at ${_drillFlipV ? 'top' : 'bottom'}</span>
+      <button class="btn btn-sm btn-secondary" onclick="drillChartCycleLabels()">${esc(_DRILL_LABEL_TEXT[_drillLabelMode])}</button>
       <button class="btn btn-sm btn-secondary" onclick="drillChartFlip()">⇅ Flip facing</button>
     </div>
     <div class="modal-actions" style="margin-top:8px">
@@ -463,11 +513,16 @@ function _drillChartHtml(fs = false) {
     </div>`;
 }
 
+function drillChartCycleLabels() {
+  _drillLabelMode = (_drillLabelMode + 1) % 3;
+  _drillChartRefresh();
+}
+
 function _drillChartRefresh() {
   const fs = document.getElementById('drill-chart-fs');
   if (fs && !fs.classList.contains('hidden')) {
     _drillZoomReset();
-    fs.innerHTML = _drillChartHtml(true);
+    fs.innerHTML = _drillChartSelect ? _drillChartHtml(true) : _drillViewFsHtml();
     _drillZoomSetup();
     return;
   }
@@ -479,7 +534,7 @@ function drillChartExpand() {
   const fs = document.getElementById('drill-chart-fs');
   if (!fs) return;
   _drillZoomReset();
-  fs.innerHTML = _drillChartHtml(true);
+  fs.innerHTML = _drillChartSelect ? _drillChartHtml(true) : _drillViewFsHtml();
   fs.classList.remove('hidden');
   document.addEventListener('keydown', _drillChartFsKeydown);
   _drillZoomSetup();
@@ -491,6 +546,9 @@ function drillChartCollapse() {
   _drillZoomReset();
   fs.classList.add('hidden');
   document.removeEventListener('keydown', _drillChartFsKeydown);
+  // Sync the inline Drill-tab chart with any set/flip/trace changes made in
+  // fullscreen view mode.
+  if (!_drillChartSelect && document.getElementById('drill-view-root')) _drillViewRerender();
 }
 
 // Pinch-to-zoom + single-finger pan for the fullscreen chart.
@@ -674,4 +732,317 @@ function drillMappingChange(label, studentNum) {
   else delete mapping[label];
   STATE.pywareMapping = mapping;
   orgCol('settings').doc('presets').set({ pywareMapping: mapping }, { merge: true });
+}
+
+// ── Standalone Field Chart viewer (Drill tab) ─────────────────────────────────
+// A top-level, read-only chart: step through sets, jump to any set, toggle dot
+// labels, tap a performer for their Pyware-style coordinate, and search to trace
+// one performer's path across every set.
+
+function viewDrill() {
+  if (!STATE.isAdmin) return `<div class="empty-state"><p>Directors only.</p></div>`;
+  if (!_drillData || !_drillPages || !_drillPages.length) {
+    return `
+      <div class="empty-state" style="padding:48px 24px">
+        <div class="empty-icon">🚩</div>
+        <p>No drill loaded yet.</p>
+        <p style="color:var(--text-muted);max-width:300px;margin:6px auto 0">
+          Upload a Pyware <strong>.3dj</strong> file to view your field chart, step through sets,
+          label dots, and trace a performer's path.
+        </p>
+        <button class="btn btn-primary" style="margin-top:14px" onclick="openDrillPicker()">Load Drill File</button>
+      </div>`;
+  }
+  return `<div id="drill-view-root" class="drill-view">${_drillViewInner()}</div>`;
+}
+
+function _drillViewInner() {
+  const idx   = _drillCurrentSet;
+  const total = _drillPages.length;
+  const pg    = _drillPages[idx];
+  const legend = _drillLegendHtml();
+
+  return `
+    <div class="drill-toolbar">
+      <div class="drill-search-wrap">
+        <input class="drill-search form-input" type="search" placeholder="Find a performer or student…"
+               value="${esc(_drillSearchQuery)}" autocomplete="off"
+               oninput="drillViewSearch(this.value)">
+        ${_drillTraceLabel ? `<button class="drill-search-clear" onclick="drillViewClearSearch()" aria-label="Clear">✕</button>` : ''}
+      </div>
+      <div class="drill-tool-btns">
+        <button class="btn btn-sm btn-secondary" onclick="drillViewCycleLabels()">${esc(_DRILL_LABEL_TEXT[_drillLabelMode])}</button>
+        <button class="btn btn-sm btn-secondary" onclick="drillViewFlip()" title="Flip facing">⇅</button>
+        <button class="btn btn-sm btn-secondary" onclick="drillViewExpand()" title="Fullscreen">⤢</button>
+      </div>
+    </div>
+
+    <div id="drill-trace-hint" class="drill-trace-hint${_drillTraceLabel ? '' : ' drill-trace-hint--muted'}">
+      ${_drillTraceLabel
+        ? `Tracing <strong>${esc(_drillTraceDisplay(_drillTraceLabel))}</strong> across all sets · tap a dot for details`
+        : `Tap a performer for their coordinate · search to trace a path`}
+    </div>
+
+    <div class="drill-chart-nav">
+      <button class="btn btn-sm btn-secondary" onclick="drillViewNav(-1)"${idx<=0?' disabled':''}>&#8592;</button>
+      <span class="drill-chart-setlabel">Set ${idx + 1} <span style="font-weight:400;color:var(--text-muted)">of ${total} · count ${pg.count}</span></span>
+      <button class="btn btn-sm btn-secondary" onclick="drillViewNav(1)"${idx>=total-1?' disabled':''}>&#8594;</button>
+    </div>
+
+    <div class="drill-set-strip" id="drill-set-strip">${_drillSetStripHtml()}</div>
+
+    <div class="drill-chart-wrap" id="drill-svg-wrap">
+      ${_drillFieldSvg(pg.performers, { labelMode: _drillLabelMode, traceLabel: _drillTraceLabel, selectMode: false })}
+    </div>
+
+    ${legend ? `<div class="drill-chart-legend">${legend}</div>` : ''}
+
+    <div class="drill-view-foot">
+      <span class="drill-view-file">${_drillFileName ? esc(_drillFileName) : 'Drill file'}</span>
+      <span style="font-size:.72rem;color:var(--text-muted)">Front sideline at ${_drillFlipV ? 'top' : 'bottom'}</span>
+    </div>`;
+}
+
+function _drillSetStripHtml() {
+  return _drillPages.map((pg, i) =>
+    `<button class="drill-set-chip${i === _drillCurrentSet ? ' drill-set-chip--active' : ''}" onclick="drillViewGoToSet(${i})">${i + 1}<span class="drill-set-chip-ct">${pg.count}</span></button>`
+  ).join('');
+}
+
+function _drillViewRerender() {
+  const root = document.getElementById('drill-view-root');
+  if (root) { root.innerHTML = _drillViewInner(); _drillScrollSetChipIntoView(); }
+}
+
+function _drillViewRenderSvg() {
+  const wrap = document.getElementById('drill-svg-wrap');
+  if (wrap) wrap.innerHTML = _drillFieldSvg(_drillPages[_drillCurrentSet].performers,
+    { labelMode: _drillLabelMode, traceLabel: _drillTraceLabel, selectMode: false });
+}
+
+function _drillScrollSetChipIntoView() {
+  const chip = document.querySelector('.drill-set-chip--active');
+  if (chip) chip.scrollIntoView({ inline: 'center', block: 'nearest' });
+}
+
+function drillViewNav(delta) {
+  _drillCurrentSet = Math.max(0, Math.min(_drillPages.length - 1, _drillCurrentSet + delta));
+  _drillViewRerender();
+}
+
+function drillViewGoToSet(i) {
+  _drillCurrentSet = Math.max(0, Math.min(_drillPages.length - 1, i));
+  _drillViewRerender();
+}
+
+function drillViewFlip() {
+  _drillFlipV = !_drillFlipV;
+  orgCol('settings').doc('drill').set({ drillFlipV: _drillFlipV }, { merge: true });
+  _drillViewRerender();
+}
+
+function drillViewCycleLabels() {
+  _drillLabelMode = (_drillLabelMode + 1) % 3;
+  _drillViewRerender();
+}
+
+function drillViewSearch(q) {
+  _drillSearchQuery = q;
+  _drillTraceLabel = _drillResolveLabel(q);
+  _drillViewRenderSvg();
+  const hint = document.getElementById('drill-trace-hint');
+  if (!hint) return;
+  if (_drillTraceLabel) {
+    hint.className = 'drill-trace-hint';
+    hint.innerHTML = `Tracing <strong>${esc(_drillTraceDisplay(_drillTraceLabel))}</strong> across all sets · tap a dot for details`;
+  } else {
+    hint.className = 'drill-trace-hint drill-trace-hint--muted';
+    hint.textContent = q.trim() ? `No performer matches "${q.trim()}"` : 'Tap a performer for their coordinate · search to trace a path';
+  }
+}
+
+function drillViewClearSearch() {
+  _drillSearchQuery = '';
+  _drillTraceLabel = null;
+  _drillViewRerender();
+}
+
+function drillViewExpand() {
+  _drillChartSelect = false;
+  drillChartExpand();
+}
+
+// Fullscreen content for the viewer (read-only; taps show a coordinate readout
+// in the bottom bar since a modal would sit behind the fullscreen layer).
+function _drillViewFsHtml() {
+  const idx = _drillCurrentSet, total = _drillPages.length;
+  const navLabel = `Set ${idx + 1} <span style="font-weight:400;color:var(--text-muted)">of ${total} · count ${_drillPages[idx].count}</span>`;
+  const legend   = _drillLegendHtml();
+  const svgField = _drillFieldSvg(_drillPages[idx].performers,
+    { fs: true, labelMode: _drillLabelMode, traceLabel: _drillTraceLabel, selectMode: false, fsView: true });
+
+  let readout = '';
+  if (_drillTraceLabel) {
+    const tp = _drillPages[idx].performers.find(p => p.label === _drillTraceLabel);
+    if (tp) {
+      const co = _drillCoord(tp.stepsX, tp.stepsY);
+      readout = `<span class="drill-fs-trace">${esc(_drillTraceDisplay(_drillTraceLabel))} — ${esc(co.lr)} · ${esc(co.fb)}</span>`;
+    }
+  }
+
+  return `
+    <div class="drill-fs-nav">
+      <button class="btn btn-sm btn-secondary" onclick="drillChartNav(-1)"${idx<=0?' disabled':''}>&#8592;</button>
+      <span class="drill-chart-setlabel">${navLabel}</span>
+      <button class="btn btn-sm btn-secondary" onclick="drillChartNav(1)"${idx>=total-1?' disabled':''}>&#8594;</button>
+      <button class="btn btn-sm btn-secondary" onclick="drillChartCycleLabels()" title="Toggle labels">🏷</button>
+      <button class="btn btn-sm btn-secondary" onclick="drillChartFlip()" title="Flip facing">⇅</button>
+      <button class="btn btn-sm btn-secondary" onclick="drillChartCollapse()" title="Exit fullscreen" style="margin-left:4px">&#x2715;</button>
+    </div>
+    <div class="drill-fs-svg-wrap">${svgField}</div>
+    <div class="drill-fs-bottom">
+      ${readout || (legend ? `<div class="drill-chart-legend" style="flex:1">${legend}</div>` : '<div></div>')}
+    </div>`;
+}
+
+function drillFsTapPerf(label) {
+  _drillTraceLabel  = label;
+  _drillSearchQuery = _drillTraceDisplay(label);
+  _drillChartRefresh();
+}
+
+function drillShowPerfInfo(label) {
+  if (!_drillPages) return;
+  const p = _drillPages[_drillCurrentSet].performers.find(x => x.label === label);
+  if (!p) return;
+  const num = (STATE.pywareMapping || {})[label];
+  const st  = num ? STATE.students[num] : null;
+  const co  = _drillCoord(p.stepsX, p.stepsY);
+  const row = (k, v) => `<div class="drill-info-row"><span>${k}</span><span>${v}</span></div>`;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">${esc(label)}${st ? ` · ${esc(st.name || `#${num}`)}` : ''}</div>
+    <div class="drill-info-grid">
+      ${row('Section', esc(p.section))}
+      ${st && st.instrument ? row('Instrument', esc(normInstrument(st.instrument))) : ''}
+      ${st && fmtPos(st.column, st.row) ? row('Block spot', esc(fmtPos(st.column, st.row))) : ''}
+      ${!st ? row('Student', `<em style="color:var(--text-muted)">Not mapped</em>`) : ''}
+      ${row('Set', `${_drillCurrentSet + 1} of ${_drillPages.length} · count ${_drillPages[_drillCurrentSet].count}`)}
+      ${row('Left–right', esc(co.lr))}
+      ${row('Front–back', esc(co.fb))}
+    </div>
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+      <button class="btn btn-primary" onclick="drillTracePerformer('${esc(label)}')">${_drillTraceLabel === label ? 'Traced ✓' : 'Trace path'}</button>
+      ${st ? `<button class="btn btn-secondary" onclick="closeModal();navigate('student',{num:'${esc(num)}'})">Profile</button>` : ''}
+    </div>
+  `);
+}
+
+function drillTracePerformer(label) {
+  _drillTraceLabel  = label;
+  _drillSearchQuery = _drillTraceDisplay(label);
+  closeModal();
+  _drillViewRerender();
+}
+
+// "A1" or "A1 · Jane" when mapped — used for the search box + hints.
+function _drillTraceDisplay(label) {
+  const num = (STATE.pywareMapping || {})[label];
+  const st  = num ? STATE.students[num] : null;
+  return st && st.name ? `${label} · ${st.name}` : label;
+}
+
+// Resolve a search string to a performer label in the current set: match the
+// drill label, else a mapped student's number or name.
+function _drillResolveLabel(q) {
+  q = (q || '').trim().toLowerCase();
+  if (!q) return null;
+  const perfs = _drillPages[_drillCurrentSet].performers;
+  const byLabel = perfs.find(p => p.label.toLowerCase() === q)
+              || perfs.find(p => p.label.toLowerCase().startsWith(q));
+  if (byLabel) return byLabel.label;
+  const mapping = STATE.pywareMapping || {};
+  for (const p of perfs) {
+    const num = mapping[p.label];
+    if (!num) continue;
+    if (String(num) === q) return p.label;
+    const st = STATE.students[num];
+    if (st && (st.name || '').toLowerCase().includes(q)) return p.label;
+  }
+  return null;
+}
+
+// Pyware-style coordinate from step offsets. Returns { lr, fb } strings.
+function _drillCoord(stepsX, stepsY) {
+  // Left–right: nearest 5-yard line + steps inside/outside, Side 1 (west) / 2 (east).
+  const yardFromWest = stepsX / 1.6;             // 0..100 from the west endzone
+  const n5 = Math.round(yardFromWest / 5) * 5;   // nearest 5-yard line
+  const yardLbl = n5 <= 50 ? n5 : 100 - n5;
+  const side = n5 === 50 ? '' : (n5 < 50 ? 'Side 1' : 'Side 2');
+  const dSteps = Math.round(Math.abs(yardFromWest - n5) * 1.6 * 4) / 4;
+  let lr;
+  if (n5 === 0 || n5 === 100) {
+    lr = `${dSteps ? `${dSteps} steps from ` : 'On '}the ${n5 < 50 ? 'Side 1' : 'Side 2'} goal line`;
+  } else if (dSteps < 0.1) {
+    lr = `On the ${yardLbl}${side ? ` (${side})` : ''}`;
+  } else {
+    const inside = (yardFromWest > n5) === (n5 < 50); // toward the 50
+    lr = `${dSteps} steps ${inside ? 'inside' : 'outside'} the ${yardLbl}${side ? ` (${side})` : ''}`;
+  }
+
+  // Front–back: nearest of front sideline / front hash / back hash / back sideline.
+  const refs = [
+    { y: 0,  name: 'front sideline' }, { y: 28, name: 'front hash' },
+    { y: 56, name: 'back hash' },      { y: 84, name: 'back sideline' },
+  ];
+  let best = refs[0];
+  for (const r of refs) if (Math.abs(stepsY - r.y) < Math.abs(stepsY - best.y)) best = r;
+  const dY = Math.round((stepsY - best.y) * 4) / 4;
+  const fb = Math.abs(dY) < 0.1
+    ? `On the ${best.name}`
+    : `${Math.abs(dY)} steps ${dY > 0 ? 'behind' : 'in front of'} the ${best.name}`;
+  return { lr, fb };
+}
+
+function showDrillOptionsModal() {
+  if (!STATE.isAdmin) return;
+  const has = !!(_drillData && _drillPages && _drillPages.length);
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Field Chart Options</div>
+    <div class="options-menu">
+      ${has ? `
+      <button class="options-menu-item" onclick="closeModal();showDrillMappingModal()">
+        <div class="options-menu-icon">🔗</div>
+        <div><div class="options-menu-label">Position Mapping</div><div class="options-menu-sub">Link drill spots to students</div></div>
+      </button>` : ''}
+      <button class="options-menu-item" onclick="${has ? 'drillLoadNewFile()' : 'closeModal();openDrillPicker()'}">
+        <div class="options-menu-icon">📄</div>
+        <div><div class="options-menu-label">${has ? 'Replace drill file' : 'Load drill file'}</div><div class="options-menu-sub">${has && _drillFileName ? esc(_drillFileName) : 'Pyware .3dj'}</div></div>
+      </button>
+      ${has ? `
+      <button class="options-menu-item options-menu-item-danger" onclick="closeModal();drillConfirmDelete()">
+        <div class="options-menu-icon">🗑</div>
+        <div><div class="options-menu-label">Remove drill</div><div class="options-menu-sub">Delete the loaded chart</div></div>
+      </button>` : ''}
+    </div>
+    <div class="modal-actions" style="margin-top:8px">
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Cancel</button>
+    </div>
+  `);
+}
+
+function drillConfirmDelete() {
+  showConfirmModal(
+    'Remove drill?',
+    'This deletes the loaded field chart. Position mapping is kept, so a new file lines up automatically.',
+    () => {
+      _drillData = null; _drillPages = null; _drillFileName = null;
+      _drillTraceLabel = null; _drillSearchQuery = ''; _drillCurrentSet = 0;
+      orgCol('settings').doc('drill').delete().catch(() => {});
+      if (_view === 'drill') render();
+    },
+    'Remove', 'btn-danger'
+  );
 }

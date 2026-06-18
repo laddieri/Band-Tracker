@@ -99,7 +99,7 @@ function render() {
   }
 
   const studentOnLeaderboard = _view === 'leaderboard' && STATE.studentNum && !STATE.isAdmin;
-  const isTop = ['roster','rehearsals','songs','attendance-tab','leaderboard','dashboard'].includes(_view) && !studentOnLeaderboard;
+  const isTop = ['roster','rehearsals','songs','attendance-tab','leaderboard','dashboard','drill'].includes(_view) && !studentOnLeaderboard;
   backBtn.classList.toggle('hidden', isTop);
   backBtn.onclick = () => history.back();
 
@@ -120,6 +120,7 @@ function render() {
     if (match === 'songs')          t.style.display = featureOn('songs') ? '' : 'none';
     if (match === 'leaderboard')    t.style.display = (STATE.isAdmin && featureOn('stats')) ? '' : 'none';
     if (match === 'dashboard')      t.style.display = (STATE.isAdmin && featureOn('marks')) ? '' : 'none';
+    if (match === 'drill')          t.style.display = STATE.isAdmin ? '' : 'none';
   });
 
   // If the current view belongs to a disabled feature, bounce to a safe view.
@@ -211,6 +212,12 @@ function render() {
       title.textContent = 'Songs';
       actions.innerHTML = (STATE.isAdmin ? optBtn('showSongOptionsModal()') + addBtn('showAddSongModal()') : '') + userBtn();
       main.innerHTML = viewSongs();
+      break;
+
+    case 'drill':
+      title.textContent = 'Field Chart';
+      actions.innerHTML = (STATE.isAdmin ? optBtn('showDrillOptionsModal()') : '') + userBtn();
+      main.innerHTML = viewDrill();
       break;
 
     case 'song': {
