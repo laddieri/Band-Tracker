@@ -631,7 +631,7 @@ function viewStudent(num) {
 
   return `
     <div class="student-view">
-    <div class="card mb-12" style="text-align:center">
+    <div class="card mb-12 clickable" onclick="showEditStudentModal('${esc(num)}')" style="text-align:center">
       <div style="font-size:1.4rem;font-weight:800;color:var(--primary);line-height:1;margin-bottom:8px">${esc(s.name || `#${s.number}`)}</div>
       <div class="flex gap-6" style="justify-content:center;flex-wrap:wrap">
         ${fmtPos(s.column,s.row) ? `<span class="badge badge-primary" style="font-size:0.85rem;font-weight:800">${esc(fmtPos(s.column,s.row))}</span>` : ''}
@@ -642,24 +642,20 @@ function viewStudent(num) {
       </div>
     </div>
 
-    <div class="stats-row">
-      <div class="stat-block">
-        <div class="stat-value">${hist.length}</div>
-        <div class="stat-label">Rehearsals</div>
-      </div>
-      ${featureOn('marks') ? `
-      <div class="stat-block">
+    ${featureOn('marks') ? `
+    <div class="stats-row" style="grid-template-columns:repeat(2,1fr)">
+      <div class="stat-block clickable" onclick="showStudentMarksModal('${esc(num)}','')">
         <div class="stat-value" style="color:var(--danger)">${avgE}</div>
         <div class="stat-label">Avg Mistakes</div>
       </div>
-      <div class="stat-block">
+      <div class="stat-block clickable" onclick="showStudentMarksModal('${esc(num)}','')">
         <div class="stat-value" style="color:var(--success)">${avgP}</div>
         <div class="stat-label">Avg Positives</div>
-      </div>` : ''}
-    </div>
+      </div>
+    </div>` : ''}
 
     ${s.notes ? `
-      <div class="card mb-12">
+      <div class="card mb-12 clickable" onclick="showEditStudentModal('${esc(num)}')">
         <div class="section-title" style="margin-top:0">Director Notes</div>
         <div style="font-size:0.9rem;white-space:pre-wrap;color:var(--text-muted)">${esc(s.notes)}</div>
       </div>` : ''}
@@ -692,12 +688,12 @@ function viewStudent(num) {
             ${absences.length ? `
               <div class="att-date-list">
                 <span class="att-date-heading">Absent:</span>
-                ${absences.map(({rehearsal:r}) => `<span class="att-date-chip att-chip-absent">${fmtDate(r.date)}</span>`).join('')}
+                ${absences.map(({rehearsal:r}) => `<span class="att-date-chip att-chip-absent clickable" onclick="navigate('attendance',{rid:'${esc(r.id)}',from:'student'})">${fmtDate(r.date)}</span>`).join('')}
               </div>` : ''}
             ${lates.length ? `
               <div class="att-date-list">
                 <span class="att-date-heading">Late:</span>
-                ${lates.map(({rehearsal:r}) => `<span class="att-date-chip att-chip-late">${fmtDate(r.date)}</span>`).join('')}
+                ${lates.map(({rehearsal:r}) => `<span class="att-date-chip att-chip-late clickable" onclick="navigate('attendance',{rid:'${esc(r.id)}',from:'student'})">${fmtDate(r.date)}</span>`).join('')}
               </div>` : ''}
           </div>
         </div>

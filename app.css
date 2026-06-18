@@ -259,6 +259,10 @@ html, body {
 .card.clickable { cursor: pointer; transition: box-shadow .15s, transform .1s; }
 .card.clickable:active { transform: scale(.985); }
 .card.clickable:hover { box-shadow: var(--shadow-md); }
+/* Generic clickable affordance for non-card elements (stat blocks, chips). */
+.clickable { cursor: pointer; }
+.stat-block.clickable:active { transform: scale(.97); }
+.att-date-chip.clickable:active { opacity: .7; }
 
 /* ── Start rehearsal prompt ─────────────────────────────────────────────── */
 .start-rehearsal-btn {
