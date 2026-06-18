@@ -407,7 +407,8 @@ function showBrandSettingsModal() {
         ['marks',      'Marks / Student Feedback', 'Log positive and mistake marks during rehearsals'],
         ['songs',      'Songs', 'Music memorization with pass/fail tracking'],
         ['stats',      'Stats / Leaderboard', 'Rankings built from marks (needs Marks on)'],
-      ].map(([key, label, desc]) => {
+        ['drill',      'Drill / Field Chart', 'View Pyware .3dj field charts (directors only)', true],
+      ].map(([key, label, desc, adminOnly]) => {
         const featOn   = STATE.features?.[key] !== false;
         const portalOn = STATE.portalVisible?.[key] !== false;
         return `
@@ -421,10 +422,11 @@ function showBrandSettingsModal() {
               <span style="display:block;font-size:.75rem;color:var(--text-muted)">${desc}</span>
             </span>
           </label>
+          ${adminOnly ? '' : `
           <label class="feat-portal-lbl${!featOn ? ' feat-portal-lbl-dim' : ''}" id="feat-portal-lbl-${key}">
             <input type="checkbox" id="feat-portal-${key}" ${portalOn ? 'checked' : ''}${!featOn ? ' disabled' : ''}>
             <span>Show to students</span>
-          </label>
+          </label>`}
         </div>`;
       }).join('')}
     </div>
@@ -629,6 +631,7 @@ async function saveBrandSettings() {
     marks:      readFeat('marks'),
     songs:      readFeat('songs'),
     stats:      readFeat('stats'),
+    drill:      readFeat('drill'),
   };
   const portalVisible = {
     attendance: readPortal('attendance'),
