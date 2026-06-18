@@ -591,11 +591,11 @@ function viewRehearsal(rid) {
                 <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
               </svg>
             </button>
-            <button class="inst-chip tracker-drill-btn${_drillSelectedNums.length ? ' tracker-drill-btn--active' : ''}" title="Load Pyware Drill" onclick="openDrillPicker()">
+            ${featureOn('drill') ? `<button class="inst-chip tracker-drill-btn${_drillSelectedNums.length ? ' tracker-drill-btn--active' : ''}" title="Load Pyware Drill" onclick="openDrillPicker()">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;display:block">
                 <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
               </svg>
-            </button>` })}
+            </button>` : ''}` })}
           ${_drillSelectedNums.length ? `
             <div class="drill-selection-banner">
               <span class="drill-selection-label">

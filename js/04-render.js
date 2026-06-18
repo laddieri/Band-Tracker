@@ -120,7 +120,7 @@ function render() {
     if (match === 'songs')          t.style.display = featureOn('songs') ? '' : 'none';
     if (match === 'leaderboard')    t.style.display = (STATE.isAdmin && featureOn('stats')) ? '' : 'none';
     if (match === 'dashboard')      t.style.display = (STATE.isAdmin && featureOn('marks')) ? '' : 'none';
-    if (match === 'drill')          t.style.display = STATE.isAdmin ? '' : 'none';
+    if (match === 'drill')          t.style.display = (STATE.isAdmin && featureOn('drill')) ? '' : 'none';
   });
 
   // If the current view belongs to a disabled feature, bounce to a safe view.

@@ -63,6 +63,7 @@ async function startListeners() {
         marks:      d.features?.marks      !== false,
         songs:      d.features?.songs      !== false,
         stats:      d.features?.stats      !== false,
+        drill:      d.features?.drill      !== false,
       };
       STATE.activeStudentFields        = Array.isArray(d.activeStudentFields) ? d.activeStudentFields : null;
       STATE.customStudentFields        = Array.isArray(d.customStudentFields)  ? d.customStudentFields  : [];

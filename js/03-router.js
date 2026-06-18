@@ -485,6 +485,7 @@ function featureOn(name) {
     case 'marks':      return f.marks      !== false;
     case 'songs':      return f.songs      !== false;
     case 'stats':      return f.stats !== false && f.marks !== false;
+    case 'drill':      return f.drill      !== false;
     default:           return true;
   }
 }
@@ -514,4 +515,5 @@ const VIEW_FEATURE = {
   'leaderboard':    'stats',
   'songs':          'songs',
   'song':           'songs',
+  'drill':          'drill',
 };

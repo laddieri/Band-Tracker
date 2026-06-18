@@ -147,7 +147,7 @@ const STATE = {
   bandLogo:                   '',
   // Band-wide feature toggles (default on; missing = on, so existing bands keep
   // everything). 'stats' also requires 'marks' — see featureOn().
-  features: { attendance: true, marks: true, songs: true, stats: true },
+  features: { attendance: true, marks: true, songs: true, stats: true, drill: true },
   activeStudentFields:        null,
   customStudentFields:        [],
   autoMarks:                  null,
