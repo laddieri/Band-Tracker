@@ -98,6 +98,26 @@ const auth = firebase.auth();
 const db   = firebase.firestore();
 db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
 
+// Keep directors/students signed in across app restarts. LOCAL is already the
+// web SDK default, but set it explicitly so the session is never downgraded to
+// in-memory/session persistence (which would log users out when the PWA is
+// closed). Must resolve before the first sign-in attempt.
+auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+  .catch(e => console.error('auth setPersistence failed:', e));
+
+// Ask the browser to make our storage durable. Firebase Auth keeps the login
+// session (and Firestore its cache) in IndexedDB; without a persistence grant
+// Chrome treats it as "best-effort" and may evict it under storage pressure,
+// which silently logs the user out — the common cause of installed-PWA logouts.
+// Safe no-op where unsupported; never throws into app code.
+if (navigator.storage?.persist) {
+  navigator.storage.persisted()
+    .then(already => already ? true : navigator.storage.persist())
+    .then(granted => { if (!granted) console.warn('Persistent storage not granted; session may be evicted under storage pressure.'); })
+    .catch(() => {});
+}
+
+
 // ── State ─────────────────────────────────────────────────────────────────────
 
 const STATE = {
