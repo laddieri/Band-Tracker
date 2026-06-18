@@ -3216,6 +3216,7 @@ html, body {
 .drill-map-list { display:flex; flex-direction:column; gap:6px; max-height:42vh; overflow-y:auto; margin-bottom:6px; }
 .drill-map-row { display:flex; align-items:center; gap:8px; }
 .drill-map-pos { font-size:0.82rem; font-weight:600; color:var(--text-muted); min-width:72px; flex-shrink:0; }
+.drill-map-auto { display:inline-block; margin-left:5px; font-size:0.6rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--primary); background:var(--primary-bg); padding:1px 5px; border-radius:8px; vertical-align:middle; }
 .drill-map-select { flex:1; font-size:0.85rem; }
 
 /* Drill field chart */
