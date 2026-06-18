@@ -56,6 +56,7 @@ function navigate(view, params = {}, _fromHistory = false) {
     _attTabFilter       = _mkFilter('absences', 'desc');
     _attTabRecentStatus = '';
   }
+  if (view === 'drill' && _view !== 'drill') _drillZoomReset(); // start the chart at fit
   _view   = view;
   _params = params;
   if (!_fromHistory) {

@@ -47,7 +47,8 @@ function refreshAppData() {
   };
 
   main.addEventListener('touchstart', e => {
-    if (e.touches.length !== 1 || main.scrollTop > 0) { armed = false; return; }
+    // The drill chart stage owns its own pinch/pan gesture — don't pull-to-refresh over it.
+    if (e.touches.length !== 1 || main.scrollTop > 0 || e.target.closest('.drill-fs-svg-wrap')) { armed = false; return; }
     armed = true; pulling = false; dist = 0;
     startY = e.touches[0].clientY;
     startX = e.touches[0].clientX;

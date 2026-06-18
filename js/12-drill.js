@@ -514,7 +514,7 @@ function _drillChartHtml(fs = false) {
         <button class="btn btn-sm btn-secondary" onclick="drillChartFlip()" title="Flip facing">⇅</button>
         <button class="btn btn-sm btn-secondary" onclick="drillChartCollapse()" title="Exit fullscreen" style="margin-left:4px">&#x2715;</button>
       </div>
-      <div class="drill-fs-svg-wrap">${svgField}<div class="drill-fs-axis" id="drill-fs-axis"></div></div>
+      <div class="drill-fs-svg-wrap">${svgField}<div class="drill-fs-axis"></div></div>
       <div class="drill-fs-bottom">
         ${legend ? `<div class="drill-chart-legend" style="flex:1">${legend}</div>` : '<div></div>'}
         <button class="btn btn-primary btn-sm" onclick="applyDrillSelection()">Apply Selection</button>
@@ -552,8 +552,7 @@ function _drillChartRefresh() {
   const fs = document.getElementById('drill-chart-fs');
   if (fs && !fs.classList.contains('hidden')) {
     fs.innerHTML = _drillChartSelect ? _drillChartHtml(true) : _drillViewFsHtml();
-    _drillZoomSetup();
-    _drillApplyZoom(); // keep the current pan/zoom across re-renders (e.g. tap-to-select)
+    _drillZoomSetup(fs.querySelector('.drill-fs-svg-wrap')); // keeps current pan/zoom
     return;
   }
   const root = document.getElementById('drill-chart-root');
@@ -567,7 +566,7 @@ function drillChartExpand() {
   fs.innerHTML = _drillChartSelect ? _drillChartHtml(true) : _drillViewFsHtml();
   fs.classList.remove('hidden');
   document.addEventListener('keydown', _drillChartFsKeydown);
-  _drillZoomSetup();
+  _drillZoomSetup(fs.querySelector('.drill-fs-svg-wrap'));
 }
 
 function drillChartCollapse() {
@@ -575,10 +574,14 @@ function drillChartCollapse() {
   if (!fs || fs.classList.contains('hidden')) return;
   _drillZoomReset();
   fs.classList.add('hidden');
+  fs.innerHTML = '';
   document.removeEventListener('keydown', _drillChartFsKeydown);
-  // Sync the inline Drill-tab chart with any set/flip/trace changes made in
-  // fullscreen view mode.
-  if (!_drillChartSelect && document.getElementById('drill-view-root')) _drillViewRerender();
+  // Returning to the Drill tab: rebuild its inline stage (and re-bind zoom to
+  // it) so set/flip/trace changes made in the overlay carry over.
+  if (!_drillChartSelect && document.getElementById('drill-view-root')) {
+    _drillZoomReset();
+    _drillViewRerender();
+  }
 }
 
 // Pinch-to-zoom + single-finger pan for the fullscreen chart.
@@ -603,48 +606,54 @@ function _drillZoomReset() {
   _drillPanY = 0;
 }
 
-function _drillZoomSetup() {
-  const wrap = document.querySelector('.drill-fs-svg-wrap');
+// The chart container (overlay or inline Drill-tab stage) currently being
+// pinch-zoomed/panned. Lets the same gesture + axis code drive either one.
+let _drillZoomWrap = null;
+
+function _drillZoomSetup(wrap) {
+  wrap = wrap || document.querySelector('.drill-fs-svg-wrap');
   if (!wrap) return;
+  _drillZoomWrap = wrap;
   wrap.addEventListener('touchstart', _drillOnTouchStart, { passive: false });
   wrap.addEventListener('touchmove',  _drillOnTouchMove,  { passive: false });
   wrap.addEventListener('touchend',   _drillOnTouchEnd,   { passive: false });
+  _drillApplyZoom(wrap);
 }
 
 function _drillApplyZoom(wrap) {
-  const svg = (wrap || document.querySelector('.drill-fs-svg-wrap'))?.querySelector('svg');
+  wrap = wrap || _drillZoomWrap;
+  const svg = wrap?.querySelector('svg');
   if (!svg) return;
-  // Clamp pan so SVG always covers the wrap viewport.
-  const wW = svg.parentElement.clientWidth;
-  const wH = svg.parentElement.clientHeight;
-  const sW = svg.clientWidth || wW;   // natural width at scale=1 ≈ wrap width
-  const sH = svg.clientHeight || wH;
-  const maxX = 0;
-  const minX = Math.min(0, wW - sW * _drillZoomScale);
-  const maxY = 0;
-  const minY = Math.min(0, wH - sH * _drillZoomScale);
-  _drillPanX = Math.max(minX, Math.min(maxX, _drillPanX));
-  _drillPanY = Math.max(minY, Math.min(maxY, _drillPanY));
+  const wW = wrap.clientWidth, wH = wrap.clientHeight;
+  const sW = (svg.clientWidth  || wW) * _drillZoomScale;
+  const sH = (svg.clientHeight || wH) * _drillZoomScale;
+  // Centre on any axis with slack (content smaller than the viewport); clamp to
+  // the edges on any axis that overflows so panning can't expose dead space.
+  _drillPanX = (wW - sW) > 0 ? (wW - sW) / 2 : Math.max(wW - sW, Math.min(0, _drillPanX));
+  _drillPanY = (wH - sH) > 0 ? (wH - sH) / 2 : Math.max(wH - sH, Math.min(0, _drillPanY));
   svg.style.transformOrigin = '0 0';
   svg.style.transform = `translate(${_drillPanX}px,${_drillPanY}px) scale(${_drillZoomScale})`;
-  _drillRenderFsAxis(svg);
+  _drillRenderFsAxis(wrap);
 }
 
-// Sticky yard-number ruler for the zoomed fullscreen chart: pins a row to both
-// the top and bottom screen edges and tracks the visible yard lines, so a yard
-// reference stays on screen no matter how far you pan/zoom.
-function _drillRenderFsAxis(svg) {
-  const axis = document.getElementById('drill-fs-axis');
+// Sticky yard-number ruler for the zoomed chart: pins a row to both the top and
+// bottom edges and tracks the visible yard lines, so a yard reference stays on
+// screen no matter how far you pan/zoom.
+function _drillRenderFsAxis(wrap) {
+  wrap = wrap || _drillZoomWrap;
+  const axis = wrap?.querySelector('.drill-fs-axis');
   if (!axis) return;
-  const wrap = axis.parentElement;
-  svg = svg || wrap.querySelector('svg');
+  const svg = wrap.querySelector('svg');
   if (!svg) { axis.innerHTML = ''; return; }
-  // Only needed once zoomed in — at fit, the chart's own numbers are visible.
-  if (_drillZoomScale <= 1.05) { axis.style.display = 'none'; axis.innerHTML = ''; return; }
+  const wW = wrap.clientWidth, wH = wrap.clientHeight;
+  // Only needed when the field is taller than the viewport (its own top/bottom
+  // numbers have scrolled off); otherwise both rows are already on screen.
+  if ((svg.clientHeight || wH) * _drillZoomScale <= wH + 1) {
+    axis.style.display = 'none'; axis.innerHTML = ''; return;
+  }
   axis.style.display = '';
 
   const { SCALE, ML, SW } = _DRILL_GEOM;
-  const wW = wrap.clientWidth;
   const k  = wW / SW;                 // px per svg-unit at scale 1 (svg is width:100%)
   const s  = _drillZoomScale;
   const toScreenX = v => _drillPanX + v * k * s;
@@ -836,7 +845,7 @@ function viewDrill() {
   if (!STATE.isAdmin) return `<div class="empty-state"><p>Directors only.</p></div>`;
   if (!_drillData || !_drillPages || !_drillPages.length) {
     return `
-      <div class="empty-state" style="padding:48px 24px">
+      <div class="empty-state" style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px">
         <div class="empty-icon">🚩</div>
         <p>No drill loaded yet.</p>
         <p style="color:var(--text-muted);max-width:300px;margin:6px auto 0">
@@ -852,48 +861,48 @@ function viewDrill() {
 function _drillViewInner() {
   const idx   = _drillCurrentSet;
   const total = _drillPages.length;
-  const pg    = _drillPages[idx];
-  const legend = _drillLegendHtml();
 
   return `
-    <div class="drill-toolbar">
-      <div class="drill-search-wrap">
+    <div class="drill-view-bar">
+      <div class="drill-search-wrap${_drillSearchQuery.trim() ? ' has-q' : ''}" id="drill-search-wrap">
         <input class="drill-search form-input" type="search" placeholder="Find a performer or student…"
                value="${esc(_drillSearchQuery)}" autocomplete="off"
                oninput="drillViewSearch(this.value)">
-        ${_drillTraceLabel ? `<button class="drill-search-clear" onclick="drillViewClearSearch()" aria-label="Clear">✕</button>` : ''}
+        <button class="drill-search-clear" onclick="drillViewClearSearch()" aria-label="Clear">✕</button>
       </div>
-      <div class="drill-tool-btns">
-        <button class="btn btn-sm btn-secondary" onclick="drillViewCycleLabels()">${esc(_DRILL_LABEL_TEXT[_drillLabelMode])}</button>
-        <button class="btn btn-sm btn-secondary" onclick="drillViewFlip()" title="Flip facing">⇅</button>
-        <button class="btn btn-sm btn-secondary" onclick="drillViewExpand()" title="Fullscreen">⤢</button>
-      </div>
+      <button class="btn btn-sm btn-secondary" onclick="drillViewCycleLabels()" title="Dot labels">${esc(_DRILL_LABEL_TEXT[_drillLabelMode])}</button>
+      <button class="btn btn-sm btn-secondary" onclick="drillViewFlip()" title="Flip facing">⇅</button>
+      <button class="btn btn-sm btn-secondary" onclick="drillViewExpand()" title="Hide header &amp; tabs">⤢</button>
     </div>
 
-    <div id="drill-trace-hint" class="drill-trace-hint${_drillTraceLabel ? '' : ' drill-trace-hint--muted'}">
-      ${_drillTraceLabel
-        ? `Tracing <strong>${esc(_drillTraceDisplay(_drillTraceLabel))}</strong> across all sets · tap a dot for details`
-        : `Tap a performer for their coordinate · search to trace a path`}
+    <div class="drill-view-strip">
+      <button class="drill-nav-arrow" onclick="drillViewNav(-1)"${idx<=0?' disabled':''} aria-label="Previous set">&#8592;</button>
+      <div class="drill-set-strip" id="drill-set-strip">${_drillSetStripHtml()}</div>
+      <button class="drill-nav-arrow" onclick="drillViewNav(1)"${idx>=total-1?' disabled':''} aria-label="Next set">&#8594;</button>
     </div>
 
-    <div class="drill-chart-nav">
-      <button class="btn btn-sm btn-secondary" onclick="drillViewNav(-1)"${idx<=0?' disabled':''}>&#8592;</button>
-      <span class="drill-chart-setlabel">Set ${idx + 1} <span style="font-weight:400;color:var(--text-muted)">of ${total} · count ${pg.count}</span></span>
-      <button class="btn btn-sm btn-secondary" onclick="drillViewNav(1)"${idx>=total-1?' disabled':''}>&#8594;</button>
-    </div>
-
-    <div class="drill-set-strip" id="drill-set-strip">${_drillSetStripHtml()}</div>
-
-    <div class="drill-chart-wrap" id="drill-svg-wrap">
-      ${_drillFieldSvg(pg.performers, { labelMode: _drillLabelMode, traceLabel: _drillTraceLabel, selectMode: false })}
-    </div>
-
-    ${legend ? `<div class="drill-chart-legend">${legend}</div>` : ''}
+    <div class="drill-fs-svg-wrap drill-view-stage" id="drill-stage">${_drillStageInner()}</div>
 
     <div class="drill-view-foot">
-      <span class="drill-view-file">${_drillFileName ? esc(_drillFileName) : 'Drill file'}</span>
-      <span style="font-size:.72rem;color:var(--text-muted)">Front sideline at ${_drillFlipV ? 'top' : 'bottom'}</span>
+      <span class="drill-foot-main" id="drill-foot-main">${esc(_drillFootText())}</span>
+      <span class="drill-view-file">${_drillFileName ? esc(_drillFileName) : ''}</span>
     </div>`;
+}
+
+// SVG + sticky-axis overlay for the zoomable stage (rebuilt on its own so the
+// search box above it keeps focus while typing).
+function _drillStageInner() {
+  return _drillFieldSvg(_drillPages[_drillCurrentSet].performers,
+    { fs: true, labelMode: _drillLabelMode, traceLabel: _drillTraceLabel, selectMode: false })
+    + `<div class="drill-fs-axis"></div>`;
+}
+
+function _drillFootText() {
+  const pg = _drillPages[_drillCurrentSet];
+  const base = `Set ${_drillCurrentSet + 1}/${_drillPages.length} · count ${pg.count}`;
+  return _drillTraceLabel
+    ? `${base} · tracing ${_drillTraceDisplay(_drillTraceLabel)}`
+    : `${base} · tap a performer for details`;
 }
 
 function _drillSetStripHtml() {
@@ -902,15 +911,30 @@ function _drillSetStripHtml() {
   ).join('');
 }
 
-function _drillViewRerender() {
-  const root = document.getElementById('drill-view-root');
-  if (root) { root.innerHTML = _drillViewInner(); _drillScrollSetChipIntoView(); }
+// Called by render() after the Drill tab's HTML is in the DOM: wire up
+// pinch-zoom/pan on the stage (re-applying the current zoom, so data-driven
+// re-renders don't reset the view).
+function _drillViewSetup() {
+  const stage = document.getElementById('drill-stage');
+  if (!stage) return;
+  _drillZoomSetup(stage);
+  _drillScrollSetChipIntoView();
 }
 
+function _drillViewRerender() {
+  const root = document.getElementById('drill-view-root');
+  if (!root) return;
+  root.innerHTML = _drillViewInner();
+  _drillViewSetup();
+}
+
+// Rebuild only the stage (keeps the search box focused) and re-apply zoom.
 function _drillViewRenderSvg() {
-  const wrap = document.getElementById('drill-svg-wrap');
-  if (wrap) wrap.innerHTML = _drillFieldSvg(_drillPages[_drillCurrentSet].performers,
-    { labelMode: _drillLabelMode, traceLabel: _drillTraceLabel, selectMode: false });
+  const stage = document.getElementById('drill-stage');
+  if (!stage) return;
+  stage.innerHTML = _drillStageInner();
+  _drillZoomWrap = stage;
+  _drillApplyZoom(stage);
 }
 
 function _drillScrollSetChipIntoView() {
@@ -943,21 +967,24 @@ function drillViewSearch(q) {
   _drillSearchQuery = q;
   _drillTraceLabel = _drillResolveLabel(q);
   _drillViewRenderSvg();
-  const hint = document.getElementById('drill-trace-hint');
-  if (!hint) return;
-  if (_drillTraceLabel) {
-    hint.className = 'drill-trace-hint';
-    hint.innerHTML = `Tracing <strong>${esc(_drillTraceDisplay(_drillTraceLabel))}</strong> across all sets · tap a dot for details`;
-  } else {
-    hint.className = 'drill-trace-hint drill-trace-hint--muted';
-    hint.textContent = q.trim() ? `No performer matches "${q.trim()}"` : 'Tap a performer for their coordinate · search to trace a path';
+  const wrap = document.getElementById('drill-search-wrap');
+  if (wrap) wrap.classList.toggle('has-q', !!q.trim());
+  const foot = document.getElementById('drill-foot-main');
+  if (foot) {
+    foot.textContent = (q.trim() && !_drillTraceLabel) ? `No performer matches "${q.trim()}"` : _drillFootText();
   }
 }
 
 function drillViewClearSearch() {
   _drillSearchQuery = '';
   _drillTraceLabel = null;
-  _drillViewRerender();
+  _drillViewRenderSvg();
+  const wrap = document.getElementById('drill-search-wrap');
+  if (wrap) wrap.classList.remove('has-q');
+  const input = wrap && wrap.querySelector('.drill-search');
+  if (input) input.value = '';
+  const foot = document.getElementById('drill-foot-main');
+  if (foot) foot.textContent = _drillFootText();
 }
 
 function drillViewExpand() {
@@ -992,7 +1019,7 @@ function _drillViewFsHtml() {
       <button class="btn btn-sm btn-secondary" onclick="drillChartFlip()" title="Flip facing">⇅</button>
       <button class="btn btn-sm btn-secondary" onclick="drillChartCollapse()" title="Exit fullscreen" style="margin-left:4px">&#x2715;</button>
     </div>
-    <div class="drill-fs-svg-wrap">${svgField}<div class="drill-fs-axis" id="drill-fs-axis"></div></div>
+    <div class="drill-fs-svg-wrap">${svgField}<div class="drill-fs-axis"></div></div>
     <div class="drill-fs-bottom">
       ${readout || (legend ? `<div class="drill-chart-legend" style="flex:1">${legend}</div>` : '<div></div>')}
     </div>`;
