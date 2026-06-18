@@ -2846,7 +2846,7 @@ html, body {
 .att-all-marked { text-align: center; padding: 16px 0; color: var(--text-muted); font-size: 0.88rem; }
 
 /* ── Take Attendance by Block ──────────────────────────────────────────────── */
-.blk-att-screen { padding-bottom: 8px; }
+.blk-att-screen { padding-bottom: 0; }
 .blk-att-hdr {
   display: flex; align-items: baseline; justify-content: space-between;
   margin-bottom: 4px;
@@ -2880,12 +2880,24 @@ html, body {
 .blk-att-stu.blk-att-absent .blk-att-stu-name { color: #fff; }
 .blk-att-stu.blk-att-absent .blk-att-stu-pos { background: rgba(255,255,255,.25); color: #fff; }
 
-/* Footer action row (inline, sits above the bottom nav) */
+/* Footer action row — sticks to the bottom of the scroll area so the
+   "Next column" button stays visible while scrolling up the list. The
+   negative side margins let its background/border span the full width. */
 .blk-att-footer {
-  display: flex; gap: 8px;
-  margin-top: 20px;
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 8px;
+  margin: 16px -16px 0;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  background: var(--bg);
+  border-top: 1.5px solid var(--border);
+  z-index: 5;
 }
 .blk-att-next { flex: 1; font-size: 1rem; font-weight: 700; padding: 14px; }
+
+/* Drop the bottom padding so the sticky footer pins flush above the nav. */
+#main-content.mc-block-att { padding-bottom: 0; }
 .blk-att-back { flex: 0 0 auto; padding: 14px 16px; }
 
 /* Review list */

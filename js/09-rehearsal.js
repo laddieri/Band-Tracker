@@ -1222,8 +1222,11 @@ function _blockAttGroups(rid) {
     const col = String(s.column || '').toUpperCase().trim();
     (byCol[col] = byCol[col] || []).push(s);
   }
+  // Rows are ordered high → low so row 1 sits at the BOTTOM of the screen; the
+  // column screen opens scrolled to the bottom and the director scrolls up to
+  // reach higher row numbers (mirrors looking down a file from the front).
   const byRow = list => list.slice().sort((a, b) =>
-    (+a.row || 0) - (+b.row || 0) || (a.name || '').localeCompare(b.name || ''));
+    (+b.row || 0) - (+a.row || 0) || (a.name || '').localeCompare(b.name || ''));
   const groups = [];
   for (const c of COLUMNS) if (byCol[c]?.length) groups.push({ key: c, label: `Column ${c}`, students: byRow(byCol[c]) });
   // Any non-standard column letters, then the unassigned group.
@@ -1238,6 +1241,14 @@ function startBlockAttendance(rid) {
   _blockAttIdx    = 0;
   _blockAttReview = false;
   navigate('attendance-block', { rid, from: _params.from });
+  // navigate() scrolls to the top; jump to the bottom so row 1 is in view.
+  requestAnimationFrame(() => _scrollBlockAttBottom());
+}
+
+// Column screens open at the bottom (row 1) since rows are ordered high → low.
+function _scrollBlockAttBottom() {
+  const mc = document.getElementById('main-content');
+  if (mc) mc.scrollTop = mc.scrollHeight;
 }
 
 function viewAttendanceBlock(rid) {
@@ -1352,8 +1363,9 @@ function blockAttNext(rid) {
   if (_blockAttIdx >= groups.length - 1) _blockAttReview = true;
   else _blockAttIdx++;
   _reRenderBlockAtt(rid);
+  // The review screen reads top-down; column screens open at the bottom (row 1).
   const mc = document.getElementById('main-content');
-  if (mc) mc.scrollTop = 0;
+  if (mc) mc.scrollTop = _blockAttReview ? 0 : mc.scrollHeight;
 }
 
 function blockAttBack(rid) {
@@ -1361,8 +1373,8 @@ function blockAttBack(rid) {
   else if (_blockAttIdx > 0) _blockAttIdx--;
   else { navigate('attendance', { rid, from: _params.from }); return; }
   _reRenderBlockAtt(rid);
-  const mc = document.getElementById('main-content');
-  if (mc) mc.scrollTop = 0;
+  // Back always lands on a column screen → open it at the bottom (row 1).
+  _scrollBlockAttBottom();
 }
 
 function blockAttSubmit(rid) {
