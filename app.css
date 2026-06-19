@@ -3263,6 +3263,19 @@ html, body {
 #main-content.mc-drill { padding:0; overflow:hidden; }
 .drill-view { display:flex; flex-direction:column; height:100%; min-height:0; }
 
+/* Active-drill switcher — prominent on the tab so changing drills is one tap. */
+.drill-switcher {
+  display:flex; align-items:center; gap:10px; width:auto; margin:8px 10px 0; padding:8px 12px;
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--r-sm);
+  cursor:pointer; text-align:left; color:var(--text); flex-shrink:0;
+}
+.drill-switcher:active { background:var(--surface-alt); }
+.drill-switcher-ico { font-size:1.1rem; flex-shrink:0; }
+.drill-switcher-text { flex:1; min-width:0; }
+.drill-switcher-name { display:block; font-weight:700; font-size:0.95rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.drill-switcher-meta { display:block; font-size:0.7rem; color:var(--text-muted); margin-top:1px; }
+.drill-switcher-caret { flex-shrink:0; color:var(--text-muted); font-size:0.9rem; }
+
 .drill-view-bar { display:flex; gap:6px; align-items:center; padding:8px 10px 6px; flex-shrink:0; }
 .drill-view-bar .btn { white-space:nowrap; flex-shrink:0; }
 .drill-search-wrap { position:relative; flex:1; min-width:0; }
@@ -3321,6 +3334,17 @@ html, body {
 .drill-lib-sub { font-size:0.74rem; color:var(--text-muted); margin-top:2px; }
 .drill-lib-act { flex:0 0 auto; width:42px; border:none; border-left:1px solid var(--border); background:var(--surface); color:var(--text-muted); cursor:pointer; font-size:0.95rem; }
 .drill-lib-act--danger { color:var(--danger); }
+
+/* Dot-labels segmented control in the Field Chart Options menu */
+.drill-opt-section { margin-top:10px; }
+.drill-opt-label { font-size:0.78rem; font-weight:600; color:var(--text-muted); margin-bottom:6px; }
+.drill-lblseg-group { display:flex; gap:0; border:1px solid var(--border); border-radius:var(--r-sm); overflow:hidden; }
+.drill-lblseg {
+  flex:1; padding:9px 6px; border:none; border-left:1px solid var(--border);
+  background:var(--surface); color:var(--text); font-size:0.82rem; font-weight:600; cursor:pointer;
+}
+.drill-lblseg:first-child { border-left:none; }
+.drill-lblseg--on { background:var(--primary); color:#fff; }
 
 /* Tapped-performer info panel, docked to the top of the chart so it never hides
    the dot you tapped (which also gets a bold callout on the field). */
