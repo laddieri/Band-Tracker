@@ -3321,3 +3321,20 @@ html, body {
 .drill-lib-sub { font-size:0.74rem; color:var(--text-muted); margin-top:2px; }
 .drill-lib-act { flex:0 0 auto; width:42px; border:none; border-left:1px solid var(--border); background:var(--surface); color:var(--text-muted); cursor:pointer; font-size:0.95rem; }
 .drill-lib-act--danger { color:var(--danger); }
+
+/* Tapped-performer info panel, docked to the top of the chart so it never hides
+   the dot you tapped (which also gets a bold callout on the field). */
+.drill-info-pop {
+  position:absolute; top:6px; left:6px; right:6px; z-index:6; max-width:360px;
+  background:rgba(18,26,18,.96); color:#fff; border:1px solid rgba(255,255,255,.18);
+  border-radius:var(--r-sm); padding:8px 32px 9px 11px; box-shadow:0 4px 16px rgba(0,0,0,.45);
+  pointer-events:auto;
+}
+.drill-info-pop-x {
+  position:absolute; top:6px; right:6px; width:22px; height:22px; border:none;
+  background:rgba(255,255,255,.14); color:#fff; border-radius:50%; cursor:pointer; font-size:.7rem; line-height:1;
+}
+.drill-info-pop-name { font-weight:700; font-size:.92rem; }
+.drill-info-pop-meta { font-size:.72rem; color:#c8d4c8; margin-top:1px; }
+.drill-info-pop-coord { font-size:.78rem; color:#ffd23f; font-weight:600; margin-top:5px; line-height:1.4; }
+.drill-info-pop-actions { display:flex; gap:6px; margin-top:9px; }

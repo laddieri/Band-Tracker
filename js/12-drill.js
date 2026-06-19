@@ -183,7 +183,7 @@ function _drillSyncActive() {
     if (_activeDrillLoadedId !== null) {
       _activeDrillLoadedId = null;
       _drillData = null; _drillPages = null; _drillFileName = null; _drillFlipV = false;
-      _drillCurrentSet = 0; _drillTraceLabel = null; _drillSearchQuery = '';
+      _drillCurrentSet = 0; _drillTraceLabel = null; _drillSelLabel = null; _drillSearchQuery = '';
     }
     return;
   }
@@ -206,7 +206,7 @@ function _drillLoadPayload(id) {
     _drillPages    = p.pages || [];
     _drillFlipV    = !!meta.flipV;
     _drillFileName = meta.name || meta.fileName || null;
-    _drillCurrentSet = 0; _drillTraceLabel = null; _drillSearchQuery = '';
+    _drillCurrentSet = 0; _drillTraceLabel = null; _drillSelLabel = null; _drillSearchQuery = '';
     _activeDrillLoadedId = id;
     render();
   }).catch(e => console.error('drill payload load failed:', e));
@@ -238,7 +238,7 @@ function _onDrillFileLoaded(file) {
       _activeDrillLoadedId = ref.id;
       _drillData = parsed.sections; _drillPages = parsed.pages;
       _drillFileName = meta.name; _drillFlipV = false;
-      _drillTraceLabel = null; _drillSearchQuery = ''; _drillCurrentSet = 0;
+      _drillTraceLabel = null; _drillSelLabel = null; _drillSearchQuery = ''; _drillCurrentSet = 0;
 
       if (_view === 'drill')                                  render();
       else if (document.getElementById('drill-library-modal')) showDrillLibraryModal();
@@ -467,7 +467,7 @@ const _DRILL_GEOM = (() => {
 //   traceLabel — draw this performer's path across every set + highlight them
 //   selectMode — tap toggles selection (tracker) vs opens an info popup (viewer)
 function _drillFieldSvg(positions, opts = {}) {
-  const { fs = false, labelMode = 0, traceLabel = null, selectMode = false, fsView = false } = opts;
+  const { fs = false, labelMode = 0, traceLabel = null, selectMode = false, fsView = false, focusLabel = null } = opts;
 
   // 100 yards = 160 steps wide × 84 steps deep; coords are already in steps
   // (stepsX from the west goal, stepsY off the front sideline).
@@ -521,19 +521,30 @@ function _drillFieldSvg(positions, opts = {}) {
 
   // Performers (+ optional labels)
   const mapping = labelMode === 2 ? drillLabelMap() : {};
-  let dots = '', labels = '';
+  let dots = '', labels = '', focus = '';
   for (const p of positions) {
     if (p.stepsX < -10 || p.stepsX > 170 || p.stepsY < -5 || p.stepsY > 90) continue; // safety
     const sx = fx(p.stepsX), sy = fy(p.stepsY);
     const col     = secColor[p.section] || '#888';
     const sel     = selectMode && _drillChecked.has(p.label);
     const isTrace = traceLabel && p.label === traceLabel;
+    const isFocus = focusLabel && p.label === focusLabel;
     const tap     = selectMode ? `drillChartToggle('${esc(p.label)}')`
                   : fsView     ? `drillFsTapPerf('${esc(p.label)}')`
                   :              `drillShowPerfInfo('${esc(p.label)}')`;
     dots += `<circle cx="${sx}" cy="${sy}" r="7" fill="transparent" onclick="${tap}" style="cursor:pointer"/>`;
     if (sel || isTrace) dots += `<circle cx="${sx}" cy="${sy}" r="6.5" fill="none" stroke="${isTrace ? '#ffd23f' : '#fff'}" stroke-width="1.8"/>`;
-    dots += `<circle cx="${sx}" cy="${sy}" r="${(sel||isTrace)?'4.5':'3'}" fill="${col}" pointer-events="none"/>`;
+    dots += `<circle cx="${sx}" cy="${sy}" r="${(sel||isTrace||isFocus)?'4.5':'3'}" fill="${isFocus ? '#ffd23f' : col}" pointer-events="none"/>`;
+    if (isFocus) {
+      // A tall, unmistakable callout drawn on top so you can always tell which
+      // dot was tapped — even when an info panel overlaps the field.
+      const y  = parseFloat(sy);
+      const ty = (y - 13).toFixed(1);
+      focus += `<line x1="${sx}" y1="${(y-4).toFixed(1)}" x2="${sx}" y2="${ty}" stroke="#fff" stroke-width="1.1"/>`
+            +  `<circle cx="${sx}" cy="${sy}" r="8.5" fill="none" stroke="#ffd23f" stroke-width="2.2"/>`
+            +  `<circle cx="${sx}" cy="${sy}" r="8.5" fill="none" stroke="#000" stroke-width="0.7"/>`
+            +  `<text x="${sx}" y="${ty}" text-anchor="middle" fill="#111" font-size="6.5" font-weight="700" font-family="sans-serif" pointer-events="none" style="paint-order:stroke;stroke:#ffd23f;stroke-width:6px;stroke-linejoin:round">${esc(p.label)}</text>`;
+    }
     if (labelMode) {
       let txt = p.label;
       if (labelMode === 2) {
@@ -549,7 +560,7 @@ function _drillFieldSvg(positions, opts = {}) {
     <svg viewBox="0 0 ${SW} ${SH}" xmlns="http://www.w3.org/2000/svg" style="display:block;${fs ? 'width:100%;height:auto' : `width:${SW}px;max-width:100%`}">
       <rect x="${ML}" y="${MT}" width="${FW}" height="${FH}" fill="#1f5c1f"/>
       <rect x="${ML}" y="${MT}" width="${FW}" height="${FH}" fill="none" stroke="#fff" stroke-width="1.2"/>
-      ${lines}${trace}${dots}${labels}
+      ${lines}${trace}${dots}${labels}${focus}
       <text x="${(ML-3)}" y="${fy(0)}" text-anchor="end" fill="#777" font-size="7" font-family="sans-serif" dominant-baseline="middle">F</text>
       <text x="${(ML-3)}" y="${fy(84)}" text-anchor="end" fill="#777" font-size="7" font-family="sans-serif" dominant-baseline="middle">B</text>
     </svg>`;
@@ -745,7 +756,11 @@ function _drillRenderFsAxis(wrap) {
   axis.innerHTML = html;
 }
 
+let _drillTouchIgnore = false; // touch started on the info panel — let it click through
+
 function _drillOnTouchStart(e) {
+  if (e.target.closest && e.target.closest('.drill-info-pop')) { _drillTouchIgnore = true; return; }
+  _drillTouchIgnore = false;
   e.preventDefault();
   const wrap = e.currentTarget;
   const rect = wrap.getBoundingClientRect();
@@ -772,6 +787,7 @@ function _drillOnTouchStart(e) {
 }
 
 function _drillOnTouchMove(e) {
+  if (_drillTouchIgnore) return;
   e.preventDefault();
   const wrap = e.currentTarget;
   if (e.touches.length >= 2 && _drillPinchInitDist) {
@@ -793,6 +809,7 @@ function _drillOnTouchMove(e) {
 }
 
 function _drillOnTouchEnd(e) {
+  if (_drillTouchIgnore) { if (e.touches.length === 0) _drillTouchIgnore = false; return; }
   if (e.touches.length === 0) {
     // All fingers up. A clean single-finger touch with no real movement is a
     // tap — forward it to the dot underneath (preventDefault suppressed the
@@ -966,12 +983,38 @@ function _drillViewInner() {
     </div>`;
 }
 
-// SVG + sticky-axis overlay for the zoomable stage (rebuilt on its own so the
-// search box above it keeps focus while typing).
+// SVG + sticky-axis overlay (+ the tapped-performer info panel) for the zoomable
+// stage. Rebuilt on its own so the search box above it keeps focus while typing.
 function _drillStageInner() {
   return _drillFieldSvg(_drillPages[_drillCurrentSet].performers,
-    { fs: true, labelMode: _drillLabelMode, traceLabel: _drillTraceLabel, selectMode: false })
-    + `<div class="drill-fs-axis"></div>`;
+    { fs: true, labelMode: _drillLabelMode, traceLabel: _drillTraceLabel, focusLabel: _drillSelLabel, selectMode: false })
+    + `<div class="drill-fs-axis"></div>`
+    + _drillInfoPanelHtml();
+}
+
+// Compact info panel docked to the top of the chart (so it doesn't cover the
+// tapped dot the way a bottom-sheet did). Empty when nothing is selected.
+function _drillInfoPanelHtml() {
+  const label = _drillSelLabel;
+  if (!label || !_drillPages) return '';
+  const p = _drillPages[_drillCurrentSet].performers.find(x => x.label === label);
+  if (!p) return '';
+  const num = drillStudentByLabel(label);
+  const st  = num ? STATE.students[num] : null;
+  const co  = _drillCoord(p.stepsX, p.stepsY);
+  const meta = [`Section ${esc(p.section)}`, st && st.instrument ? esc(normInstrument(st.instrument)) : '']
+    .filter(Boolean).join(' · ') + (st ? '' : ' · <em>not mapped</em>');
+  return `
+    <div class="drill-info-pop">
+      <button class="drill-info-pop-x" onclick="drillCloseInfo()" aria-label="Close">✕</button>
+      <div class="drill-info-pop-name">${esc(label)}${st ? ` · ${esc(st.name || `#${num}`)}` : ''}</div>
+      <div class="drill-info-pop-meta">${meta}</div>
+      <div class="drill-info-pop-coord">${esc(co.lr)}<br>${esc(co.fb)}</div>
+      <div class="drill-info-pop-actions">
+        <button class="btn btn-sm ${_drillTraceLabel === label ? 'btn-secondary' : 'btn-primary'}" onclick="drillTracePerformer('${esc(label)}')">${_drillTraceLabel === label ? 'Tracing ✓' : 'Trace path'}</button>
+        ${st ? `<button class="btn btn-sm btn-secondary" onclick="navigate('student',{num:'${esc(num)}'})">Profile</button>` : ''}
+      </div>
+    </div>`;
 }
 
 function _drillFootText() {
@@ -1084,7 +1127,7 @@ function _drillViewFsHtml() {
   const navLabel = `Set ${idx + 1} <span style="font-weight:400;color:var(--text-muted)">of ${total} · count ${_drillPages[idx].count}</span>`;
   const legend   = _drillLegendHtml();
   const svgField = _drillFieldSvg(_drillPages[idx].performers,
-    { fs: true, labelMode: _drillLabelMode, traceLabel: _drillTraceLabel, selectMode: false, fsView: true });
+    { fs: true, labelMode: _drillLabelMode, traceLabel: _drillTraceLabel, focusLabel: _drillTraceLabel, selectMode: false, fsView: true });
 
   let readout = '';
   if (_drillTraceLabel) {
@@ -1116,38 +1159,23 @@ function drillFsTapPerf(label) {
   _drillChartRefresh();
 }
 
+// Tap a dot in the inline viewer: mark it with a bold on-chart callout and show
+// a compact, non-covering info panel at the top of the chart.
 function drillShowPerfInfo(label) {
   if (!_drillPages) return;
-  const p = _drillPages[_drillCurrentSet].performers.find(x => x.label === label);
-  if (!p) return;
-  const num = drillStudentByLabel(label);
-  const st  = num ? STATE.students[num] : null;
-  const co  = _drillCoord(p.stepsX, p.stepsY);
-  const row = (k, v) => `<div class="drill-info-row"><span>${k}</span><span>${v}</span></div>`;
-  openModal(`
-    <div class="modal-handle"></div>
-    <div class="modal-title">${esc(label)}${st ? ` · ${esc(st.name || `#${num}`)}` : ''}</div>
-    <div class="drill-info-grid">
-      ${row('Section', esc(p.section))}
-      ${st && st.instrument ? row('Instrument', esc(normInstrument(st.instrument))) : ''}
-      ${st && fmtPos(st.column, st.row) ? row('Block spot', esc(fmtPos(st.column, st.row))) : ''}
-      ${!st ? row('Student', `<em style="color:var(--text-muted)">Not mapped</em>`) : ''}
-      ${row('Set', `${_drillCurrentSet + 1} of ${_drillPages.length} · count ${_drillPages[_drillCurrentSet].count}`)}
-      ${row('Left–right', esc(co.lr))}
-      ${row('Front–back', esc(co.fb))}
-    </div>
-    <div class="modal-actions" style="margin-top:14px">
-      <button class="btn btn-secondary" onclick="closeModal()">Close</button>
-      <button class="btn btn-primary" onclick="drillTracePerformer('${esc(label)}')">${_drillTraceLabel === label ? 'Traced ✓' : 'Trace path'}</button>
-      ${st ? `<button class="btn btn-secondary" onclick="closeModal();navigate('student',{num:'${esc(num)}'})">Profile</button>` : ''}
-    </div>
-  `);
+  if (!_drillPages[_drillCurrentSet].performers.some(x => x.label === label)) return;
+  _drillSelLabel = (_drillSelLabel === label) ? null : label; // tap again to dismiss
+  _drillViewRenderSvg();
+}
+
+function drillCloseInfo() {
+  _drillSelLabel = null;
+  _drillViewRenderSvg();
 }
 
 function drillTracePerformer(label) {
   _drillTraceLabel  = label;
   _drillSearchQuery = _drillTraceDisplay(label);
-  closeModal();
   _drillViewRerender();
 }
 

@@ -94,6 +94,7 @@ let _drillFileName   = null; // original filename of the stored .3dj
 let _drillZoomScale  = 1.0;  // current pinch-zoom scale for the fullscreen chart
 let _drillLabelMode   = 0;    // dot labels: 0 = none, 1 = drill labels, 2 = student names
 let _drillTraceLabel  = null; // performer label currently traced/highlighted in the viewer
+let _drillSelLabel    = null; // performer tapped for the info panel (gets a bold callout)
 let _drillSearchQuery = '';   // text in the Drill-tab performer search box
 let _drillChartSelect = false; // fullscreen chart context: true = select performers, false = view
 let _drillSelectedNums = []; // student numbers selected via drill
