@@ -46,6 +46,8 @@ async function seed() {
     await db.doc('orgs/a/entries/r1_42').set({ rehearsalId: 'r1', studentNumber: '42', attendance: 'present' });
     await db.doc('orgs/a/entries/r1_7').set({ rehearsalId: 'r1', studentNumber: '7', mistakes: 2 });
     await db.doc('orgs/a/songs/s1').set({ title: 'Anthem', statuses: { 7: { status: 'failed', note: 'bars 12-16' } } });
+    await db.doc('orgs/a/drills/d1').set({ name: '2026 Show', fileName: 'show.3dj', setCount: 30 });
+    await db.doc('orgs/a/drills/d1/data/main').set({ sections: [], pages: [] });
 
     await db.doc('orgs/b').set({ createdBy: 'dirB', name: 'Org B' });
     await db.doc('members/dirB').set({ orgId: 'b', role: 'director', email: 'dir@b.com' });
@@ -130,6 +132,26 @@ describe('student data visibility', () => {
   });
   it('a director can read songs', async () => {
     await assertSucceeds(director('dirA').doc('orgs/a/songs/s1').get());
+  });
+  it('a director can read and write the drill library', async () => {
+    await assertSucceeds(director('dirA').doc('orgs/a/drills/d1').get());
+    await assertSucceeds(director('dirA').collection('orgs/a/drills').get());
+    await assertSucceeds(director('dirA').doc('orgs/a/drills/d2').set({ name: 'New show' }));
+    await assertSucceeds(director('dirA').doc('orgs/a/drills/d1/data/main').get());
+    await assertSucceeds(director('dirA').doc('orgs/a/drills/d1/data/main').set({ sections: [], pages: [] }));
+  });
+  it('a student CANNOT read drills or their position payload', async () => {
+    await assertFails(director('studA').doc('orgs/a/drills/d1').get());
+    await assertFails(director('studA').collection('orgs/a/drills').get());
+    await assertFails(director('studA').doc('orgs/a/drills/d1/data/main').get());
+  });
+  it('a student CANNOT write drills', async () => {
+    await assertFails(director('studA').doc('orgs/a/drills/d1').set({ name: 'hacked' }));
+    await assertFails(director('studA').doc('orgs/a/drills/d1/data/main').set({ pages: [] }));
+  });
+  it('a director CANNOT read another org\'s drills', async () => {
+    await assertFails(director('dirB').doc('orgs/a/drills/d1').get());
+    await assertFails(director('dirB').doc('orgs/a/drills/d1/data/main').get());
   });
   it('a student can read rehearsal metadata', async () => {
     await assertSucceeds(director('studA').doc('orgs/a/rehearsals/r1').get());

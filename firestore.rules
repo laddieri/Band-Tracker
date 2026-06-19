@@ -99,6 +99,19 @@ service cloud.firestore {
         allow read:  if canWrite();
         allow write: if canWrite();
       }
+
+      // Drill library (Pyware field charts). Director-only — students never see
+      // drill data. The heavy position payload lives in a /data subcollection
+      // so listing the library stays cheap.
+      match /drills/{drillId} {
+        allow read:  if canWrite();
+        allow write: if canWrite();
+
+        match /data/{doc} {
+          allow read:  if canWrite();
+          allow write: if canWrite();
+        }
+      }
     }
 
     // ── Membership ────────────────────────────────────────────────────────────

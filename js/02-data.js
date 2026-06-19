@@ -8,6 +8,9 @@ async function startListeners() {
   STATE._unsubs = [];
   STATE.loading = true;
   _lastPublishedJson = '';
+  // Drop any drill state from a previous session/org; listeners repopulate it.
+  STATE.drills = {}; STATE.activeDrillId = null; _activeDrillLoadedId = null;
+  _drillData = null; _drillPages = null; _drillFileName = null; _drillFlipV = false;
 
   // Resolve the user's org before reading any data; bail if redirected.
   if (!await resolveMembership()) return;
@@ -140,16 +143,25 @@ async function startListeners() {
       tick('songs'); // don't hang the app — songs will be empty
     }),
 
-    // Drill (Pyware) data — its own doc so a large file can't bloat presets.
+    // Drill library — one small metadata doc per drill (the heavy position
+    // payload lives in each drill's data/main subdoc, loaded on demand for the
+    // active drill only). See _drillSyncActive() in js/12-drill.js.
+    orgCol('drills').onSnapshot(snap => {
+      STATE.drills = {};
+      snap.docs.forEach(d => { STATE.drills[d.id] = { id: d.id, ...d.data() }; });
+      _drillSyncActive();
+      if (!STATE.loading) render();
+    }, err => console.error('drills listener error:', err)),
+
+    // School-wide active-drill pointer. Also performs the one-time migration of
+    // the legacy single-drill doc into the library.
     orgCol('settings').doc('drill').onSnapshot(doc => {
       const d = doc.exists ? doc.data() : {};
-      if (d.drillSections?.length && d.drillPages?.length) {
-        _drillData     = d.drillSections;
-        _drillPages    = d.drillPages;
-        _drillFlipV    = !!d.drillFlipV;
-        _drillFileName = d.drillFileName || null;
-      }
-    }, err => console.error('drill settings listener error:', err)),
+      if (d.drillSections?.length && d.drillPages?.length) { _migrateLegacyDrill(d); return; }
+      STATE.activeDrillId = d.activeId || null;
+      _drillSyncActive();
+      if (!STATE.loading) render();
+    }, err => console.error('active-drill listener error:', err)),
 
     // Directors of this org, for resolving mark-author uids to names via
     // dirLabel(). Mark events store uids — never emails — because students can

@@ -31,11 +31,13 @@ orgs/{orgId}                          # org metadata
   ├─ (fields) name, plan, createdAt, createdBy
   ├─ settings/presets                 # was: /settings/presets
   ├─ settings/public                  # director-published student-safe snapshot
-  ├─ settings/drill                   # Pyware drill data (own doc — can be large)
+  ├─ settings/drill                   # pointer: { activeId } — the school-wide active drill
   ├─ students/{studentNumber}         # was: /students/{studentNumber}
   ├─ rehearsals/{rehearsalId}         # was: /rehearsals/{rehearsalId}
   ├─ entries/{rehearsalId}_{number}   # was: /entries/{...}
-  └─ songs/{songId}                   # was: /songs/{songId}
+  ├─ songs/{songId}                   # was: /songs/{songId}
+  └─ drills/{drillId}                 # drill library (director-only): metadata
+       └─ data/main                   #   heavy Pyware position payload (loaded on demand)
 
 members/{uid}                         # who belongs to which org, and as what
   └─ (fields) orgId, role, email?, studentNumber?, joinCode?
@@ -140,6 +142,7 @@ What a **student** can read (everything else is director-only):
 | `entries/{id}`                | own entries only; queries must filter `studentNumber == <own>` |
 | `rehearsals/*`                | ✅ — schedule metadata (dates/labels)              |
 | `songs/*`                     | ❌ — embeds every student's pass/fail + fail notes |
+| `drills/*` (+ `drills/*/data/*`) | ❌ — Pyware field-chart library is director-only |
 
 ### `settings/public` — the published snapshot
 

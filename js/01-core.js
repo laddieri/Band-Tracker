@@ -153,6 +153,11 @@ const STATE = {
   autoMarks:                  null,
   lbWeights:                  {},
   pywareMapping:              {},
+  // Drill library: id → metadata ({name, fileName, setCount, performerCount,
+  // flipV, …}). The heavy position payload is loaded on demand for the active
+  // drill only. activeDrillId is the school-wide selected drill (settings/drill).
+  drills:                     {},
+  activeDrillId:              null,
   // Per-feature student portal visibility (independent of whether the feature is
   // enabled for directors). Default true = visible; false = hidden from portal.
   portalVisible: { attendance: true, marks: true, songs: true, stats: true },
