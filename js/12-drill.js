@@ -955,8 +955,19 @@ function viewDrill() {
 function _drillViewInner() {
   const idx   = _drillCurrentSet;
   const total = _drillPages.length;
+  const count = Object.keys(STATE.drills || {}).length;
+  const name  = STATE.drills[STATE.activeDrillId]?.name || _drillFileName || 'Drill';
 
   return `
+    <button class="drill-switcher" onclick="showDrillLibraryModal()">
+      <span class="drill-switcher-ico">📚</span>
+      <span class="drill-switcher-text">
+        <span class="drill-switcher-name">${esc(name)}</span>
+        <span class="drill-switcher-meta">${count > 1 ? `${count} drills · tap to switch` : 'Tap to manage library'}</span>
+      </span>
+      <span class="drill-switcher-caret">▾</span>
+    </button>
+
     <div class="drill-view-bar">
       <div class="drill-search-wrap${_drillSearchQuery.trim() ? ' has-q' : ''}" id="drill-search-wrap">
         <input class="drill-search form-input" type="search" placeholder="Find a performer or student…"
@@ -964,7 +975,6 @@ function _drillViewInner() {
                oninput="drillViewSearch(this.value)">
         <button class="drill-search-clear" onclick="drillViewClearSearch()" aria-label="Clear">✕</button>
       </div>
-      <button class="btn btn-sm btn-secondary" onclick="drillViewCycleLabels()" title="Dot labels">${esc(_DRILL_LABEL_TEXT[_drillLabelMode])}</button>
       <button class="btn btn-sm btn-secondary" onclick="drillViewFlip()" title="Flip facing">⇅</button>
       <button class="btn btn-sm btn-secondary" onclick="drillViewExpand()" title="Hide header &amp; tabs">⤢</button>
     </div>
@@ -979,7 +989,6 @@ function _drillViewInner() {
 
     <div class="drill-view-foot">
       <span class="drill-foot-main" id="drill-foot-main">${esc(_drillFootText())}</span>
-      <span class="drill-view-file">${_drillFileName ? esc(_drillFileName) : ''}</span>
     </div>`;
 }
 
@@ -1084,11 +1093,6 @@ function _drillPersistFlip() {
   if (!id) return;
   if (STATE.drills[id]) STATE.drills[id].flipV = _drillFlipV;
   orgCol('drills').doc(id).set({ flipV: _drillFlipV }, { merge: true }).catch(e => console.error(e));
-}
-
-function drillViewCycleLabels() {
-  _drillLabelMode = (_drillLabelMode + 1) % 3;
-  _drillViewRerender();
 }
 
 function drillViewSearch(q) {
@@ -1256,10 +1260,28 @@ function showDrillOptionsModal() {
         <div><div class="options-menu-label">Position Mapping</div><div class="options-menu-sub">Link drill spots to students</div></div>
       </button>` : ''}
     </div>
+    ${has ? `
+    <div class="drill-opt-section">
+      <div class="drill-opt-label">Dot labels</div>
+      <div class="drill-lblseg-group" id="drill-lblseg-group">
+        ${['Off', 'Drill #', 'Names'].map((t, i) =>
+          `<button class="drill-lblseg${_drillLabelMode === i ? ' drill-lblseg--on' : ''}" onclick="drillSetLabelMode(${i})">${t}</button>`
+        ).join('')}
+      </div>
+    </div>` : ''}
     <div class="modal-actions" style="margin-top:8px">
       <button class="btn btn-secondary btn-full" onclick="closeModal()">Cancel</button>
     </div>
   `);
+}
+
+// Set the dot-label mode from the options menu: update the segmented control in
+// place (no modal re-open → no extra history entry) and re-render the chart.
+function drillSetLabelMode(n) {
+  _drillLabelMode = n;
+  document.querySelectorAll('#drill-lblseg-group .drill-lblseg')
+    .forEach((b, i) => b.classList.toggle('drill-lblseg--on', i === n));
+  if (_view === 'drill' && document.getElementById('drill-view-root')) _drillViewRerender();
 }
 
 // ── Drill library (multiple stored drills) ────────────────────────────────────
