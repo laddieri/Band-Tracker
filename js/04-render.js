@@ -60,6 +60,18 @@ function render() {
     return;
   }
 
+  // A backend read failed transiently — the user IS still signed in. Show a
+  // reassuring retry instead of the login/onboarding screen (which looks like a
+  // logout and lost data).
+  if (STATE.connError) {
+    backBtn.classList.add('hidden');
+    title.textContent = STATE.bandName || 'Band Tracker';
+    actions.innerHTML = '';
+    nav.style.display = 'none';
+    main.innerHTML = viewConnError();
+    return;
+  }
+
   // Signed in but not yet linked to a band. The self-serve create/join flow is a
   // separate milestone; for now show a clear message instead of a blank app.
   if (STATE.needsOnboarding) {

@@ -127,6 +127,7 @@ const STATE = {
   orgId:        null,
   org:          null,
   needsOnboarding: false,
+  connError:    false, // a transient backend read failed — show a retry, never sign-out/onboarding
   isAdmin:      false,
   studentNum:   null,
   students:     {},
@@ -241,18 +242,42 @@ function setStudentCodeLookup(code, studentNumber) {
 async function resolveMembership() {
   const uid = STATE.user.uid;
 
-  // Already a member? Use it.
-  try {
-    const snap = await db.collection('members').doc(uid).get();
-    if (snap.exists) {
-      const m = snap.data();
-      STATE.orgId   = m.orgId;
-      STATE.isAdmin = m.role === 'director';
-      if (m.studentNumber) STATE.studentNum = String(m.studentNumber);
-      return true;
+  // Read the caller's membership, retrying transient failures with backoff. A
+  // *thrown* read (offline cold-start, an App Check token hiccup, Firestore
+  // briefly unreachable) must NEVER be mistaken for "no membership" — doing so
+  // bounced signed-in directors to the onboarding screen and looked exactly
+  // like a random logout. We only treat the user as new when the read SUCCEEDS
+  // and the doc genuinely doesn't exist.
+  let snap = null, readFailed = false;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      snap = await db.collection('members').doc(uid).get();
+      readFailed = false;
+      break;
+    } catch (e) {
+      readFailed = true;
+      console.error(`membership lookup failed (attempt ${attempt + 1}):`, e);
+      if (attempt >= 3) break;
+      await new Promise(r => setTimeout(r, 600 * 2 ** attempt)); // 0.6s, 1.2s, 2.4s
     }
-  } catch (e) {
-    console.error('membership lookup failed:', e);
+  }
+
+  if (snap && snap.exists) {
+    const m = snap.data();
+    STATE.orgId     = m.orgId;
+    STATE.isAdmin   = m.role === 'director';
+    if (m.studentNumber) STATE.studentNum = String(m.studentNumber);
+    STATE.connError = false;
+    return true;
+  }
+
+  // Couldn't reach the backend at all — keep the user signed in and offer a
+  // retry instead of pretending they have no band.
+  if (readFailed) {
+    STATE.connError = true;
+    STATE.loading   = false;
+    render();
+    return false;
   }
 
   // Anonymous student with no membership yet — resolve via their student code.
