@@ -215,6 +215,30 @@ async function resendVerification() {
 
 // ── Onboarding (create / join a band) ──────────────────────────────────────────
 
+// Shown when a backend read failed transiently while the user is still signed
+// in — never sign them out or send them to onboarding over a connection blip.
+function viewConnError() {
+  return `
+    <div class="login-view">
+      <div class="login-logo">📡</div>
+      <div class="login-title">Can't reach the server</div>
+      <p style="color:var(--text-muted);font-size:.9rem;text-align:center;line-height:1.5;margin:-4px 0 18px">
+        You're still signed in${STATE.user?.email ? ` as <strong>${esc(STATE.user.email)}</strong>` : ''}, and
+        your band's data is safe in the cloud — this is just a connection hiccup.
+      </p>
+      <button class="btn btn-primary btn-full btn-lg" onclick="retryConnect()">Retry</button>
+      <button class="btn btn-secondary btn-full" style="margin-top:8px" onclick="auth.signOut()">Sign out</button>
+    </div>`;
+}
+
+function retryConnect() {
+  if (!STATE.user) { render(); return; }
+  STATE.connError = false;
+  STATE.loading   = true;
+  render();
+  startListeners();
+}
+
 function viewOnboarding() {
   return `
     <div class="login-view">
