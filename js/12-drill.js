@@ -143,8 +143,10 @@ function _parsePywareFile(buffer) {
 }
 
 
-function openDrillPicker() {
-  if (!STATE.isAdmin) return;
+// Tracks which drill's heavy position payload is currently in _drillData/_drillPages.
+let _activeDrillLoadedId = null;
+
+function _drillFileInput() {
   let inp = document.getElementById('drill-file-input');
   if (!inp) {
     inp = document.createElement('input');
@@ -155,35 +157,121 @@ function openDrillPicker() {
     inp.onchange = e => { if (e.target.files[0]) _onDrillFileLoaded(e.target.files[0]); e.target.value = ''; };
     document.body.appendChild(inp);
   }
-  // If we already have parsed drill data, show the pick modal directly
+  return inp;
+}
+
+// Import a brand-new drill file into the library (always the file dialog).
+function drillAddFile() {
+  if (!STATE.isAdmin) return;
+  _drillFileInput().click();
+}
+
+// Entry from the tab empty-state / tracker button: pick performers from the
+// active drill if one is loaded, otherwise import the first file.
+function openDrillPicker() {
+  if (!STATE.isAdmin) return;
   if (_drillData) { showDrillPickModal(); return; }
-  inp.click();
+  drillAddFile();
+}
+
+// Reconcile the loaded chart with the school-wide active drill: load the active
+// drill's payload when it changes, and keep its live facing in sync. Called by
+// the drills + active-pointer listeners.
+function _drillSyncActive() {
+  const id = STATE.activeDrillId;
+  if (!id) {
+    if (_activeDrillLoadedId !== null) {
+      _activeDrillLoadedId = null;
+      _drillData = null; _drillPages = null; _drillFileName = null; _drillFlipV = false;
+      _drillCurrentSet = 0; _drillTraceLabel = null; _drillSearchQuery = '';
+    }
+    return;
+  }
+  const meta = STATE.drills[id];
+  if (!meta) return; // metadata not arrived yet — wait for the drills listener
+  _drillFileName = meta.name || meta.fileName || null;
+  if (_activeDrillLoadedId === id) {
+    _drillFlipV = !!meta.flipV; // facing can change live
+    return;
+  }
+  _drillLoadPayload(id); // different drill became active — fetch its positions
+}
+
+function _drillLoadPayload(id) {
+  orgCol('drills').doc(id).collection('data').doc('main').get().then(snap => {
+    if (STATE.activeDrillId !== id) return; // superseded while loading
+    const p = snap.exists ? snap.data() : {};
+    const meta = STATE.drills[id] || {};
+    _drillData     = p.sections || [];
+    _drillPages    = p.pages || [];
+    _drillFlipV    = !!meta.flipV;
+    _drillFileName = meta.name || meta.fileName || null;
+    _drillCurrentSet = 0; _drillTraceLabel = null; _drillSearchQuery = '';
+    _activeDrillLoadedId = id;
+    render();
+  }).catch(e => console.error('drill payload load failed:', e));
 }
 
 function _onDrillFileLoaded(file) {
   const reader = new FileReader();
   reader.onload = e => {
     try {
-      const parsed   = _parsePywareFile(e.target.result);
-      _drillPages    = parsed.pages;
-      _drillData     = parsed.sections;
-      _drillFileName = file.name;
-      _drillFlipV    = false;
-      orgCol('settings').doc('drill').set({
-        drillFileName: file.name,
-        drillSections: parsed.sections,
-        drillPages:    parsed.pages,
-        drillFlipV:    false,
-      });
+      const parsed = _parsePywareFile(e.target.result);
+      const ref    = orgCol('drills').doc();
+      const meta   = {
+        name:           file.name.replace(/\.3dj$/i, ''),
+        fileName:       file.name,
+        setCount:       parsed.pages.length,
+        performerCount: parsed.pages[0]?.performers?.length || 0,
+        flipV:          false,
+        createdAt:      firebase.firestore.FieldValue.serverTimestamp(),
+        by:             STATE.user?.uid || null,
+      };
+      ref.set(meta)
+        .then(() => ref.collection('data').doc('main').set({ sections: parsed.sections, pages: parsed.pages }))
+        .then(() => orgCol('settings').doc('drill').set({ activeId: ref.id }, { merge: true }))
+        .catch(err => { console.error(err); showToast('Could not save the drill.'); });
+
+      // Optimistic local update so the new drill is active immediately.
+      STATE.drills[ref.id] = { id: ref.id, ...meta };
+      STATE.activeDrillId  = ref.id;
+      _activeDrillLoadedId = ref.id;
+      _drillData = parsed.sections; _drillPages = parsed.pages;
+      _drillFileName = meta.name; _drillFlipV = false;
       _drillTraceLabel = null; _drillSearchQuery = ''; _drillCurrentSet = 0;
-      // From the Drill tab, land straight on the chart; otherwise (tracker) show
-      // the performer picker as before.
-      if (_view === 'drill') render(); else showDrillPickModal();
+
+      if (_view === 'drill')                                  render();
+      else if (document.getElementById('drill-library-modal')) showDrillLibraryModal();
+      else                                                     showDrillPickModal();
     } catch (err) {
       showToast(err.message || 'Failed to read drill file.');
     }
   };
   reader.readAsArrayBuffer(file);
+}
+
+// One-time migration: the old single drill lived in settings/drill itself. Move
+// it into the library under a fixed id (idempotent across racing directors).
+function _migrateLegacyDrill(d) {
+  const ref = orgCol('drills').doc('legacy');
+  ref.set({
+    name:           (d.drillFileName || 'Imported drill').replace(/\.3dj$/i, ''),
+    fileName:       d.drillFileName || null,
+    setCount:       d.drillPages.length,
+    performerCount: d.drillPages[0]?.performers?.length || 0,
+    flipV:          !!d.drillFlipV,
+    createdAt:      firebase.firestore.FieldValue.serverTimestamp(),
+    by:             STATE.user?.uid || null,
+  })
+    .then(() => ref.collection('data').doc('main').set({ sections: d.drillSections, pages: d.drillPages }))
+    .then(() => {
+      const del = firebase.firestore.FieldValue.delete();
+      return orgCol('settings').doc('drill').set(
+        { activeId: 'legacy', drillFileName: del, drillSections: del, drillPages: del, drillFlipV: del },
+        { merge: true }
+      );
+    })
+    .catch(e => console.error('legacy drill migration failed:', e));
 }
 
 let _drillActiveSection = 0;
@@ -266,7 +354,7 @@ function showDrillPickModal() {
     <div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0 2px">
       <span style="font-size:0.72rem;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:55%">${_drillFileName ? esc(_drillFileName) : 'Drill file'}</span>
       <div style="display:flex;gap:10px;flex-shrink:0">
-        <button class="drill-reload-btn" onclick="drillLoadNewFile()">Replace file</button>
+        ${Object.keys(STATE.drills || {}).length > 1 ? `<button class="drill-reload-btn" onclick="showDrillLibraryModal()">Switch drill</button>` : ''}
         ${_drillPages && _drillPages.length ? `<button class="drill-reload-btn" onclick="showDrillChartModal()">View field chart →</button>` : ''}
       </div>
     </div>
@@ -275,19 +363,6 @@ function showDrillPickModal() {
       <button class="btn btn-primary" id="drill-apply-btn" onclick="applyDrillSelection()">Apply to Tracker</button>
     </div>
   `);
-}
-
-function drillLoadNewFile() {
-  _drillData     = null;
-  _drillPages    = null;
-  _drillFileName = null;
-  orgCol('settings').doc('drill').delete().catch(() => {});
-  closeModal();
-  setTimeout(() => {
-    const inp = document.getElementById('drill-file-input');
-    if (inp) inp.click();
-    else openDrillPicker();
-  }, 150);
 }
 
 function drillSetSection(idx) {
@@ -767,7 +842,7 @@ function drillChartToggle(label) {
 
 function drillChartFlip() {
   _drillFlipV = !_drillFlipV;
-  orgCol('settings').doc('drill').set({ drillFlipV: _drillFlipV }, { merge: true });
+  _drillPersistFlip();
   _drillChartRefresh();
 }
 
@@ -847,12 +922,14 @@ function viewDrill() {
     return `
       <div class="empty-state" style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px">
         <div class="empty-icon">🚩</div>
-        <p>No drill loaded yet.</p>
+        <p>${Object.keys(STATE.drills || {}).length ? 'No drill selected.' : 'No drill loaded yet.'}</p>
         <p style="color:var(--text-muted);max-width:300px;margin:6px auto 0">
           Upload a Pyware <strong>.3dj</strong> file to view your field chart, step through sets,
           label dots, and trace a performer's path.
         </p>
-        <button class="btn btn-primary" style="margin-top:14px" onclick="openDrillPicker()">Load Drill File</button>
+        ${Object.keys(STATE.drills || {}).length
+          ? `<button class="btn btn-primary" style="margin-top:14px" onclick="showDrillLibraryModal()">Open Drill Library</button>`
+          : `<button class="btn btn-primary" style="margin-top:14px" onclick="drillAddFile()">Load Drill File</button>`}
       </div>`;
   }
   return `<div id="drill-view-root" class="drill-view">${_drillViewInner()}</div>`;
@@ -954,8 +1031,16 @@ function drillViewGoToSet(i) {
 
 function drillViewFlip() {
   _drillFlipV = !_drillFlipV;
-  orgCol('settings').doc('drill').set({ drillFlipV: _drillFlipV }, { merge: true });
+  _drillPersistFlip();
   _drillViewRerender();
+}
+
+// Facing is per-drill, stored on its library metadata doc (live for everyone).
+function _drillPersistFlip() {
+  const id = STATE.activeDrillId;
+  if (!id) return;
+  if (STATE.drills[id]) STATE.drills[id].flipV = _drillFlipV;
+  orgCol('drills').doc(id).set({ flipV: _drillFlipV }, { merge: true }).catch(e => console.error(e));
 }
 
 function drillViewCycleLabels() {
@@ -1127,24 +1212,20 @@ function _drillCoord(stepsX, stepsY) {
 
 function showDrillOptionsModal() {
   if (!STATE.isAdmin) return;
-  const has = !!(_drillData && _drillPages && _drillPages.length);
+  const has   = !!(_drillData && _drillPages && _drillPages.length);
+  const count = Object.keys(STATE.drills || {}).length;
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Field Chart Options</div>
     <div class="options-menu">
+      <button class="options-menu-item" onclick="closeModal();showDrillLibraryModal()">
+        <div class="options-menu-icon">📚</div>
+        <div><div class="options-menu-label">Drill Library</div><div class="options-menu-sub">${count ? `${count} drill${count!==1?'s':''} · switch, add or remove` : 'Add your first drill file'}</div></div>
+      </button>
       ${has ? `
       <button class="options-menu-item" onclick="closeModal();showDrillMappingModal()">
         <div class="options-menu-icon">🔗</div>
         <div><div class="options-menu-label">Position Mapping</div><div class="options-menu-sub">Link drill spots to students</div></div>
-      </button>` : ''}
-      <button class="options-menu-item" onclick="${has ? 'drillLoadNewFile()' : 'closeModal();openDrillPicker()'}">
-        <div class="options-menu-icon">📄</div>
-        <div><div class="options-menu-label">${has ? 'Replace drill file' : 'Load drill file'}</div><div class="options-menu-sub">${has && _drillFileName ? esc(_drillFileName) : 'Pyware .3dj'}</div></div>
-      </button>
-      ${has ? `
-      <button class="options-menu-item options-menu-item-danger" onclick="closeModal();drillConfirmDelete()">
-        <div class="options-menu-icon">🗑</div>
-        <div><div class="options-menu-label">Remove drill</div><div class="options-menu-sub">Delete the loaded chart</div></div>
       </button>` : ''}
     </div>
     <div class="modal-actions" style="margin-top:8px">
@@ -1153,16 +1234,109 @@ function showDrillOptionsModal() {
   `);
 }
 
-function drillConfirmDelete() {
+// ── Drill library (multiple stored drills) ────────────────────────────────────
+
+function _drillSortedIds() {
+  return Object.keys(STATE.drills || {}).sort((a, b) => {
+    const ta = STATE.drills[a].createdAt?.seconds || 0;
+    const tb = STATE.drills[b].createdAt?.seconds || 0;
+    if (tb !== ta) return tb - ta; // newest first
+    return (STATE.drills[a].name || '').localeCompare(STATE.drills[b].name || '');
+  });
+}
+
+function showDrillLibraryModal() {
+  if (!STATE.isAdmin) return;
+  const ids = _drillSortedIds();
+  const rows = ids.map(id => {
+    const d = STATE.drills[id];
+    const active = id === STATE.activeDrillId;
+    const sets = d.setCount || 0;
+    const sub  = `${sets} set${sets !== 1 ? 's' : ''}${d.performerCount ? ` · ${d.performerCount} performers` : ''}`;
+    return `
+      <div class="drill-lib-row${active ? ' drill-lib-row--active' : ''}">
+        <button class="drill-lib-main" onclick="drillActivate('${esc(id)}')">
+          <div class="drill-lib-name">${esc(d.name || d.fileName || 'Drill')}${active ? '<span class="drill-lib-badge">active</span>' : ''}</div>
+          <div class="drill-lib-sub">${esc(sub)}</div>
+        </button>
+        <button class="drill-lib-act" onclick="drillRenamePrompt('${esc(id)}')" title="Rename" aria-label="Rename">✎</button>
+        <button class="drill-lib-act drill-lib-act--danger" onclick="drillDeletePrompt('${esc(id)}')" title="Delete" aria-label="Delete">🗑</button>
+      </div>`;
+  }).join('');
+  openModal(`
+    <div id="drill-library-modal">
+      <div class="modal-handle"></div>
+      <div class="modal-title">Drill Library</div>
+      <p class="modal-sub" style="margin:0 0 10px">Tap a drill to make it the active field chart for your whole director team.</p>
+      ${ids.length ? `<div class="drill-lib-list">${rows}</div>` : `<p style="color:var(--text-muted);text-align:center;padding:20px 0">No drills saved yet.</p>`}
+      <button class="btn btn-secondary btn-full" style="margin-top:12px" onclick="drillAddFile()">＋ Add drill file</button>
+      <div class="modal-actions" style="margin-top:8px">
+        <button class="btn btn-secondary btn-full" onclick="closeModal()">Done</button>
+      </div>
+    </div>
+  `);
+}
+
+function drillActivate(id) {
+  if (!STATE.drills[id] || id === STATE.activeDrillId) { closeModal(); if (_view !== 'drill') navigate('drill'); return; }
+  STATE.activeDrillId = id;
+  orgCol('settings').doc('drill').set({ activeId: id }, { merge: true }).catch(e => console.error(e));
+  _drillSyncActive(); // loads the new payload, then re-renders
+  closeModal();
+  if (_view !== 'drill') navigate('drill'); else render();
+}
+
+function drillRenamePrompt(id) {
+  const d = STATE.drills[id];
+  if (!d) return;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Rename Drill</div>
+    <input class="form-input" id="drill-rename-input" type="text" maxlength="80"
+           value="${esc(d.name || d.fileName || '')}" placeholder="Drill name" autocomplete="off">
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn btn-secondary" onclick="showDrillLibraryModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="drillRenameSave('${esc(id)}')">Save</button>
+    </div>
+  `);
+  setTimeout(() => { const el = document.getElementById('drill-rename-input'); if (el) { el.focus(); el.select(); } }, 50);
+}
+
+function drillRenameSave(id) {
+  const el = document.getElementById('drill-rename-input');
+  const name = (el?.value || '').trim();
+  if (!name) { showToast('Enter a name.'); return; }
+  if (STATE.drills[id]) STATE.drills[id].name = name;
+  if (id === STATE.activeDrillId) _drillFileName = name;
+  orgCol('drills').doc(id).set({ name }, { merge: true }).catch(e => console.error(e));
+  showDrillLibraryModal();
+  if (_view === 'drill') { const r = document.getElementById('drill-view-root'); if (r) _drillViewRerender(); }
+}
+
+function drillDeletePrompt(id) {
+  const d = STATE.drills[id];
+  if (!d) return;
   showConfirmModal(
-    'Remove drill?',
-    'This deletes the loaded field chart. Position mapping is kept, so a new file lines up automatically.',
-    () => {
-      _drillData = null; _drillPages = null; _drillFileName = null;
-      _drillTraceLabel = null; _drillSearchQuery = ''; _drillCurrentSet = 0;
-      orgCol('settings').doc('drill').delete().catch(() => {});
-      if (_view === 'drill') render();
-    },
-    'Remove', 'btn-danger'
+    'Delete drill?',
+    `Remove “${esc(d.name || d.fileName || 'this drill')}” from the library? This can’t be undone. Position mapping is kept.`,
+    () => drillDelete(id),
+    'Delete', 'btn-danger'
   );
+}
+
+function drillDelete(id) {
+  const wasActive = STATE.activeDrillId === id;
+  orgCol('drills').doc(id).collection('data').doc('main').delete().catch(() => {});
+  orgCol('drills').doc(id).delete().catch(() => {});
+  delete STATE.drills[id];
+  if (wasActive) {
+    const next = _drillSortedIds()[0] || null;
+    STATE.activeDrillId = next;
+    orgCol('settings').doc('drill').set(
+      { activeId: next || firebase.firestore.FieldValue.delete() }, { merge: true }
+    ).catch(() => {});
+    _drillSyncActive();
+  }
+  showDrillLibraryModal();
+  if (_view === 'drill') render();
 }

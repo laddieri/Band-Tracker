@@ -3310,3 +3310,14 @@ html, body {
 .drill-info-row:last-child { border-bottom:none; }
 .drill-info-row > span:first-child { color:var(--text-muted); }
 .drill-info-row > span:last-child { font-weight:600; text-align:right; }
+
+/* Drill library list */
+.drill-lib-list { display:flex; flex-direction:column; gap:8px; max-height:50vh; overflow-y:auto; }
+.drill-lib-row { display:flex; align-items:stretch; gap:6px; border:1px solid var(--border); border-radius:var(--r-sm); overflow:hidden; }
+.drill-lib-row--active { border-color:var(--primary); box-shadow:inset 0 0 0 1px var(--primary); }
+.drill-lib-main { flex:1; min-width:0; text-align:left; background:none; border:none; cursor:pointer; padding:10px 12px; color:var(--text); }
+.drill-lib-name { font-weight:600; font-size:0.92rem; display:flex; align-items:center; gap:8px; }
+.drill-lib-badge { font-size:0.58rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#fff; background:var(--primary); padding:1px 6px; border-radius:8px; }
+.drill-lib-sub { font-size:0.74rem; color:var(--text-muted); margin-top:2px; }
+.drill-lib-act { flex:0 0 auto; width:42px; border:none; border-left:1px solid var(--border); background:var(--surface); color:var(--text-muted); cursor:pointer; font-size:0.95rem; }
+.drill-lib-act--danger { color:var(--danger); }
