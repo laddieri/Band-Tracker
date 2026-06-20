@@ -25,6 +25,10 @@ const anon     = (uid) => testEnv.authenticatedContext(uid, {
   firebase: { sign_in_provider: 'anonymous' },
 }).firestore();
 const guest    = ()    => testEnv.unauthenticatedContext().firestore();
+// A synthetic-email student (email/password): email derived from their code.
+const student  = (uid, code) => testEnv.authenticatedContext(uid, {
+  email: `${code.toLowerCase()}@students.bandtracker.app`,
+}).firestore();
 
 // Seed a known world with admin privileges (bypasses rules).
 //   org "a"  owned by dirA, with co-director coA, student studA, and a roster doc
@@ -221,9 +225,28 @@ describe('joining an org', () => {
       director('coDir').doc('members/coDir').set({ orgId: 'a', role: 'director', inviteCode: 'ICODE' })
     );
   });
-  it('a student can join with a valid student code', async () => {
+  it('a student can join with a valid code claiming that code\'s number', async () => {
     await assertSucceeds(
-      anon('newStud').doc('members/newStud').set({ orgId: 'a', role: 'student', joinCode: 'SCODE' })
+      anon('newStud').doc('members/newStud').set({ orgId: 'a', role: 'student', studentNumber: '42', joinCode: 'SCODE' })
+    );
+  });
+  it('a student CANNOT use a valid code to claim a different number', async () => {
+    // SCODE maps to '42'; trying to bind to '7' must be rejected.
+    await assertFails(
+      anon('imposter').doc('members/imposter').set({ orgId: 'a', role: 'student', studentNumber: '7', joinCode: 'SCODE' })
+    );
+  });
+  it('a synthetic-email student can join the code matching their email', async () => {
+    await assertSucceeds(
+      student('emailStud', 'SCODE').doc('members/emailStud')
+        .set({ orgId: 'a', role: 'student', studentNumber: '42', joinCode: 'SCODE' })
+    );
+  });
+  it('a synthetic-email student CANNOT bind a code that is not their email', async () => {
+    // Authenticated as OTHER@…, but trying to claim SCODE (→ #42).
+    await assertFails(
+      student('emailStud2', 'OTHER').doc('members/emailStud2')
+        .set({ orgId: 'a', role: 'student', studentNumber: '42', joinCode: 'SCODE' })
     );
   });
   it('joining as director with no code/ownership fails', async () => {
@@ -233,8 +256,14 @@ describe('joining an org', () => {
   });
   it('a student join with a bad code fails', async () => {
     await assertFails(
-      anon('badStud').doc('members/badStud').set({ orgId: 'a', role: 'student', joinCode: 'WRONG' })
+      anon('badStud').doc('members/badStud').set({ orgId: 'a', role: 'student', studentNumber: '42', joinCode: 'WRONG' })
     );
+  });
+  it('a code can be fetched by id but the collection cannot be listed', async () => {
+    await assertSucceeds(anon('looker').doc('studentCodes/SCODE').get());
+    await assertFails(anon('looker').collection('studentCodes').get());
+    await assertFails(director('dirA').collection('studentCodes').get());
+    await assertFails(director('dirA').collection('inviteCodes').get());
   });
   it('you cannot create a membership for someone else', async () => {
     await assertFails(

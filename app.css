@@ -951,6 +951,13 @@ html, body {
 }
 .danger-zone-title { color: var(--danger); font-size: 0.8rem; font-weight: 700; margin-bottom: 8px; }
 
+/* Big shareable code shown after a PIN reset / new code is issued */
+.reset-code-box {
+  font-size: 1.7rem; font-weight: 800; letter-spacing: .22em; text-align: center;
+  padding: 14px; border: 2px dashed var(--primary); border-radius: var(--r-sm);
+  background: var(--primary-bg); color: var(--text); user-select: all;
+}
+
 .ended-banner {
   background: var(--success-bg);
   border: 1.5px solid #86efac;

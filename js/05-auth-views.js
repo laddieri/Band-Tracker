@@ -32,12 +32,23 @@ function viewLogin() {
       <div id="student-code-error"></div>
       <div class="form-group">
         <input class="form-input" id="student-code" type="text"
-               placeholder="Enter your student code"
+               placeholder="Student code"
+               value="${esc(localStorage.getItem('bandStudentCode') || '')}"
                autocomplete="off" autocapitalize="characters" spellcheck="false"
                style="text-transform:uppercase;letter-spacing:.1em;font-size:1.1rem;text-align:center"
+               onkeydown="if(event.key==='Enter')document.getElementById('student-pin').focus()">
+      </div>
+      <div class="form-group">
+        <input class="form-input" id="student-pin" type="password"
+               inputmode="numeric" maxlength="6" placeholder="6-digit PIN"
+               autocomplete="off"
+               style="letter-spacing:.3em;font-size:1.1rem;text-align:center"
                onkeydown="if(event.key==='Enter')loginWithStudentCode()">
       </div>
       <button class="btn btn-primary btn-full btn-lg" onclick="loginWithStudentCode()">View My Page</button>
+      <p style="font-size:.72rem;color:var(--text-muted);text-align:center;margin:8px 0 0">
+        First time? Enter your code and pick a 6-digit PIN to set it.
+      </p>
 
       <div class="login-divider"><span>Directors</span></div>
 
@@ -111,17 +122,48 @@ function setAuthMode(mode) {
 }
 
 async function loginWithStudentCode() {
-  const raw  = document.getElementById('student-code')?.value.trim();
-  const code = raw?.toUpperCase();
+  const code = document.getElementById('student-code')?.value.trim().toUpperCase();
+  const pin  = document.getElementById('student-pin')?.value.trim();
   if (!code) { showStudentCodeError('Please enter your student code.'); return; }
+  if (!/^\d{6}$/.test(pin)) { showStudentCodeError('Your PIN must be 6 digits.'); return; }
+  showStudentCodeError('');
+
+  // 1) Confirm the code maps to a real student before creating any account.
+  let exists;
   try {
-    _pendingStudentCode = code;
-    localStorage.setItem('bandStudentCode', code);
-    await auth.signInAnonymously();
-  } catch(e) {
-    _pendingStudentCode = '';
-    localStorage.removeItem('bandStudentCode');
+    exists = (await db.collection('studentCodes').doc(code).get()).exists;
+  } catch (e) {
     showStudentCodeError('Unable to connect. Please try again.');
+    return;
+  }
+  if (!exists) { showStudentCodeError('Code not found — check with your director.'); return; }
+
+  // 2) Sign in with the synthetic email + PIN; on first use, claim the account.
+  _pendingStudentCode = code;
+  localStorage.setItem('bandStudentCode', code);
+  const email = studentEmailFor(code);
+  try {
+    await auth.signInWithEmailAndPassword(email, pin);
+  } catch (e) {
+    // With email-enumeration protection, a missing account and a wrong PIN both
+    // report invalid-credential, so try to claim — success means first-time,
+    // email-already-in-use means the account exists and the PIN was wrong.
+    if (e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential' || e.code === 'auth/invalid-login-credentials') {
+      try {
+        await auth.createUserWithEmailAndPassword(email, pin);
+      } catch (e2) {
+        if (e2.code === 'auth/email-already-in-use')
+          showStudentCodeError('Incorrect PIN. Try again, or ask your director to reset it.');
+        else if (e2.code === 'auth/weak-password')
+          showStudentCodeError('Your PIN must be 6 digits.');
+        else
+          showStudentCodeError(authMsg(e2.code));
+      }
+    } else if (e.code === 'auth/wrong-password') {
+      showStudentCodeError('Incorrect PIN. Try again, or ask your director to reset it.');
+    } else {
+      showStudentCodeError(authMsg(e.code));
+    }
   }
 }
 
@@ -371,7 +413,9 @@ async function doLogout() {
 }
 
 function showUserMenu() {
-  if (STATE.user?.isAnonymous) {
+  // Students (anonymous legacy OR synthetic-email) get the student view menu;
+  // role — not anonymity — is the distinction now.
+  if (STATE.studentNum && !STATE.isAdmin) {
     const s = STATE.students[STATE.studentNum];
     openModal(`
       <div class="modal-title">Student View</div>

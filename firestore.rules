@@ -142,12 +142,26 @@ service cloud.firestore {
           );
       }
 
-      // Student self-join: only with a valid student code that maps to the org.
+      // Student self-join: only with a valid student code, and only to claim the
+      // exact student number that code maps to. Without the studentNumber check a
+      // holder of ANY valid code in the org could bind their uid to someone
+      // else's number and read that student's data (students talk to Firestore
+      // directly, so this rule — not the UI — is the boundary).
       function studentJoin() {
-        let m = request.resource.data;
+        let m    = request.resource.data;
+        let code = /databases/$(database)/documents/studentCodes/$(m.joinCode);
         return m.role == 'student'
-          && exists(/databases/$(database)/documents/studentCodes/$(m.joinCode))
-          && get(/databases/$(database)/documents/studentCodes/$(m.joinCode)).data.orgId == m.orgId;
+          && exists(code)
+          && get(code).data.orgId == m.orgId
+          && get(code).data.studentNumber == m.studentNumber
+          && (
+            // New model: the synthetic student email proves possession of the
+            // PIN (Firebase verified it), and must match the code being claimed.
+            request.auth.token.email == m.joinCode.lower() + '@students.bandtracker.app'
+            // Legacy: in-flight anonymous student sessions (pre-PIN). Remove once
+            // all students have re-signed-in with a PIN.
+            || isAnonymous()
+          );
       }
 
       allow create: if isSignedIn() && request.auth.uid == uid
@@ -166,7 +180,11 @@ service cloud.firestore {
     // student number). Only directors of the owning org may manage codes.
 
     match /studentCodes/{code} {
-      allow read:   if isSignedIn();
+      // Fetchable by a known code (so an anonymous student can resolve their org
+      // before a membership exists) but NOT listable — nobody may enumerate the
+      // collection to harvest every code → student-number mapping.
+      allow get:    if isSignedIn();
+      allow list:   if false;
       allow create: if isDirectorOf(request.resource.data.orgId);
       allow update: if isDirectorOf(resource.data.orgId)
                     && isDirectorOf(request.resource.data.orgId);
@@ -179,7 +197,11 @@ service cloud.firestore {
     // directors.
 
     match /inviteCodes/{code} {
-      allow read:   if isSignedIn();
+      // Fetchable by a known code (a joining co-director resolves the org before
+      // membership) but NOT listable — enumerating these would let anyone harvest
+      // a valid invite code and join an org as a director.
+      allow get:    if isSignedIn();
+      allow list:   if false;
       allow create: if isDirectorOf(request.resource.data.orgId);
       allow update: if isDirectorOf(resource.data.orgId)
                     && isDirectorOf(request.resource.data.orgId);
