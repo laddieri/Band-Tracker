@@ -185,13 +185,25 @@ service cloud.firestore {
       // email + PIN login has no anonymous bootstrap session). Still NOT
       // listable, so the collection can't be enumerated, and it exposes nothing
       // sensitive (just an org id + a student number) and is not brute-forceable
-      // by id in practice (32^6 space).
+      // by id in practice (32^8 space).
       allow get:    if true;
       allow list:   if false;
       allow create: if isDirectorOf(request.resource.data.orgId);
-      allow update: if isDirectorOf(resource.data.orgId)
-                    && isDirectorOf(request.resource.data.orgId);
+      allow update: if (isDirectorOf(resource.data.orgId) && isDirectorOf(request.resource.data.orgId))
+                    || studentMarksClaimed();
       allow delete: if isDirectorOf(resource.data.orgId);
+
+      // The matching student (authenticated with the synthetic email for THIS
+      // code) may flip claimed=true on their own code, without touching the org
+      // or number it maps to. Lets the sign-in wizard route returning students
+      // straight to the PIN screen vs first-timers to the set-PIN screen.
+      function studentMarksClaimed() {
+        return request.auth != null
+          && request.auth.token.email == code.lower() + '@students.bandtracker.app'
+          && request.resource.data.orgId == resource.data.orgId
+          && request.resource.data.studentNumber == resource.data.studentNumber
+          && request.resource.data.claimed == true;
+      }
     }
 
     // ── Co-director invite codes ──────────────────────────────────────────────

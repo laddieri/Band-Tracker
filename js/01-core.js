@@ -326,6 +326,12 @@ async function resolveMembership() {
       await db.collection('members').doc(uid).set({
         orgId, studentNumber: String(studentNumber), role: 'student', joinCode: studentCode
       });
+      // Mark the code claimed so the sign-in wizard can route returning students
+      // straight to the PIN screen. Best-effort (legacy anonymous users can't,
+      // and it's only a UX hint — the wizard cross-corrects regardless).
+      if (!codeSnap.data().claimed) {
+        db.collection('studentCodes').doc(studentCode).set({ claimed: true }, { merge: true }).catch(() => {});
+      }
       STATE.orgId      = orgId;
       STATE.isAdmin    = false;
       STATE.studentNum = String(studentNumber);

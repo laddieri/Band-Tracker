@@ -150,13 +150,15 @@ async function studentSubmitCode() {
   const code = document.getElementById('wiz-code')?.value.trim().toUpperCase();
   if (!code) { studentWizError('Please enter your code.'); return; }
   studentWizError('');
-  let exists;
-  try { exists = (await db.collection('studentCodes').doc(code).get()).exists; }
+  let snap;
+  try { snap = await db.collection('studentCodes').doc(code).get(); }
   catch { studentWizError('Unable to connect. Please try again.'); return; }
-  if (!exists) { studentWizError("That code isn't recognized — double-check it with your director."); return; }
+  if (!snap.exists) { studentWizError("That code isn't recognized — double-check it with your director."); return; }
   _studentCode = code;
   localStorage.setItem('bandStudentCode', code);
-  studentGo('pin'); // returning students land here; first-timers tap the link
+  // Auto-route: a previously-claimed code goes to "enter your PIN"; a fresh one
+  // goes to "set your PIN". The screens still cross-link in case the flag is stale.
+  studentGo(snap.data().claimed ? 'pin' : 'setpin');
 }
 
 function viewStudentPin() {
