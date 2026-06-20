@@ -166,7 +166,8 @@ function showEditStudentModal(num) {
                 onclick="document.getElementById('m-student-code').value=genStudentCode()"
                 style="flex-shrink:0">Generate</button>
       </div>
-      <div class="form-hint">Share this code with the student so they can view their own page.</div>
+      <div class="form-hint">Share this code with the student so they can view their own page. They set a 6-digit PIN the first time they sign in.</div>
+      ${s.studentCode ? `<button class="btn btn-secondary btn-sm" type="button" style="margin-top:8px" onclick="resetStudentPin('${esc(num)}')">Reset PIN &amp; issue new code</button>` : ''}
     </div>
     <div class="form-group">
       <label class="form-label">Student Login Email <span style="font-weight:400;opacity:.6">(optional — for email/password login instead)</span></label>
@@ -188,6 +189,7 @@ function showEditStudentModal(num) {
 
 function saveEditStudent(num) {
   if (!STATE.students[num]) return;
+  const oldCode = STATE.students[num].studentCode ? String(STATE.students[num].studentCode).toUpperCase() : '';
   const patch = {
     name:         document.getElementById('m-name').value.trim(),
     studentCode:  document.getElementById('m-student-code').value.trim().toUpperCase(),
@@ -204,10 +206,76 @@ function saveEditStudent(num) {
   }
   STATE.students[num] = { ...STATE.students[num], ...patch };
   orgCol('students').doc(num).set(patch, { merge: true });
+  // Retire the old code mapping if the code changed, so a stale code (and the
+  // synthetic email/PIN tied to it) can no longer be used.
+  if (oldCode && oldCode !== patch.studentCode) {
+    db.collection('studentCodes').doc(oldCode).delete().catch(() => {});
+  }
   setStudentCodeLookup(patch.studentCode, num);
   closeModal();
   showToast('Student updated');
   render();
+}
+
+// "Forgot PIN" / wrong person claimed the code: issue a fresh code, which
+// retires the old code's synthetic email (and its PIN), and kick any current
+// session for this student so they must re-claim with the new code + a new PIN.
+function resetStudentPin(num) {
+  const s = STATE.students[num];
+  if (!s || !STATE.isAdmin) return;
+  const name = s.name || `#${num}`;
+  showConfirmModal(
+    'Reset PIN?',
+    `<strong>${esc(name)}</strong> will get a new login code and their PIN will be
+     cleared. Their current sign-in stops working immediately, and they'll choose
+     a new PIN the next time they sign in with the new code.`,
+    () => _doResetStudentPin(num),
+    'Reset PIN', 'btn-primary'
+  );
+}
+
+async function _doResetStudentPin(num) {
+  const s = STATE.students[num];
+  if (!s || !STATE.isAdmin) return;
+  const oldCode = s.studentCode ? String(s.studentCode).toUpperCase() : '';
+  const used    = new Set(Object.values(STATE.students)
+    .map(x => x.studentCode).filter(Boolean).map(c => String(c).toUpperCase()));
+  const newCode = genStudentCode(used);
+
+  STATE.students[num] = { ...STATE.students[num], studentCode: newCode };
+  try {
+    await orgCol('students').doc(num).set({ studentCode: newCode }, { merge: true });
+    if (oldCode && oldCode !== newCode) {
+      await db.collection('studentCodes').doc(oldCode).delete().catch(() => {});
+    }
+    await setStudentCodeLookup(newCode, num);
+    // Drop existing membership(s) so any live session loses access and must re-claim.
+    const snap = await db.collection('members')
+      .where('orgId', '==', STATE.orgId).where('studentNumber', '==', String(num)).get();
+    const batch = db.batch();
+    snap.forEach(d => batch.delete(d.ref));
+    await batch.commit();
+  } catch (e) {
+    console.error('reset PIN failed:', e);
+    showToast('Could not reset the PIN — please try again.');
+    return;
+  }
+  _showNewCodeModal(s.name || `#${num}`, newCode);
+}
+
+function _showNewCodeModal(name, code) {
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">New code for ${esc(name)}</div>
+    <p class="modal-sub" style="margin:0 0 12px">
+      Give this to the student. They'll choose a new 6-digit PIN the first time
+      they sign in with it. Their old code and PIN no longer work.
+    </p>
+    <div class="reset-code-box">${esc(code)}</div>
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn btn-primary btn-full" onclick="closeModal()">Done</button>
+    </div>
+  `);
 }
 
 function confirmDeleteStudent(num) {
