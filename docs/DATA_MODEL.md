@@ -142,6 +142,14 @@ else. `studentCodes` is the only collection readable before a membership
 exists, and it exposes nothing sensitive (just an org id + a number) — and it's
 get-only (not listable), so codes can't be enumerated.
 
+**Codes are a single global namespace** (the doc id), shared across every org,
+so they must be globally unique. They're 8 chars from a 32-symbol unambiguous
+alphabet (~1.1 trillion combinations), and `generateUniqueStudentCode()` checks
+the collection before assigning one. A would-be cross-org duplicate is also
+blocked at write time — `studentCodes` `update` requires you to be a director
+of *both* the existing and new org — so a collision can never shadow another
+org's student; it just fails to register (now surfaced to the director).
+
 ## Student data visibility (privacy model)
 
 Students must not be able to see other students' data, even though the app's
