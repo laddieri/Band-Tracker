@@ -109,21 +109,38 @@ New directors self-register (email/password) from the login screen; a freshly
 created account has no membership, so the app routes it to the onboarding screen
 (create or join a band).
 
-### How anonymous students get an org
+### How students get an org (code + PIN)
 
-Students sign in anonymously and type a **student code**. The code maps to an
-org:
+Students sign in with **Firebase email/password**, where the email is a
+**synthetic address derived from their student code** and the password is a
+**6-digit PIN** they choose on first use — `studentEmailFor(CODE)` =
+`<code>@students.bandtracker.app`. No real email is collected; the address is
+never used to contact anyone. Firebase verifies + rate-limits the PIN, so a
+shared/leaked code is useless without the PIN, and sessions persist durably
+(unlike anonymous sign-in).
 
-1. Client reads `studentCodes/{CODE}` → `{ orgId, studentNumber }`.
+1. Client confirms `studentCodes/{CODE}` exists, then
+   `signInWithEmailAndPassword(<code>@…, PIN)`; on first use (no account yet) it
+   `createUserWithEmailAndPassword` — that "claim" sets the PIN.
 2. Client writes its own `members/{uid}` = `{ orgId, studentNumber, role:
    "student", joinCode: CODE }`.
-3. Rules allow that member doc only if a matching `studentCodes/{CODE}` exists
-   and its `orgId` agrees — so a student can only join an org they hold a valid
-   code for.
+3. Rules allow that member doc only if `studentCodes/{CODE}` exists, its `orgId`
+   and `studentNumber` agree **and** the caller's token email equals
+   `<code>@students.bandtracker.app` (proof they hold the PIN). So a student can
+   only ever bind the exact number their own code maps to.
+
+**Forgot PIN / wrong person claimed it:** the director regenerates that
+student's code (new code → new synthetic email → fresh claim). The old Firebase
+account is orphaned and harmless (its old code no longer maps).
+
+Legacy anonymous student sessions still resolve (rules keep an `|| isAnonymous()`
+branch) so in-flight users aren't kicked out; that branch can be removed once
+everyone has re-signed-in with a PIN.
 
 After that, the student's reads are scoped to `orgs/{orgId}/…` like everyone
 else. `studentCodes` is the only collection readable before a membership
-exists, and it exposes nothing sensitive (just an org id + a number).
+exists, and it exposes nothing sensitive (just an org id + a number) — and it's
+get-only (not listable), so codes can't be enumerated.
 
 ## Student data visibility (privacy model)
 

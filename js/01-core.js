@@ -96,6 +96,23 @@ if (typeof RECAPTCHA_V3_SITE_KEY !== 'undefined' && RECAPTCHA_V3_SITE_KEY && fir
 
 const auth = firebase.auth();
 const db   = firebase.firestore();
+
+// Students sign in with Firebase email/password using a synthetic address
+// derived from their (non-secret) student code; the PIN is the password, which
+// Firebase verifies and rate-limits server-side. No real email is collected —
+// the address is never used to contact anyone. See docs/DATA_MODEL.md.
+const STUDENT_EMAIL_DOMAIN = 'students.bandtracker.app';
+function studentEmailFor(code) {
+  return `${String(code).trim().toLowerCase()}@${STUDENT_EMAIL_DOMAIN}`;
+}
+// The student code for the current user: from their synthetic email (new model)
+// or a legacy anonymous session's stored code (back-compat).
+function _studentCodeForUser() {
+  const email = (STATE.user.email || '').toLowerCase();
+  if (email.endsWith('@' + STUDENT_EMAIL_DOMAIN)) return email.split('@')[0].toUpperCase();
+  if (STATE.user.isAnonymous) return (_pendingStudentCode || localStorage.getItem('bandStudentCode') || '').toUpperCase();
+  return '';
+}
 db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
 
 // Keep directors/students signed in across app restarts. LOCAL is already the
@@ -289,34 +306,39 @@ async function resolveMembership() {
     return false;
   }
 
-  // Anonymous student with no membership yet — resolve via their student code.
-  if (STATE.user.isAnonymous) {
-    const code = (_pendingStudentCode || localStorage.getItem('bandStudentCode') || '').toUpperCase();
-    if (code) {
-      try {
-        const codeSnap = await db.collection('studentCodes').doc(code).get();
-        if (codeSnap.exists) {
-          const { orgId, studentNumber } = codeSnap.data();
-          // Create our own membership (rules permit this for a valid code).
-          await db.collection('members').doc(uid).set({
-            orgId, studentNumber: String(studentNumber), role: 'student', joinCode: code
-          });
-          STATE.orgId      = orgId;
-          STATE.isAdmin    = false;
-          STATE.studentNum = String(studentNumber);
-          localStorage.setItem('bandStudentNum', String(studentNumber));
-          _pendingStudentCode = '';
-          return true;
-        }
-      } catch (e) {
-        console.error('student code lookup failed:', e);
-      }
+  // Student with no membership yet — bind it from their code (taken from the
+  // synthetic student email, or a legacy anonymous session). Works for both a
+  // first-time claim and a returning student whose member doc was never written.
+  const studentCode = _studentCodeForUser();
+  if (studentCode) {
+    let codeSnap;
+    try {
+      codeSnap = await db.collection('studentCodes').doc(studentCode).get();
+    } catch (e) {
+      // A thrown lookup is a transient backend failure, not an invalid code —
+      // keep the user signed in and offer a retry.
+      console.error('student code lookup failed:', e);
+      STATE.connError = true; STATE.loading = false; render();
+      return false;
     }
-    // Missing or invalid code — end the anonymous session.
+    if (codeSnap.exists) {
+      const { orgId, studentNumber } = codeSnap.data();
+      await db.collection('members').doc(uid).set({
+        orgId, studentNumber: String(studentNumber), role: 'student', joinCode: studentCode
+      });
+      STATE.orgId      = orgId;
+      STATE.isAdmin    = false;
+      STATE.studentNum = String(studentNumber);
+      STATE.connError  = false;
+      localStorage.setItem('bandStudentNum', String(studentNumber));
+      _pendingStudentCode = '';
+      return true;
+    }
+    // Code no longer maps to a student (e.g., the director regenerated it).
     localStorage.removeItem('bandStudentCode');
     localStorage.removeItem('bandStudentNum');
-    showToast('Code not found. Please check and try again.');
-    auth.signOut(); // onAuthStateChanged clears state and re-renders
+    showToast('That student code is no longer valid — ask your director for your new one.');
+    userSignOut();
     return false;
   }
 

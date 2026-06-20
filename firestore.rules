@@ -153,7 +153,15 @@ service cloud.firestore {
         return m.role == 'student'
           && exists(code)
           && get(code).data.orgId == m.orgId
-          && get(code).data.studentNumber == m.studentNumber;
+          && get(code).data.studentNumber == m.studentNumber
+          && (
+            // New model: the synthetic student email proves possession of the
+            // PIN (Firebase verified it), and must match the code being claimed.
+            request.auth.token.email == m.joinCode.lower() + '@students.bandtracker.app'
+            // Legacy: in-flight anonymous student sessions (pre-PIN). Remove once
+            // all students have re-signed-in with a PIN.
+            || isAnonymous()
+          );
       }
 
       allow create: if isSignedIn() && request.auth.uid == uid
