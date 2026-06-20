@@ -117,6 +117,15 @@ if (navigator.storage?.persist) {
     .catch(() => {});
 }
 
+// Distinguish a deliberate logout from an unexpected session loss. Inline
+// "Sign out" actions go through userSignOut() so onAuthStateChanged can tell
+// the difference and record diagnostics only for the unexpected case.
+let _userInitiatedSignOut = false;
+function userSignOut() {
+  _userInitiatedSignOut = true;
+  try { auth.signOut(); } catch (e) { console.error('signOut failed:', e); }
+}
+
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
