@@ -180,10 +180,13 @@ service cloud.firestore {
     // student number). Only directors of the owning org may manage codes.
 
     match /studentCodes/{code} {
-      // Fetchable by a known code (so an anonymous student can resolve their org
-      // before a membership exists) but NOT listable — nobody may enumerate the
-      // collection to harvest every code → student-number mapping.
-      allow get:    if isSignedIn();
+      // Fetchable by a known code WITHOUT being signed in — a student must look
+      // up / validate their code before they have any account (the synthetic
+      // email + PIN login has no anonymous bootstrap session). Still NOT
+      // listable, so the collection can't be enumerated, and it exposes nothing
+      // sensitive (just an org id + a student number) and is not brute-forceable
+      // by id in practice (32^6 space).
+      allow get:    if true;
       allow list:   if false;
       allow create: if isDirectorOf(request.resource.data.orgId);
       allow update: if isDirectorOf(resource.data.orgId)

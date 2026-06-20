@@ -259,8 +259,12 @@ describe('joining an org', () => {
       anon('badStud').doc('members/badStud').set({ orgId: 'a', role: 'student', studentNumber: '42', joinCode: 'WRONG' })
     );
   });
-  it('a code can be fetched by id but the collection cannot be listed', async () => {
+  it('a code can be fetched by id (even unauthenticated) but never listed', async () => {
+    // Pre-auth lookup: a signed-out student must be able to fetch their code.
+    await assertSucceeds(guest().doc('studentCodes/SCODE').get());
     await assertSucceeds(anon('looker').doc('studentCodes/SCODE').get());
+    // …but nobody may enumerate the collection.
+    await assertFails(guest().collection('studentCodes').get());
     await assertFails(anon('looker').collection('studentCodes').get());
     await assertFails(director('dirA').collection('studentCodes').get());
     await assertFails(director('dirA').collection('inviteCodes').get());
