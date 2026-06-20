@@ -379,6 +379,7 @@ auth.onAuthStateChanged(user => {
     STATE.dirNames   = {};
     _lastPublishedJson = '';
     _authMode        = 'signin';
+    _studentStep     = null;
     render();
   }
 });
