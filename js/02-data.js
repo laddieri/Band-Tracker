@@ -322,10 +322,30 @@ function schedulePublishPublicStats() {
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
+// When Firebase drops a director's session unexpectedly (not a deliberate
+// logout), capture *why* so an intermittent bug becomes diagnosable: was the
+// device offline, was durable storage lost (eviction), or did App Check fail to
+// mint a token (a common cause of refresh failures → forced sign-out)? Stored
+// to localStorage and surfaced on the login screen. Never throws.
+async function _recordAuthLoss() {
+  const diag = { at: new Date().toISOString(), online: navigator.onLine };
+  try { diag.persisted = await (navigator.storage?.persisted?.() ?? null); }
+  catch { diag.persisted = 'err'; }
+  if (typeof RECAPTCHA_V3_SITE_KEY !== 'undefined' && RECAPTCHA_V3_SITE_KEY && firebase.appCheck) {
+    try { await firebase.appCheck().getToken(); diag.appCheck = 'ok'; }
+    catch (e) { diag.appCheck = 'FAILED:' + (e?.code || e?.message || 'err'); }
+  } else { diag.appCheck = 'off'; }
+  try { localStorage.setItem('authLossDiag', JSON.stringify(diag)); } catch {}
+  console.warn('Unexpected sign-out diagnostics:', diag);
+}
+
 auth.onAuthStateChanged(user => {
+  const prev = STATE.user;
   STATE.user = user;
   STATE.authChecking = false;
   if (user) {
+    // A real session is back — clear any stale loss breadcrumb.
+    try { localStorage.removeItem('authLossDiag'); } catch {}
     if (user.isAnonymous) {
       // Restore anonymous student session from localStorage
       const storedCode = localStorage.getItem('bandStudentCode');
@@ -340,6 +360,9 @@ auth.onAuthStateChanged(user => {
     }
     startListeners();
   } else {
+    // Record unexpected director sign-outs (a deliberate logout sets the flag).
+    if (prev && !prev.isAnonymous && !_userInitiatedSignOut) _recordAuthLoss();
+    _userInitiatedSignOut = false;
     STATE._unsubs.forEach(u => u());
     STATE._unsubs = [];
     STATE.loading    = false;

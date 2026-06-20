@@ -3,6 +3,21 @@
 
 // ── Auth views ────────────────────────────────────────────────────────────────
 
+// Shows why the last session ended unexpectedly (set by _recordAuthLoss), so an
+// intermittent logout can be diagnosed from the field. Self-clears on next login.
+function _authLossNote() {
+  let d;
+  try { d = JSON.parse(localStorage.getItem('authLossDiag') || 'null'); } catch { d = null; }
+  if (!d) return '';
+  const when = (() => { try { return new Date(d.at).toLocaleString(); } catch { return d.at; } })();
+  return `
+    <div class="login-diag">
+      <strong>Session ended unexpectedly</strong> · ${esc(when)}<br>
+      online: ${esc(String(d.online))} · durable storage: ${esc(String(d.persisted))} · App&nbsp;Check: ${esc(String(d.appCheck))}
+      <button class="link-btn" style="margin-left:6px" onclick="try{localStorage.removeItem('authLossDiag')}catch(e){}; render()">dismiss</button>
+    </div>`;
+}
+
 function viewLogin() {
   if (_authMode === 'signup') return viewSignup();
   return `
@@ -11,6 +26,7 @@ function viewLogin() {
         ? `<img src="${STATE.bandLogo}" class="login-logo-img" alt="Band Logo">`
         : `<div class="login-logo">🎺</div>`}
       <div class="login-title">${esc(STATE.bandName || 'Band Tracker')}</div>
+      ${_authLossNote()}
 
       <div class="login-section-label">Students</div>
       <div id="student-code-error"></div>
@@ -227,7 +243,7 @@ function viewConnError() {
         your band's data is safe in the cloud — this is just a connection hiccup.
       </p>
       <button class="btn btn-primary btn-full btn-lg" onclick="retryConnect()">Retry</button>
-      <button class="btn btn-secondary btn-full" style="margin-top:8px" onclick="auth.signOut()">Sign out</button>
+      <button class="btn btn-secondary btn-full" style="margin-top:8px" onclick="userSignOut()">Sign out</button>
     </div>`;
 }
 
@@ -348,6 +364,7 @@ async function joinBandWithInvite() {
 
 async function doLogout() {
   closeModal();
+  _userInitiatedSignOut = true; // deliberate logout — don't record it as a session loss
   localStorage.removeItem('bandStudentCode');
   localStorage.removeItem('bandStudentNum');
   await auth.signOut();

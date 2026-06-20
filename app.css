@@ -1962,6 +1962,11 @@ html, body {
   background: var(--bg);
 }
 .login-title { font-size: 1.8rem; font-weight: 800; margin-bottom: 20px; }
+.login-diag {
+  width: 100%; box-sizing: border-box; margin: -8px 0 16px; padding: 8px 10px;
+  background: var(--warning-bg, #fff4e5); color: var(--text); border: 1px solid var(--warning, #e0a44a);
+  border-radius: var(--r-sm); font-size: 0.72rem; line-height: 1.5; text-align: left;
+}
 
 /* ── Brand settings modal ────────────────────────────────────────────────── */
 .brand-logo-area {
