@@ -163,7 +163,7 @@ function showEditStudentModal(num) {
                autocomplete="off" autocapitalize="characters" spellcheck="false"
                style="text-transform:uppercase;letter-spacing:.08em;flex:1">
         <button class="btn btn-secondary" type="button"
-                onclick="document.getElementById('m-student-code').value=genStudentCode()"
+                onclick="fillGeneratedStudentCode()"
                 style="flex-shrink:0">Generate</button>
       </div>
       <div class="form-hint">Share this code with the student so they can view their own page. They set a 6-digit PIN the first time they sign in.</div>
@@ -211,10 +211,26 @@ function saveEditStudent(num) {
   if (oldCode && oldCode !== patch.studentCode) {
     db.collection('studentCodes').doc(oldCode).delete().catch(() => {});
   }
-  setStudentCodeLookup(patch.studentCode, num);
+  // Surface a collision (a code already owned by another org is denied by rules)
+  // instead of silently failing — the student would otherwise be unable to log in.
+  setStudentCodeLookup(patch.studentCode, num).catch(e => {
+    console.error('studentCodes write failed:', e);
+    showToast('That code is already in use — tap Generate for a new one.');
+  });
   closeModal();
   showToast('Student updated');
   render();
+}
+
+async function fillGeneratedStudentCode() {
+  const input = document.getElementById('m-student-code');
+  if (!input) return;
+  const used = new Set(Object.values(STATE.students)
+    .map(s => (s.studentCode || '').toUpperCase()).filter(Boolean));
+  const prev = input.value;
+  input.value = '…';
+  try { input.value = await generateUniqueStudentCode(used); }
+  catch { input.value = prev; }
 }
 
 // "Forgot PIN" / wrong person claimed the code: issue a fresh code, which
@@ -240,7 +256,7 @@ async function _doResetStudentPin(num) {
   const oldCode = s.studentCode ? String(s.studentCode).toUpperCase() : '';
   const used    = new Set(Object.values(STATE.students)
     .map(x => x.studentCode).filter(Boolean).map(c => String(c).toUpperCase()));
-  const newCode = genStudentCode(used);
+  const newCode = await generateUniqueStudentCode(used);
 
   STATE.students[num] = { ...STATE.students[num], studentCode: newCode };
   try {

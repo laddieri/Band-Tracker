@@ -542,14 +542,37 @@ function showAutoGenerateCodesModal() {
   );
 }
 
+// A random student code. 8 chars from an unambiguous 32-symbol alphabet
+// (≈1.1 trillion combinations) so collisions stay negligible across many orgs.
+// `existing` de-dupes within the caller's batch; use generateUniqueStudentCode
+// to also guarantee global uniqueness against the studentCodes collection.
 function genStudentCode(existing = new Set()) {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code;
   do {
-    code = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    code = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
   } while (existing.has(code));
   existing.add(code);
   return code;
+}
+
+// Generate a code that's unique BOTH within the caller's batch (`existing`) and
+// globally in studentCodes — student codes share one namespace across all orgs,
+// so a duplicate would either fail to register (rules block cross-org overwrite)
+// or shadow another org's student. Falls back to a plain code if the check can't
+// run (8-char codes already make a real collision astronomically unlikely).
+async function generateUniqueStudentCode(existing = new Set()) {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const code = genStudentCode(existing);
+    try {
+      const snap = await db.collection('studentCodes').doc(code).get();
+      if (!snap.exists) return code;
+    } catch (e) {
+      console.error('code uniqueness check failed:', e);
+      return code;
+    }
+  }
+  return genStudentCode(existing);
 }
 
 async function autoGenerateStudentCodes() {
@@ -560,7 +583,18 @@ async function autoGenerateStudentCodes() {
   if (!toUpdate.length) { showToast('All students already have a code.'); return; }
 
   const CHUNK = 500;
+  // Generate locally-unique candidates, then confirm global uniqueness in
+  // parallel (one round; 8-char codes make a real collision astronomically rare).
   const updates = toUpdate.map(s => ({ s, code: genStudentCode(usedCodes) }));
+  await Promise.all(updates.map(async u => {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      let exists;
+      try { exists = (await db.collection('studentCodes').doc(u.code).get()).exists; }
+      catch { return; } // can't check — keep the (long, low-collision) code
+      if (!exists) return;
+      u.code = genStudentCode(usedCodes); // collided: pick another and re-check
+    }
+  }));
 
   for (let i = 0; i < updates.length; i += CHUNK) {
     const batch = db.batch();
@@ -575,16 +609,21 @@ async function autoGenerateStudentCodes() {
   }
 
   // Mirror new codes into the studentCodes lookup so students can sign in.
+  let codeSyncFailed = false;
   for (let i = 0; i < updates.length; i += CHUNK) {
     const batch = db.batch();
     updates.slice(i, i + CHUNK).forEach(({ s, code }) => {
       batch.set(db.collection('studentCodes').doc(code.toUpperCase()),
         { orgId: STATE.orgId, studentNumber: String(s.number) }, { merge: true });
     });
-    await batch.commit().catch(e => console.error('studentCodes sync failed:', e));
+    await batch.commit().catch(e => { console.error('studentCodes sync failed:', e); codeSyncFailed = true; });
   }
 
-  showToast(`${updates.length} code${updates.length !== 1 ? 's' : ''} generated.`);
+  if (codeSyncFailed) {
+    showToast('Some codes could not be registered — please try again.');
+  } else {
+    showToast(`${updates.length} code${updates.length !== 1 ? 's' : ''} generated.`);
+  }
   render();
 }
 
