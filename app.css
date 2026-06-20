@@ -1969,6 +1969,16 @@ html, body {
   background: var(--bg);
 }
 .login-title { font-size: 1.8rem; font-weight: 800; margin-bottom: 20px; }
+.login-sub { color: var(--text-muted); font-size: 0.9rem; line-height: 1.5; margin: -10px 0 18px; text-align: center; }
+.login-back { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.85rem; margin-top: 14px; text-decoration: underline; }
+.student-tips {
+  width: 100%; box-sizing: border-box; text-align: left; margin: 4px 0 16px;
+  padding: 12px 14px; background: var(--primary-bg); border-radius: var(--r-sm);
+  font-size: 0.8rem; line-height: 1.5; color: var(--text);
+}
+.student-tips-title { font-weight: 700; margin-bottom: 4px; }
+.student-tips ul { margin: 0; padding-left: 18px; }
+.student-tips li { margin: 2px 0; }
 .login-diag {
   width: 100%; box-sizing: border-box; margin: -8px 0 16px; padding: 8px 10px;
   background: var(--warning-bg, #fff4e5); color: var(--text); border: 1px solid var(--warning, #e0a44a);

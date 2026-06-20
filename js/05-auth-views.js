@@ -19,7 +19,10 @@ function _authLossNote() {
 }
 
 function viewLogin() {
-  if (_authMode === 'signup') return viewSignup();
+  if (_authMode === 'signup')    return viewSignup();
+  if (_studentStep === 'code')   return viewStudentCode();
+  if (_studentStep === 'pin')    return viewStudentPin();
+  if (_studentStep === 'setpin') return viewStudentSetPin();
   return `
     <div class="login-view">
       ${STATE.bandLogo
@@ -28,26 +31,9 @@ function viewLogin() {
       <div class="login-title">${esc(STATE.bandName || 'Band Tracker')}</div>
       ${_authLossNote()}
 
-      <div class="login-section-label">Students</div>
-      <div id="student-code-error"></div>
-      <div class="form-group">
-        <input class="form-input" id="student-code" type="text"
-               placeholder="Student code"
-               value="${esc(localStorage.getItem('bandStudentCode') || '')}"
-               autocomplete="off" autocapitalize="characters" spellcheck="false"
-               style="text-transform:uppercase;letter-spacing:.1em;font-size:1.1rem;text-align:center"
-               onkeydown="if(event.key==='Enter')document.getElementById('student-pin').focus()">
-      </div>
-      <div class="form-group">
-        <input class="form-input" id="student-pin" type="password"
-               inputmode="numeric" maxlength="6" placeholder="6-digit PIN"
-               autocomplete="off"
-               style="letter-spacing:.3em;font-size:1.1rem;text-align:center"
-               onkeydown="if(event.key==='Enter')loginWithStudentCode()">
-      </div>
-      <button class="btn btn-primary btn-full btn-lg" onclick="loginWithStudentCode()">View My Page</button>
-      <p style="font-size:.72rem;color:var(--text-muted);text-align:center;margin:8px 0 0">
-        First time? Enter your code and pick a 6-digit PIN to set it.
+      <button class="btn btn-primary btn-full btn-lg" onclick="studentStart()">🎵 Students — tap here</button>
+      <p style="font-size:.74rem;color:var(--text-muted);text-align:center;margin:8px 0 0">
+        Sign in with the code from your director.
       </p>
 
       <div class="login-divider"><span>Directors</span></div>
@@ -121,55 +107,135 @@ function setAuthMode(mode) {
   render();
 }
 
-async function loginWithStudentCode() {
-  const code = document.getElementById('student-code')?.value.trim().toUpperCase();
-  const pin  = document.getElementById('student-pin')?.value.trim();
-  if (!code) { showStudentCodeError('Please enter your student code.'); return; }
-  if (!/^\d{6}$/.test(pin)) { showStudentCodeError('Your PIN must be 6 digits.'); return; }
-  showStudentCodeError('');
+// ── Student sign-in wizard ────────────────────────────────────────────────────
+// Step 1 enter code · step 2 enter PIN (returning) or set a PIN with tips (first
+// time). Kept separate from the director form so it can be friendly and guided.
 
-  // 1) Confirm the code maps to a real student before creating any account.
+function studentStart() {
+  _studentStep = 'code';
+  _studentCode = localStorage.getItem('bandStudentCode') || '';
+  render();
+}
+function studentExit() { _studentStep = null; render(); }
+function studentGo(step) { _studentStep = step; render(); }
+
+function studentWizError(msg) {
+  const el = document.getElementById('student-wiz-error');
+  if (el) el.innerHTML = msg ? `<div class="auth-error">${esc(msg)}</div>` : '';
+}
+
+const _studentWizShell = (title, sub, body) => `
+  <div class="login-view">
+    ${STATE.bandLogo ? `<img src="${STATE.bandLogo}" class="login-logo-img" alt="">` : `<div class="login-logo">🎵</div>`}
+    <div class="login-title">${title}</div>
+    <p class="login-sub">${sub}</p>
+    <div id="student-wiz-error"></div>
+    ${body}
+  </div>`;
+
+function viewStudentCode() {
+  return _studentWizShell('Student Sign-In', 'Enter the code your band director gave you.', `
+    <div class="form-group">
+      <input class="form-input" id="wiz-code" type="text" autofocus placeholder="Your code"
+             value="${esc(_studentCode)}" autocomplete="off" autocapitalize="characters" spellcheck="false"
+             style="text-transform:uppercase;letter-spacing:.14em;font-size:1.25rem;text-align:center"
+             onkeydown="if(event.key==='Enter')studentSubmitCode()">
+    </div>
+    <button class="btn btn-primary btn-full btn-lg" onclick="studentSubmitCode()">Next</button>
+    <button class="btn-link login-back" onclick="studentExit()">← Back</button>
+  `);
+}
+
+async function studentSubmitCode() {
+  const code = document.getElementById('wiz-code')?.value.trim().toUpperCase();
+  if (!code) { studentWizError('Please enter your code.'); return; }
+  studentWizError('');
   let exists;
-  try {
-    exists = (await db.collection('studentCodes').doc(code).get()).exists;
-  } catch (e) {
-    showStudentCodeError('Unable to connect. Please try again.');
-    return;
-  }
-  if (!exists) { showStudentCodeError('Code not found — check with your director.'); return; }
-
-  // 2) Sign in with the synthetic email + PIN; on first use, claim the account.
-  _pendingStudentCode = code;
+  try { exists = (await db.collection('studentCodes').doc(code).get()).exists; }
+  catch { studentWizError('Unable to connect. Please try again.'); return; }
+  if (!exists) { studentWizError("That code isn't recognized — double-check it with your director."); return; }
+  _studentCode = code;
   localStorage.setItem('bandStudentCode', code);
-  const email = studentEmailFor(code);
+  studentGo('pin'); // returning students land here; first-timers tap the link
+}
+
+function viewStudentPin() {
+  return _studentWizShell('Enter your PIN', `Signing in with code <strong>${esc(_studentCode)}</strong>.`, `
+    <div class="form-group">
+      <input class="form-input" id="wiz-pin" type="password" autofocus inputmode="numeric" maxlength="6"
+             placeholder="6-digit PIN" autocomplete="off"
+             style="letter-spacing:.34em;font-size:1.25rem;text-align:center"
+             onkeydown="if(event.key==='Enter')studentSignIn()">
+    </div>
+    <button class="btn btn-primary btn-full btn-lg" onclick="studentSignIn()">Sign In</button>
+    <button class="btn btn-secondary btn-full" style="margin-top:8px" onclick="studentGo('setpin')">First time? Set up your PIN</button>
+    <button class="btn-link login-back" onclick="studentGo('code')">← Use a different code</button>
+  `);
+}
+
+async function studentSignIn() {
+  const pin = document.getElementById('wiz-pin')?.value.trim();
+  if (!/^\d{6}$/.test(pin)) { studentWizError('Your PIN is 6 digits.'); return; }
+  studentWizError('');
   try {
-    await auth.signInWithEmailAndPassword(email, pin);
+    await auth.signInWithEmailAndPassword(studentEmailFor(_studentCode), pin);
+    _studentStep = null; // success — onAuthStateChanged takes over
   } catch (e) {
-    // With email-enumeration protection, a missing account and a wrong PIN both
-    // report invalid-credential, so try to claim — success means first-time,
-    // email-already-in-use means the account exists and the PIN was wrong.
-    if (e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential' || e.code === 'auth/invalid-login-credentials') {
-      try {
-        await auth.createUserWithEmailAndPassword(email, pin);
-      } catch (e2) {
-        if (e2.code === 'auth/email-already-in-use')
-          showStudentCodeError('Incorrect PIN. Try again, or ask your director to reset it.');
-        else if (e2.code === 'auth/weak-password')
-          showStudentCodeError('Your PIN must be 6 digits.');
-        else
-          showStudentCodeError(authMsg(e2.code));
-      }
-    } else if (e.code === 'auth/wrong-password') {
-      showStudentCodeError('Incorrect PIN. Try again, or ask your director to reset it.');
-    } else {
-      showStudentCodeError(authMsg(e.code));
-    }
+    if (e.code === 'auth/wrong-password')
+      studentWizError('Incorrect PIN. Try again, or ask your director to reset it.');
+    else if (e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential' || e.code === 'auth/invalid-login-credentials')
+      studentWizError('Incorrect PIN — or if this is your first time, tap “First time? Set up your PIN”.');
+    else
+      studentWizError(authMsg(e.code));
   }
 }
 
-function showStudentCodeError(msg) {
-  const el = document.getElementById('student-code-error');
-  if (el) el.innerHTML = `<div class="auth-error">${esc(msg)}</div>`;
+function viewStudentSetPin() {
+  return _studentWizShell('Set your PIN', `Code <strong>${esc(_studentCode)}</strong> — choose a 6-digit PIN you'll remember.`, `
+    <div class="form-group">
+      <input class="form-input" id="wiz-pin1" type="password" autofocus inputmode="numeric" maxlength="6"
+             placeholder="Choose a 6-digit PIN" autocomplete="off"
+             style="letter-spacing:.34em;font-size:1.2rem;text-align:center"
+             onkeydown="if(event.key==='Enter')document.getElementById('wiz-pin2').focus()">
+    </div>
+    <div class="form-group">
+      <input class="form-input" id="wiz-pin2" type="password" inputmode="numeric" maxlength="6"
+             placeholder="Re-enter your PIN" autocomplete="off"
+             style="letter-spacing:.34em;font-size:1.2rem;text-align:center"
+             onkeydown="if(event.key==='Enter')studentSetPin()">
+    </div>
+    <div class="student-tips">
+      <div class="student-tips-title">🔒 Keep your PIN secret</div>
+      <ul>
+        <li>Don't share it with anyone — not even your friends.</li>
+        <li>Pick something only you know (not <em>123456</em> or your birthday).</li>
+        <li>Forgot it later? Your director can reset it for you.</li>
+      </ul>
+    </div>
+    <button class="btn btn-primary btn-full btn-lg" onclick="studentSetPin()">Create PIN &amp; Sign In</button>
+    <button class="btn-link login-back" onclick="studentGo('pin')">Already set a PIN? Enter it</button>
+  `);
+}
+
+async function studentSetPin() {
+  const p1 = document.getElementById('wiz-pin1')?.value.trim();
+  const p2 = document.getElementById('wiz-pin2')?.value.trim();
+  if (!/^\d{6}$/.test(p1)) { studentWizError('Your PIN must be 6 digits.'); return; }
+  if (p1 !== p2)           { studentWizError("Those PINs don't match — try again."); return; }
+  studentWizError('');
+  try {
+    await auth.createUserWithEmailAndPassword(studentEmailFor(_studentCode), p1);
+    _studentStep = null; // success — onAuthStateChanged takes over
+  } catch (e) {
+    if (e.code === 'auth/email-already-in-use') {
+      studentGo('pin');
+      studentWizError('You already set a PIN for this code — enter it below.');
+    } else if (e.code === 'auth/weak-password') {
+      studentWizError('Your PIN must be 6 digits.');
+    } else {
+      studentWizError(authMsg(e.code));
+    }
+  }
 }
 
 function showAuthError(msg) {
