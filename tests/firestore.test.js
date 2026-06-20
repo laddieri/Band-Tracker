@@ -249,6 +249,22 @@ describe('joining an org', () => {
         .set({ orgId: 'a', role: 'student', studentNumber: '42', joinCode: 'SCODE' })
     );
   });
+  it('the matching student can mark their own code claimed', async () => {
+    await assertSucceeds(
+      student('claimer', 'SCODE').doc('studentCodes/SCODE').set({ claimed: true }, { merge: true })
+    );
+  });
+  it('a student CANNOT mark a code claimed that is not their email', async () => {
+    await assertFails(
+      student('wrongClaim', 'OTHER').doc('studentCodes/SCODE').set({ claimed: true }, { merge: true })
+    );
+  });
+  it('a student CANNOT alter org/number while marking claimed', async () => {
+    await assertFails(
+      student('tamperClaim', 'SCODE').doc('studentCodes/SCODE')
+        .set({ orgId: 'a', studentNumber: '7', claimed: true }, { merge: true })
+    );
+  });
   it('joining as director with no code/ownership fails', async () => {
     await assertFails(
       director('intruder').doc('members/intruder').set({ orgId: 'a', role: 'director' })

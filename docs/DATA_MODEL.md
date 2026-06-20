@@ -129,6 +129,11 @@ shared/leaked code is useless without the PIN, and sessions persist durably
    `<code>@students.bandtracker.app` (proof they hold the PIN). So a student can
    only ever bind the exact number their own code maps to.
 
+On first claim the binding also sets `studentCodes/{CODE}.claimed = true` (a
+rule lets the matching student flip just that flag), so the sign-in wizard can
+read it pre-auth and route a returning student straight to "enter your PIN" vs.
+a first-timer to "set your PIN" — without relying on email-enumeration checks.
+
 **Forgot PIN / wrong person claimed it:** the director regenerates that
 student's code (new code → new synthetic email → fresh claim). The old Firebase
 account is orphaned and harmless (its old code no longer maps).
