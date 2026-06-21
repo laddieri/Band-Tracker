@@ -1768,6 +1768,10 @@ function reRender(rid) {
   } else if (_view === 'rehearsal' || _view === 'dashboard') {
     mc.innerHTML = viewRehearsal(rid);
     if (_blockMode && !_activeNum) initBlockPinch(rid);
+  } else if (_view === 'drill' && typeof _drillViewRenderSvg === 'function') {
+    // Quick-marks added from the drill viewer: refresh its info panel tally.
+    _drillViewRenderSvg();
+    return;
   }
   mc.scrollTop = st;
 }
