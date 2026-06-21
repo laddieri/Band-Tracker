@@ -183,7 +183,7 @@ function _drillSyncActive() {
     if (_activeDrillLoadedId !== null) {
       _activeDrillLoadedId = null;
       _drillData = null; _drillPages = null; _drillFileName = null; _drillFlipV = false;
-      _drillCurrentSet = 0; _drillTraceLabel = null; _drillSelLabel = null; _drillSearchQuery = '';
+      _drillCurrentSet = 0; _drillTraceLabel = null; _drillSelLabel = null; _drillSearchQuery = ''; _drillTraceSets = []; _drillSelectMode = false; if (typeof _drillPlayStop === "function") _drillPlayStop();
     }
     return;
   }
@@ -206,7 +206,7 @@ function _drillLoadPayload(id) {
     _drillPages    = p.pages || [];
     _drillFlipV    = !!meta.flipV;
     _drillFileName = meta.name || meta.fileName || null;
-    _drillCurrentSet = 0; _drillTraceLabel = null; _drillSelLabel = null; _drillSearchQuery = '';
+    _drillCurrentSet = 0; _drillTraceLabel = null; _drillSelLabel = null; _drillSearchQuery = ''; _drillTraceSets = []; _drillSelectMode = false; if (typeof _drillPlayStop === "function") _drillPlayStop();
     _activeDrillLoadedId = id;
     render();
   }).catch(e => console.error('drill payload load failed:', e));
@@ -238,7 +238,7 @@ function _onDrillFileLoaded(file) {
       _activeDrillLoadedId = ref.id;
       _drillData = parsed.sections; _drillPages = parsed.pages;
       _drillFileName = meta.name; _drillFlipV = false;
-      _drillTraceLabel = null; _drillSelLabel = null; _drillSearchQuery = ''; _drillCurrentSet = 0;
+      _drillTraceLabel = null; _drillSelLabel = null; _drillSearchQuery = ''; _drillTraceSets = []; _drillSelectMode = false; if (typeof _drillPlayStop === "function") _drillPlayStop(); _drillCurrentSet = 0;
 
       if (_view === 'drill')                                  render();
       else if (document.getElementById('drill-library-modal')) showDrillLibraryModal();
@@ -467,7 +467,7 @@ const _DRILL_GEOM = (() => {
 //   traceLabel — draw this performer's path across every set + highlight them
 //   selectMode — tap toggles selection (tracker) vs opens an info popup (viewer)
 function _drillFieldSvg(positions, opts = {}) {
-  const { fs = false, labelMode = 0, traceLabel = null, selectMode = false, fsView = false, focusLabel = null } = opts;
+  const { fs = false, labelMode = 0, traceLabel = null, selectMode = false, fsView = false, focusLabel = null, traceIdx = null } = opts;
 
   // 100 yards = 160 steps wide × 84 steps deep; coords are already in steps
   // (stepsX from the west goal, stepsY off the front sideline).
@@ -502,19 +502,21 @@ function _drillFieldSvg(positions, opts = {}) {
     }
   }
 
-  // Trace path of one performer across every set.
+  // Trace path of one performer across the active sets (a selected subset, or
+  // every set by default).
   let trace = '';
   if (traceLabel && _drillPages) {
+    const idxs = traceIdx || _drillPages.map((_, i) => i);
     const pts = [];
-    _drillPages.forEach((pg, i) => {
-      const tp = pg.performers.find(p => p.label === traceLabel);
+    idxs.forEach(i => {
+      const tp = _drillPages[i] && _drillPages[i].performers.find(p => p.label === traceLabel);
       if (tp) pts.push({ i, x: fx(tp.stepsX), y: fy(tp.stepsY) });
     });
     if (pts.length > 1) {
       trace += `<polyline points="${pts.map(p => `${p.x},${p.y}`).join(' ')}" fill="none" stroke="#ffd23f" stroke-width="1.4" stroke-dasharray="3 2" opacity="0.9" pointer-events="none"/>`;
     }
     pts.forEach(p => {
-      const cur = p.i === _drillCurrentSet;
+      const cur = p.i === _drillCurrentSet && !_drillPlaying;
       trace += `<circle cx="${p.x}" cy="${p.y}" r="${cur ? 2.6 : 1.8}" fill="#ffd23f" opacity="${cur ? 1 : 0.65}" pointer-events="none"/>`;
     });
   }
@@ -975,9 +977,13 @@ function _drillViewInner() {
                oninput="drillViewSearch(this.value)">
         <button class="drill-search-clear" onclick="drillViewClearSearch()" aria-label="Clear">✕</button>
       </div>
+      <button class="btn btn-sm ${_drillPlaying ? 'btn-primary' : 'btn-secondary'}" onclick="drillPlayToggle()" title="Play / pause">${_drillPlaying ? '⏸' : '▶'}</button>
+      <button class="btn btn-sm ${_drillSelectMode ? 'btn-primary' : 'btn-secondary'}" onclick="drillToggleSelectMode()" title="Select sets to trace/play">⛶</button>
       <button class="btn btn-sm btn-secondary" onclick="drillViewFlip()" title="Flip facing">⇅</button>
       <button class="btn btn-sm btn-secondary" onclick="drillViewExpand()" title="Hide header &amp; tabs">⤢</button>
     </div>
+
+    ${_drillSelStatusHtml()}
 
     <div class="drill-view-strip">
       <button class="drill-nav-arrow" onclick="drillViewNav(-1)"${idx<=0?' disabled':''} aria-label="Previous set">&#8592;</button>
@@ -992,13 +998,62 @@ function _drillViewInner() {
     </div>`;
 }
 
+// The selected-sets / playback status line (only when relevant).
+function _drillSelStatusHtml() {
+  if (_drillPlaying) {
+    return `<div class="drill-sel-status drill-sel-status--play">
+      ▶ Playing · <span id="drill-play-count">count ${_drillPlayCount}</span> of ${_drillPlayEnd}</div>`;
+  }
+  if (_drillSelectMode || _drillTraceSets.length) {
+    const n = _drillTraceSets.length;
+    return `<div class="drill-sel-status">
+      ${_drillSelectMode ? 'Tap sets to include · ' : ''}${n ? `${n} set${n!==1?'s':''} selected` : 'no sets selected (uses all)'}
+      ${n ? `<button class="link-btn" onclick="drillClearSets()">clear</button>` : ''}</div>`;
+  }
+  return '';
+}
+
 // SVG + sticky-axis overlay (+ the tapped-performer info panel) for the zoomable
 // stage. Rebuilt on its own so the search box above it keeps focus while typing.
 function _drillStageInner() {
-  return _drillFieldSvg(_drillPages[_drillCurrentSet].performers,
-    { fs: true, labelMode: _drillLabelMode, traceLabel: _drillTraceLabel, focusLabel: _drillSelLabel, selectMode: false })
+  return _drillFieldSvg(_drillCurrentPositions(),
+    { fs: true, labelMode: _drillLabelMode, traceLabel: _drillTraceLabel, focusLabel: _drillSelLabel,
+      selectMode: false, traceIdx: _drillActiveIdx() })
     + `<div class="drill-fs-axis"></div>`
-    + _drillInfoPanelHtml();
+    + (_drillPlaying ? '' : _drillInfoPanelHtml());
+}
+
+// The active set indices for tracing/playback: a selected subset (≥2), else all.
+function _drillActiveIdx() {
+  if (_drillTraceSets && _drillTraceSets.length >= 2) return [..._drillTraceSets].sort((a, b) => a - b);
+  return _drillPages ? _drillPages.map((_, i) => i) : [];
+}
+
+// Performer positions to render right now: an interpolated frame while playing,
+// otherwise the current set's formation.
+function _drillCurrentPositions() {
+  return _drillPlaying ? _drillFrameAt(_drillPlayCount) : _drillPages[_drillCurrentSet].performers;
+}
+
+// Linearly interpolate every performer's position at a given count, using the
+// active sets as keyframes (each keyframe sits at its real count).
+function _drillFrameAt(count) {
+  const pages = _drillActiveIdx().map(i => _drillPages[i]);
+  if (!pages.length) return [];
+  let seg = 0;
+  while (seg < pages.length - 1 && pages[seg + 1].count <= count) seg++;
+  const a = pages[seg], b = pages[Math.min(seg + 1, pages.length - 1)];
+  const span = b.count - a.count;
+  const t = span > 0 ? Math.max(0, Math.min(1, (count - a.count) / span)) : (count >= b.count ? 1 : 0);
+  const bMap = {}; b.performers.forEach(p => { bMap[p.label] = p; });
+  return a.performers.map(pa => {
+    const pb = bMap[pa.label] || pa;
+    return {
+      label: pa.label, section: pa.section,
+      stepsX: pa.stepsX + (pb.stepsX - pa.stepsX) * t,
+      stepsY: pa.stepsY + (pb.stepsY - pa.stepsY) * t,
+    };
+  });
 }
 
 // Compact info panel docked to the top of the chart (so it doesn't cover the
@@ -1060,9 +1115,11 @@ function _drillFootText() {
 }
 
 function _drillSetStripHtml() {
-  return _drillPages.map((pg, i) =>
-    `<button class="drill-set-chip${i === _drillCurrentSet ? ' drill-set-chip--active' : ''}" onclick="drillViewGoToSet(${i})">${i + 1}<span class="drill-set-chip-ct">${pg.count}</span></button>`
-  ).join('');
+  return _drillPages.map((pg, i) => {
+    const cls = (i === _drillCurrentSet ? ' drill-set-chip--active' : '')
+              + (_drillTraceSets.includes(i) ? ' drill-set-chip--sel' : '');
+    return `<button class="drill-set-chip${cls}" onclick="drillViewGoToSet(${i})">${i + 1}<span class="drill-set-chip-ct">${pg.count}</span></button>`;
+  }).join('');
 }
 
 // Called by render() after the Drill tab's HTML is in the DOM: wire up
@@ -1102,8 +1159,63 @@ function drillViewNav(delta) {
 }
 
 function drillViewGoToSet(i) {
+  if (_drillSelectMode) {
+    // Toggle this set in the trace/playback selection.
+    const at = _drillTraceSets.indexOf(i);
+    if (at >= 0) _drillTraceSets.splice(at, 1); else _drillTraceSets.push(i);
+    _drillViewRerender();
+    return;
+  }
   _drillCurrentSet = Math.max(0, Math.min(_drillPages.length - 1, i));
   _drillViewRerender();
+}
+
+function drillToggleSelectMode() {
+  _drillSelectMode = !_drillSelectMode;
+  if (_drillPlaying) _drillPlayStop();
+  _drillViewRerender();
+}
+
+function drillClearSets() {
+  _drillTraceSets = [];
+  _drillViewRerender();
+}
+
+// ── Playback: animate the formation count-by-count through the active sets ─────
+const _DRILL_PLAY_MS = 450; // one count per tick
+
+function drillPlayToggle() {
+  if (_drillPlaying) { _drillPlayStop(); _drillViewRerender(); return; }
+  const idxs = _drillActiveIdx();
+  if (idxs.length < 2) { showToast('Select at least 2 sets, or this drill needs more sets.'); return; }
+  _drillSelectMode = false;
+  _drillPlayStart  = _drillPages[idxs[0]].count;
+  _drillPlayEnd    = _drillPages[idxs[idxs.length - 1]].count;
+  _drillPlayCount  = _drillPlayStart;
+  _drillPlaying    = true;
+  _drillSelLabel   = null; // hide the info panel while playing
+  _drillViewRerender();
+  _drillPlayTimer = setInterval(_drillPlayTick, _DRILL_PLAY_MS);
+}
+
+function _drillPlayTick() {
+  if (_drillPlayCount >= _drillPlayEnd) {
+    const idxs = _drillActiveIdx();
+    _drillCurrentSet = idxs[idxs.length - 1]; // land on the final formation
+    _drillPlayStop();
+    _drillViewRerender();
+    return;
+  }
+  _drillPlayCount += 1;
+  _drillViewRenderSvg(); // cheap: just the field
+  const el = document.getElementById('drill-play-count');
+  if (el) el.textContent = `count ${_drillPlayCount}`;
+}
+
+function _drillPlayStop() {
+  _drillPlaying = false;
+  if (_drillPlayTimer) clearInterval(_drillPlayTimer);
+  _drillPlayTimer = null;
 }
 
 function drillViewFlip() {
@@ -1156,7 +1268,7 @@ function _drillViewFsHtml() {
   const navLabel = `Set ${idx + 1} <span style="font-weight:400;color:var(--text-muted)">of ${total} · count ${_drillPages[idx].count}</span>`;
   const legend   = _drillLegendHtml();
   const svgField = _drillFieldSvg(_drillPages[idx].performers,
-    { fs: true, labelMode: _drillLabelMode, traceLabel: _drillTraceLabel, focusLabel: _drillTraceLabel, selectMode: false, fsView: true });
+    { fs: true, labelMode: _drillLabelMode, traceLabel: _drillTraceLabel, focusLabel: _drillTraceLabel, selectMode: false, fsView: true, traceIdx: _drillActiveIdx() });
 
   let readout = '';
   if (_drillTraceLabel) {

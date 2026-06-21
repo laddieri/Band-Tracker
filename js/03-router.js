@@ -59,6 +59,7 @@ function navigate(view, params = {}, _fromHistory = false) {
     _attTabRecentStatus = '';
   }
   if (view === 'drill' && _view !== 'drill') _drillZoomReset(); // start the chart at fit
+  if (_view === 'drill' && view !== 'drill' && typeof _drillPlayStop === 'function') _drillPlayStop();
   _view   = view;
   _params = params;
   if (!_fromHistory) {
@@ -98,6 +99,13 @@ let _drillLabelMode   = 0;    // dot labels: 0 = none, 1 = drill labels, 2 = stu
 let _drillTraceLabel  = null; // performer label currently traced/highlighted in the viewer
 let _drillSelLabel    = null; // performer tapped for the info panel (gets a bold callout)
 let _drillSearchQuery = '';   // text in the Drill-tab performer search box
+let _drillSelectMode  = false; // strip taps select sets (for trace/playback) vs navigate
+let _drillTraceSets   = [];    // selected page indices to trace/animate through (<2 = all)
+let _drillPlaying     = false; // animation running
+let _drillPlayCount   = 0;     // current animation count
+let _drillPlayTimer   = null;  // setInterval handle
+let _drillPlayStart   = 0;
+let _drillPlayEnd     = 0;
 let _drillChartSelect = false; // fullscreen chart context: true = select performers, false = view
 let _drillSelectedNums = []; // student numbers selected via drill
 let _pendingSegment    = ''; // currently selected rehearsal segment in mark modal
