@@ -322,21 +322,35 @@ function schedulePublishPublicStats() {
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
-// When Firebase drops a director's session unexpectedly (not a deliberate
-// logout), capture *why* so an intermittent bug becomes diagnosable: was the
-// device offline, was durable storage lost (eviction), or did App Check fail to
-// mint a token (a common cause of refresh failures → forced sign-out)? Stored
-// to localStorage and surfaced on the login screen. Never throws.
+// When Firebase drops a session unexpectedly (not a deliberate logout), capture
+// *why* so an intermittent bug becomes diagnosable: was the device offline, was
+// durable storage lost (eviction), or did App Check fail to mint a token (a
+// common cause of refresh failures → forced sign-out)? Appended to a rolling log
+// in localStorage and surfaced on the login screen + the account menu. Also
+// catches sessions lost while the app was CLOSED (see the bandLastAuth marker).
+// Never throws.
 async function _recordAuthLoss() {
-  const diag = { at: new Date().toISOString(), online: navigator.onLine };
+  let marker = null;
+  try { marker = JSON.parse(localStorage.getItem('bandLastAuth') || 'null'); } catch {}
+  const diag = {
+    at:       new Date().toISOString(),
+    online:   navigator.onLine,
+    email:    (STATE.user && STATE.user.email) || marker?.email || null,
+    lastSeen: marker?.lastSeen ? new Date(marker.lastSeen).toISOString() : null,
+  };
   try { diag.persisted = await (navigator.storage?.persisted?.() ?? null); }
   catch { diag.persisted = 'err'; }
   if (typeof RECAPTCHA_V3_SITE_KEY !== 'undefined' && RECAPTCHA_V3_SITE_KEY && firebase.appCheck) {
     try { await firebase.appCheck().getToken(); diag.appCheck = 'ok'; }
     catch (e) { diag.appCheck = 'FAILED:' + (e?.code || e?.message || 'err'); }
   } else { diag.appCheck = 'off'; }
-  try { localStorage.setItem('authLossDiag', JSON.stringify(diag)); } catch {}
+  try {
+    const log = JSON.parse(localStorage.getItem('authLossLog') || '[]');
+    log.unshift(diag);
+    localStorage.setItem('authLossLog', JSON.stringify(log.slice(0, 8)));
+  } catch {}
   console.warn('Unexpected sign-out diagnostics:', diag);
+  if (!STATE.user) render(); // refresh the login note now that the async write is done
 }
 
 auth.onAuthStateChanged(user => {
@@ -344,8 +358,17 @@ auth.onAuthStateChanged(user => {
   STATE.user = user;
   STATE.authChecking = false;
   if (user) {
-    // A real session is back — clear any stale loss breadcrumb.
-    try { localStorage.removeItem('authLossDiag'); } catch {}
+    if (!user.isAnonymous) {
+      // Durable "we had a session" marker: survives app restarts (unless storage
+      // is evicted) so a sign-out that happens while the app is closed can still
+      // be detected on next launch. lastSeen refreshes every open.
+      try {
+        const prevMark = JSON.parse(localStorage.getItem('bandLastAuth') || 'null');
+        localStorage.setItem('bandLastAuth', JSON.stringify({
+          email: user.email || '', firstAt: prevMark?.firstAt || Date.now(), lastSeen: Date.now(),
+        }));
+      } catch {}
+    }
     if (user.isAnonymous) {
       // Restore anonymous student session from localStorage
       const storedCode = localStorage.getItem('bandStudentCode');
@@ -360,8 +383,13 @@ auth.onAuthStateChanged(user => {
     }
     startListeners();
   } else {
-    // Record unexpected director sign-outs (a deliberate logout sets the flag).
-    if (prev && !prev.isAnonymous && !_userInitiatedSignOut) _recordAuthLoss();
+    // Unexpected sign-out if we had a session this run OR a marker from a prior
+    // run says we did (i.e. dropped while the app was closed) — and it wasn't a
+    // deliberate logout.
+    let hadSession = !!(prev && !prev.isAnonymous);
+    try { hadSession = hadSession || !!localStorage.getItem('bandLastAuth'); } catch {}
+    if (hadSession && !_userInitiatedSignOut) _recordAuthLoss();
+    try { localStorage.removeItem('bandLastAuth'); } catch {} // consumed
     _userInitiatedSignOut = false;
     STATE._unsubs.forEach(u => u());
     STATE._unsubs = [];

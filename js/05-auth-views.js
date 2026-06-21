@@ -3,21 +3,6 @@
 
 // ── Auth views ────────────────────────────────────────────────────────────────
 
-// Shows why the last session ended unexpectedly (set by _recordAuthLoss), so an
-// intermittent logout can be diagnosed from the field. Self-clears on next login.
-function _authLossNote() {
-  let d;
-  try { d = JSON.parse(localStorage.getItem('authLossDiag') || 'null'); } catch { d = null; }
-  if (!d) return '';
-  const when = (() => { try { return new Date(d.at).toLocaleString(); } catch { return d.at; } })();
-  return `
-    <div class="login-diag">
-      <strong>Session ended unexpectedly</strong> · ${esc(when)}<br>
-      online: ${esc(String(d.online))} · durable storage: ${esc(String(d.persisted))} · App&nbsp;Check: ${esc(String(d.appCheck))}
-      <button class="link-btn" style="margin-left:6px" onclick="try{localStorage.removeItem('authLossDiag')}catch(e){}; render()">dismiss</button>
-    </div>`;
-}
-
 function viewLogin() {
   if (_authMode === 'signup')    return viewSignup();
   if (_studentStep === 'code')   return viewStudentCode();
@@ -341,6 +326,30 @@ async function resendVerification() {
 
 // ── Onboarding (create / join a band) ──────────────────────────────────────────
 
+// Recent unexpected sign-outs (set by _recordAuthLoss). Read me the values to
+// diagnose the random logouts: storage:false hints eviction; App Check:FAILED
+// hints reCAPTCHA/App-Check breaking token refresh; offline hints a network drop.
+function _authLossLog() {
+  try { const l = JSON.parse(localStorage.getItem('authLossLog') || '[]'); return Array.isArray(l) ? l : []; }
+  catch { return []; }
+}
+function _fmtLossEntry(e) {
+  let when = e.at; try { when = new Date(e.at).toLocaleString(); } catch {}
+  return `${esc(when)} — online: ${esc(String(e.online))} · storage: ${esc(String(e.persisted))} · App&nbsp;Check: ${esc(String(e.appCheck))}`;
+}
+function _authLossNote() {
+  const log = _authLossLog();
+  if (!log.length) return '';
+  return `
+    <div class="login-diag">
+      <strong>Signed out unexpectedly${log.length > 1 ? ` · ${log.length}×` : ''}</strong>
+      <ul style="margin:6px 0 0;padding-left:18px">
+        ${log.slice(0, 3).map(e => `<li>${_fmtLossEntry(e)}</li>`).join('')}
+      </ul>
+      <button class="link-btn" style="margin-top:6px" onclick="try{localStorage.removeItem('authLossLog')}catch(e){}; render()">dismiss</button>
+    </div>`;
+}
+
 // Shown when a backend read failed transiently while the user is still signed
 // in — never sign them out or send them to onboarding over a connection blip.
 function viewConnError() {
@@ -475,6 +484,7 @@ async function joinBandWithInvite() {
 async function doLogout() {
   closeModal();
   _userInitiatedSignOut = true; // deliberate logout — don't record it as a session loss
+  try { localStorage.removeItem('bandLastAuth'); } catch {}
   localStorage.removeItem('bandStudentCode');
   localStorage.removeItem('bandStudentNum');
   await auth.signOut();
@@ -505,6 +515,15 @@ function showUserMenu() {
       Signed in as<br><strong style="color:var(--text)">${esc(STATE.user?.email || '')}</strong><br>
       <span style="font-size:0.8rem">${STATE.isAdmin ? '⭐ Admin' : 'Director'}</span>
     </div>
+    ${(() => {
+      const log = _authLossLog();
+      if (!log.length) return '';
+      return `<div class="login-diag" style="margin:-8px 0 16px">
+        <strong>Recent unexpected sign-outs${log.length > 1 ? ` · ${log.length}×` : ''}</strong>
+        <ul style="margin:6px 0 0;padding-left:18px">${log.slice(0, 3).map(e => `<li>${_fmtLossEntry(e)}</li>`).join('')}</ul>
+        <button class="link-btn" style="margin-top:6px" onclick="try{localStorage.removeItem('authLossLog')}catch(e){}; closeModal();showUserMenu()">clear</button>
+      </div>`;
+    })()}
     <div class="modal-actions">
       ${STATE.isAdmin ? `
         <button class="btn btn-secondary btn-full" onclick="closeModal();navigate('roster')">Manage Roster</button>

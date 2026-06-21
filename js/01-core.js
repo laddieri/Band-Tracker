@@ -140,6 +140,7 @@ if (navigator.storage?.persist) {
 let _userInitiatedSignOut = false;
 function userSignOut() {
   _userInitiatedSignOut = true;
+  try { localStorage.removeItem('bandLastAuth'); } catch {} // deliberate — don't flag as a loss
   try { auth.signOut(); } catch (e) { console.error('signOut failed:', e); }
 }
 
