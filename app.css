@@ -3326,6 +3326,10 @@ html, body {
   background:var(--surface); color:var(--text); font-weight:700; font-size:0.82rem; cursor:pointer; line-height:1.1;
 }
 .drill-set-chip--active { background:var(--primary); border-color:var(--primary); color:#fff; }
+.drill-set-chip--sel { box-shadow:inset 0 0 0 2px #ffd23f; border-color:#ffd23f; }
+.drill-sel-status { font-size:0.74rem; color:var(--text-muted); padding:0 12px 4px; display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.drill-sel-status--play { color:var(--primary); font-weight:600; }
+.drill-sel-status .link-btn { font-size:0.74rem; }
 .drill-set-chip-ct { font-size:0.6rem; font-weight:600; color:var(--text-muted); margin-top:1px; }
 .drill-set-chip--active .drill-set-chip-ct { color:rgba(255,255,255,.8); }
 
