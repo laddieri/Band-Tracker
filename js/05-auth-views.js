@@ -353,16 +353,23 @@ function _authLossNote() {
 // Shown when a backend read failed transiently while the user is still signed
 // in — never sign them out or send them to onboarding over a connection blip.
 function viewConnError() {
+  const detail = STATE.connErrorDetail || '';
   return `
     <div class="login-view">
       <div class="login-logo">📡</div>
       <div class="login-title">Can't reach the server</div>
-      <p style="color:var(--text-muted);font-size:.9rem;text-align:center;line-height:1.5;margin:-4px 0 18px">
+      <p style="color:var(--text-muted);font-size:.9rem;text-align:center;line-height:1.5;margin:-4px 0 14px">
         You're still signed in${STATE.user?.email ? ` as <strong>${esc(STATE.user.email)}</strong>` : ''}, and
-        your band's data is safe in the cloud — this is just a connection hiccup.
+        your band's data is safe in the cloud — the app just can't load it right now.
       </p>
-      <button class="btn btn-primary btn-full btn-lg" onclick="retryConnect()">Retry</button>
+      ${detail ? `<div class="login-diag" style="text-align:center">Error: <strong>${esc(detail)}</strong></div>` : ''}
+      <button class="btn btn-primary btn-full btn-lg" style="margin-top:14px" onclick="retryConnect()">Retry</button>
+      <button class="btn btn-secondary btn-full" style="margin-top:8px" onclick="location.reload()">Reload the app</button>
       <button class="btn btn-secondary btn-full" style="margin-top:8px" onclick="userSignOut()">Sign out</button>
+      <p style="color:var(--text-muted);font-size:.74rem;text-align:center;line-height:1.5;margin:14px 0 0">
+        Still stuck? Try a different network (some Wi-Fi blocks the security check),
+        or fully close and reopen the app.
+      </p>
     </div>`;
 }
 

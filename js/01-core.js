@@ -275,7 +275,7 @@ async function resolveMembership() {
   // bounced signed-in directors to the onboarding screen and looked exactly
   // like a random logout. We only treat the user as new when the read SUCCEEDS
   // and the doc genuinely doesn't exist.
-  let snap = null, readFailed = false;
+  let snap = null, readFailed = false, lastErr = null;
   for (let attempt = 0; ; attempt++) {
     try {
       snap = await db.collection('members').doc(uid).get();
@@ -283,6 +283,7 @@ async function resolveMembership() {
       break;
     } catch (e) {
       readFailed = true;
+      lastErr = e;
       console.error(`membership lookup failed (attempt ${attempt + 1}):`, e);
       if (attempt >= 3) break;
       await new Promise(r => setTimeout(r, 600 * 2 ** attempt)); // 0.6s, 1.2s, 2.4s
@@ -295,13 +296,16 @@ async function resolveMembership() {
     STATE.isAdmin   = m.role === 'director';
     if (m.studentNumber) STATE.studentNum = String(m.studentNumber);
     STATE.connError = false;
+    STATE.connErrorDetail = '';
     return true;
   }
 
   // Couldn't reach the backend at all — keep the user signed in and offer a
-  // retry instead of pretending they have no band.
+  // retry instead of pretending they have no band. Capture the error so the
+  // screen can show what actually went wrong (e.g. App Check rejection).
   if (readFailed) {
     STATE.connError = true;
+    STATE.connErrorDetail = lastErr ? (lastErr.code || lastErr.message || String(lastErr)) : '';
     STATE.loading   = false;
     render();
     return false;
