@@ -335,7 +335,9 @@ function _authLossLog() {
 }
 function _fmtLossEntry(e) {
   let when = e.at; try { when = new Date(e.at).toLocaleString(); } catch {}
-  return `${esc(when)} — online: ${esc(String(e.online))} · storage: ${esc(String(e.persisted))} · App&nbsp;Check: ${esc(String(e.appCheck))}`;
+  let last = '';
+  if (e.lastSeen) { try { last = ` · last active ${new Date(e.lastSeen).toLocaleString()}`; } catch {} }
+  return `${esc(when)} — online: ${esc(String(e.online))} · storage: ${esc(String(e.persisted))} · App&nbsp;Check: ${esc(String(e.appCheck))}${esc(last)}`;
 }
 function _authLossNote() {
   const log = _authLossLog();
