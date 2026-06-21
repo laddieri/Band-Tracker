@@ -1013,17 +1013,42 @@ function _drillInfoPanelHtml() {
   const co  = _drillCoord(p.stepsX, p.stepsY);
   const meta = [`Section ${esc(p.section)}`, st && st.instrument ? esc(normInstrument(st.instrument)) : '']
     .filter(Boolean).join(' · ') + (st ? '' : ' · <em>not mapped</em>');
+
+  // Quick positive/mistake marks for the mapped student in the open rehearsal.
+  let marks = '';
+  const reh = (typeof getActiveRehearsal === 'function') ? getActiveRehearsal() : null;
+  if (st && num && reh) {
+    const ent = (STATE.entries[reh.id] || {})[num] || {};
+    const pos = ent.positives || 0, mis = ent.mistakes || 0;
+    const rehName = reh.label || (typeof fmtDate === 'function' ? fmtDate(reh.date) : '') || 'rehearsal';
+    marks = `
+      <div class="drill-info-marks-label">Add to ${esc(rehName)}:</div>
+      <div class="drill-info-marks">
+        <button class="btn drill-mark-btn drill-mark-pos" onclick="drillQuickMark('${esc(num)}','positive')">✓ Positive${pos ? ` <span class="drill-mark-ct">${pos}</span>` : ''}</button>
+        <button class="btn drill-mark-btn drill-mark-neg" onclick="drillQuickMark('${esc(num)}','mistake')">✗ Mistake${mis ? ` <span class="drill-mark-ct">${mis}</span>` : ''}</button>
+      </div>`;
+  }
+
   return `
     <div class="drill-info-pop">
       <button class="drill-info-pop-x" onclick="drillCloseInfo()" aria-label="Close">✕</button>
       <div class="drill-info-pop-name">${esc(label)}${st ? ` · ${esc(st.name || `#${num}`)}` : ''}</div>
       <div class="drill-info-pop-meta">${meta}</div>
       <div class="drill-info-pop-coord">${esc(co.lr)}<br>${esc(co.fb)}</div>
+      ${marks}
       <div class="drill-info-pop-actions">
         <button class="btn btn-sm ${_drillTraceLabel === label ? 'btn-secondary' : 'btn-primary'}" onclick="drillTracePerformer('${esc(label)}')">${_drillTraceLabel === label ? 'Tracing ✓' : 'Trace path'}</button>
         ${st ? `<button class="btn btn-sm btn-secondary" onclick="navigate('student',{num:'${esc(num)}'})">Profile</button>` : ''}
       </div>
     </div>`;
+}
+
+// Add a quick mark to the selected performer's student in the open rehearsal.
+function drillQuickMark(num, type) {
+  if (!STATE.isAdmin) return;
+  const reh = getActiveRehearsal();
+  if (!reh) { showToast('No open rehearsal.'); return; }
+  showMarkModal(reh.id, num, type);
 }
 
 function _drillFootText() {

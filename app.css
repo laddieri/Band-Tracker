@@ -3384,3 +3384,9 @@ html, body {
 .drill-info-pop-meta { font-size:.72rem; color:#c8d4c8; margin-top:1px; }
 .drill-info-pop-coord { font-size:.78rem; color:#ffd23f; font-weight:600; margin-top:5px; line-height:1.4; }
 .drill-info-pop-actions { display:flex; gap:6px; margin-top:9px; }
+.drill-info-marks-label { font-size:0.72rem; color:#c8d4c8; margin-top:9px; }
+.drill-info-marks { display:flex; gap:6px; margin-top:5px; }
+.drill-mark-btn { flex:1; font-weight:700; font-size:0.85rem; padding:9px 6px; border:none; border-radius:var(--r-sm); cursor:pointer; color:#fff; display:flex; align-items:center; justify-content:center; gap:6px; }
+.drill-mark-pos { background:var(--success, #2e9e5b); }
+.drill-mark-neg { background:var(--danger, #d9534f); }
+.drill-mark-ct { background:rgba(255,255,255,.28); border-radius:9px; padding:0 6px; font-size:0.78rem; }
