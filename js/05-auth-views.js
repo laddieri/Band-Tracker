@@ -540,6 +540,7 @@ function showUserMenu() {
         <button class="btn btn-secondary btn-full" onclick="closeModal();showBrandSettingsModal()">Band Settings</button>
       ` : ''}
       <button class="btn btn-secondary btn-full" onclick="toggleTheme()">${isDark ? '☀️ Light Mode' : '🌙 Dark Mode'}</button>
+      <button class="btn btn-secondary btn-full" onclick="confirmResetLocalData()">↻ Fix sync issues</button>
       <button class="btn btn-secondary btn-full" onclick="closeModal()">Close</button>
       <button class="btn btn-danger btn-full" onclick="doLogout()">Sign Out</button>
     </div>
@@ -568,6 +569,29 @@ async function _renderAuthHealth() {
     · App&nbsp;Check: <strong>${esc(String(ac))}</strong>
     ${storageWarn ? `<div style="margin-top:4px">Your browser may clear your login. Installing this app to your home screen usually fixes it.</div>` : ''}
     ${acWarn ? `<div style="margin-top:4px">The security check is failing — try a different network, or have your admin set App Check to “Unenforced.”</div>` : ''}`;
+}
+
+// Drop this device's Firestore offline cache + any stuck un-synced writes, then
+// reload with fresh data from the server. Recovers a device that's showing
+// stale data or has a wedged pending write. Auth session is unaffected.
+function confirmResetLocalData() {
+  showConfirmModal(
+    'Reset this device\'s data?',
+    `Clears this device\'s offline cache and reloads with fresh data from the
+     cloud. Use it if this device shows out-of-date info. Any changes made
+     offline that haven\'t synced yet will be discarded — your cloud data is
+     untouched and you stay signed in.`,
+    () => resetLocalData(),
+    'Reset & reload', 'btn-danger'
+  );
+}
+
+async function resetLocalData() {
+  showToast('Resetting…');
+  try { (STATE._unsubs || []).forEach(u => u()); STATE._unsubs = []; } catch {}
+  try { await db.terminate(); } catch (e) { console.error('terminate failed:', e); }
+  try { await db.clearPersistence(); } catch (e) { console.error('clearPersistence failed:', e); }
+  location.reload();
 }
 
 // ── Brand settings ────────────────────────────────────────────────────────────
