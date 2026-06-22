@@ -561,12 +561,22 @@ async function _renderAuthHealth() {
     try { await firebase.appCheck().getToken(); ac = 'ok'; }
     catch (e) { ac = 'FAILED: ' + (e?.code || e?.message || 'err'); }
   }
+  // Force an actual server read (bypassing cache) — the capability that fails
+  // when data goes stale or the session drops. This is the most direct signal.
+  let srv = '—';
+  try {
+    if (STATE.user) { await db.collection('members').doc(STATE.user.uid).get({ source: 'server' }); srv = 'ok'; }
+  } catch (e) { srv = 'FAILED: ' + (e?.code || e?.message || 'err'); }
+
   const storageWarn = persisted === false;
-  const acWarn = typeof ac === 'string' && ac.startsWith('FAILED');
+  const acWarn  = typeof ac === 'string' && ac.startsWith('FAILED');
+  const srvWarn = typeof srv === 'string' && srv.startsWith('FAILED');
   el.innerHTML = `
     <strong>Connection health</strong><br>
     Durable storage: <strong>${persisted === true ? 'granted ✓' : persisted === false ? 'NOT granted ⚠️' : esc(String(persisted))}</strong>
     · App&nbsp;Check: <strong>${esc(String(ac))}</strong>
+    · Live server read: <strong>${esc(String(srv))}</strong>
+    ${srvWarn ? `<div style="margin-top:4px">This device can't reach the database right now — that's why data goes stale and you get signed out. Try another network; if it persists, App Check enforcement is the likely cause.</div>` : ''}
     ${storageWarn ? `<div style="margin-top:4px">Your browser may clear your login. Installing this app to your home screen usually fixes it.</div>` : ''}
     ${acWarn ? `<div style="margin-top:4px">The security check is failing — try a different network, or have your admin set App Check to “Unenforced.”</div>` : ''}`;
 }
