@@ -1003,10 +1003,13 @@ function saveEditPreset(type, idx) {
 
 async function _savePresets() {
   try {
+    // merge:true is critical — settings/presets also holds songCategories,
+    // instruments, sections, features, branding, etc. A plain set() here would
+    // wipe all of them (this erased directors' song categories — see history).
     await orgCol('settings').doc('presets').set({
       mistakePresets:  STATE.mistakePresets,
       positivePresets: STATE.positivePresets
-    });
+    }, { merge: true });
   } catch(e) {
     console.error('Failed to save presets:', e);
     showToast('Failed to save presets.');
