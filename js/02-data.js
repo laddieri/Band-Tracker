@@ -98,7 +98,7 @@ async function startListeners() {
       }
       if (!STATE.loading) render();
       schedulePublishPublicStats();
-    }),
+    }, err => console.error('settings/presets listener error:', err)),
 
     orgCol('students').onSnapshot({ includeMetadataChanges: true }, snap => {
       snap.docChanges().forEach(ch => {
