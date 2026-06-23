@@ -480,17 +480,23 @@ function _drillFieldSvg(positions, opts = {}) {
   const secColor = {};
   (_drillData || []).forEach((sec, i) => { secColor[sec.letter] = _DRILL_COLORS[i % _DRILL_COLORS.length]; });
 
+  // Field palette — green (default) or white. On a white field the lines/labels
+  // flip to dark so they stay legible. Independent of the app's light/dark mode.
+  const P = _drillFieldWhite
+    ? { field:'#ffffff', border:'#2e7d32', major:'#555', minor:'#cfcfcf', tickMaj:'#888', tickMin:'#ccc', num:'#666', hash:'#8a8a8a', lblFill:'#111', lblStroke:'#fff', focusLine:'#333' }
+    : { field:'#1f5c1f', border:'#ffffff', major:'#ffffff', minor:'#5a5', tickMaj:'#aaa', tickMin:'#666', num:'#aaa', hash:'#ffffff', lblFill:'#ffffff', lblStroke:'#000', focusLine:'#ffffff' };
+
   // Yard lines + numbers (top and bottom)
   let lines = '';
   for (let yd = 0; yd <= 100; yd += 5) {
     const sx = fx(yd * 1.6);
     const major = yd % 10 === 0;
-    lines += `<line x1="${sx}" y1="${MT}" x2="${sx}" y2="${MT+FH}" stroke="${major?'#fff':'#5a5'}" stroke-width="${major?'0.8':'0.4'}"/>`;
-    lines += `<line x1="${sx}" y1="${MT+FH}" x2="${sx}" y2="${(MT+FH+4).toFixed(1)}" stroke="${major?'#aaa':'#666'}" stroke-width="${major?'0.8':'0.5'}"/>`;
+    lines += `<line x1="${sx}" y1="${MT}" x2="${sx}" y2="${MT+FH}" stroke="${major?P.major:P.minor}" stroke-width="${major?'0.8':'0.4'}"/>`;
+    lines += `<line x1="${sx}" y1="${MT+FH}" x2="${sx}" y2="${(MT+FH+4).toFixed(1)}" stroke="${major?P.tickMaj:P.tickMin}" stroke-width="${major?'0.8':'0.5'}"/>`;
     if (major && yd > 0 && yd < 100) {
       const lbl = yd > 50 ? 100 - yd : yd;
-      lines += `<text x="${sx}" y="${MT-4}" text-anchor="middle" fill="#aaa" font-size="8" font-family="sans-serif">${lbl}</text>`;
-      lines += `<text x="${sx}" y="${(MT+FH+14).toFixed(1)}" text-anchor="middle" fill="#aaa" font-size="8" font-family="sans-serif">${lbl}</text>`;
+      lines += `<text x="${sx}" y="${MT-4}" text-anchor="middle" fill="${P.num}" font-size="8" font-family="sans-serif">${lbl}</text>`;
+      lines += `<text x="${sx}" y="${(MT+FH+14).toFixed(1)}" text-anchor="middle" fill="${P.num}" font-size="8" font-family="sans-serif">${lbl}</text>`;
     }
   }
   // Hash marks (HS: 28 and 56 steps off the front sideline)
@@ -498,7 +504,7 @@ function _drillFieldSvg(positions, opts = {}) {
     const hy = fy(hs);
     for (let yd = 0; yd <= 100; yd += 5) {
       const sx = parseFloat(fx(yd * 1.6));
-      lines += `<line x1="${(sx-3).toFixed(1)}" y1="${hy}" x2="${(sx+3).toFixed(1)}" y2="${hy}" stroke="#fff" stroke-width="0.5"/>`;
+      lines += `<line x1="${(sx-3).toFixed(1)}" y1="${hy}" x2="${(sx+3).toFixed(1)}" y2="${hy}" stroke="${P.hash}" stroke-width="0.5"/>`;
     }
   }
 
@@ -542,7 +548,7 @@ function _drillFieldSvg(positions, opts = {}) {
       // dot was tapped — even when an info panel overlaps the field.
       const y  = parseFloat(sy);
       const ty = (y - 13).toFixed(1);
-      focus += `<line x1="${sx}" y1="${(y-4).toFixed(1)}" x2="${sx}" y2="${ty}" stroke="#fff" stroke-width="1.1"/>`
+      focus += `<line x1="${sx}" y1="${(y-4).toFixed(1)}" x2="${sx}" y2="${ty}" stroke="${P.focusLine}" stroke-width="1.1"/>`
             +  `<circle cx="${sx}" cy="${sy}" r="8.5" fill="none" stroke="#ffd23f" stroke-width="2.2"/>`
             +  `<circle cx="${sx}" cy="${sy}" r="8.5" fill="none" stroke="#000" stroke-width="0.7"/>`
             +  `<text x="${sx}" y="${ty}" text-anchor="middle" fill="#111" font-size="6.5" font-weight="700" font-family="sans-serif" pointer-events="none" style="paint-order:stroke;stroke:#ffd23f;stroke-width:6px;stroke-linejoin:round">${esc(p.label)}</text>`;
@@ -554,14 +560,14 @@ function _drillFieldSvg(positions, opts = {}) {
         const st  = num ? STATE.students[num] : null;
         txt = st ? (st.name ? st.name.split(/\s+/)[0] : `#${num}`) : p.label;
       }
-      labels += `<text x="${sx}" y="${(parseFloat(sy)-5).toFixed(1)}" text-anchor="middle" fill="#fff" font-size="4.6" font-family="sans-serif" pointer-events="none" style="paint-order:stroke;stroke:#000;stroke-width:0.7px;stroke-linejoin:round">${esc(txt)}</text>`;
+      labels += `<text x="${sx}" y="${(parseFloat(sy)-5).toFixed(1)}" text-anchor="middle" fill="${P.lblFill}" font-size="4.6" font-family="sans-serif" pointer-events="none" style="paint-order:stroke;stroke:${P.lblStroke};stroke-width:0.7px;stroke-linejoin:round">${esc(txt)}</text>`;
     }
   }
 
   return `
     <svg viewBox="0 0 ${SW} ${SH}" xmlns="http://www.w3.org/2000/svg" style="display:block;${fs ? 'width:100%;height:auto' : `width:${SW}px;max-width:100%`}">
-      <rect x="${ML}" y="${MT}" width="${FW}" height="${FH}" fill="#1f5c1f"/>
-      <rect x="${ML}" y="${MT}" width="${FW}" height="${FH}" fill="none" stroke="#fff" stroke-width="1.2"/>
+      <rect x="${ML}" y="${MT}" width="${FW}" height="${FH}" fill="${P.field}"/>
+      <rect x="${ML}" y="${MT}" width="${FW}" height="${FH}" fill="none" stroke="${P.border}" stroke-width="1.2"/>
       ${lines}${trace}${dots}${labels}${focus}
       <text x="${(ML-3)}" y="${fy(0)}" text-anchor="end" fill="#777" font-size="7" font-family="sans-serif" dominant-baseline="middle">F</text>
       <text x="${(ML-3)}" y="${fy(84)}" text-anchor="end" fill="#777" font-size="7" font-family="sans-serif" dominant-baseline="middle">B</text>
@@ -1405,11 +1411,30 @@ function showDrillOptionsModal() {
           `<button class="drill-lblseg${_drillLabelMode === i ? ' drill-lblseg--on' : ''}" onclick="drillSetLabelMode(${i})">${t}</button>`
         ).join('')}
       </div>
+    </div>
+    <div class="drill-opt-section">
+      <div class="drill-opt-label">Field color</div>
+      <div class="drill-lblseg-group" id="drill-fieldseg-group">
+        <button class="drill-lblseg${!_drillFieldWhite ? ' drill-lblseg--on' : ''}" onclick="drillSetFieldWhite(false)">Green</button>
+        <button class="drill-lblseg${_drillFieldWhite ? ' drill-lblseg--on' : ''}" onclick="drillSetFieldWhite(true)">White</button>
+      </div>
     </div>` : ''}
     <div class="modal-actions" style="margin-top:8px">
       <button class="btn btn-secondary btn-full" onclick="closeModal()">Cancel</button>
     </div>
   `);
+}
+
+// Field fill: green vs white (independent of the app's light/dark mode). Updates
+// the segmented control in place and re-renders the chart everywhere it shows.
+function drillSetFieldWhite(white) {
+  _drillFieldWhite = !!white;
+  try { localStorage.setItem('drillFieldWhite', white ? '1' : '0'); } catch {}
+  document.querySelectorAll('#drill-fieldseg-group .drill-lblseg')
+    .forEach((b, i) => b.classList.toggle('drill-lblseg--on', i === (white ? 1 : 0)));
+  if (_view === 'drill' && document.getElementById('drill-view-root')) _drillViewRerender();
+  const fs = document.getElementById('drill-chart-fs');
+  if (fs && !fs.classList.contains('hidden')) _drillChartRefresh();
 }
 
 // Set the dot-label mode from the options menu: update the segmented control in
