@@ -11,6 +11,9 @@ function render() {
   const tabs    = document.querySelectorAll('.nav-tab');
   const nav     = document.getElementById('bottom-nav');
 
+  // Apply the band's custom primary color (no-op when unset / already applied).
+  applyBandColor(STATE.bandColor);
+
   // Sync header logo + browser tab title
   const headerLogo = document.getElementById('header-logo');
   if (headerLogo) {

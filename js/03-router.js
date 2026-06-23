@@ -113,6 +113,8 @@ let _pendingSegment    = ''; // currently selected rehearsal segment in mark mod
 let _pendingStudentCode = ''; // code being verified for anonymous student login
 let _pendingMarkAllFilter = null; // { instruments:[], grades:[] } snapshot for multi-select mark-all
 let _pendingLogoData   = null; // null=no change, ''=clear, dataURL=new logo
+let _pendingBandColor  = null; // null=no change, ''=default, hex=new band color
+const _BRAND_DEFAULT_COLOR = '#2563eb'; // app default --primary
 let _pendingConfirm    = null; // callback for generic confirmation modal
 let _pendingSongFail   = null; // { sid, num, note } held while showing the portal-warning confirmation
 

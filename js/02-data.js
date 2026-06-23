@@ -61,6 +61,8 @@ async function startListeners() {
       STATE.memorizationExclusions     = Array.isArray(d.memorizationExclusions) ? d.memorizationExclusions : [];
       STATE.bandName                   = d.bandName || '';
       STATE.bandLogo                   = d.bandLogo || '';
+      STATE.bandColor                  = d.bandColor || '';
+      try { localStorage.setItem('bandColor', STATE.bandColor); } catch {}
       STATE.features = {
         attendance: d.features?.attendance !== false,
         marks:      d.features?.marks      !== false,
@@ -199,6 +201,8 @@ function studentListeners() {
       const d = doc.exists ? doc.data() : {};
       STATE.bandName                   = d.bandName || '';
       STATE.bandLogo                   = d.bandLogo || '';
+      STATE.bandColor                  = d.bandColor || '';
+      try { localStorage.setItem('bandColor', STATE.bandColor); } catch {}
       STATE.marchingLeaderboardEnabled = !!d.marchingLeaderboardEnabled;
       STATE.hideNegativeFromPortal     = !!d.hideNegativeFromPortal;
       STATE.songCategories             = d.songCategories || [];
@@ -300,6 +304,7 @@ function schedulePublishPublicStats() {
     const pub = {
       bandName:                   STATE.bandName,
       bandLogo:                   STATE.bandLogo,
+      bandColor:                  STATE.bandColor,
       features:                   STATE.features,
       portalVisible:              STATE.portalVisible,
       marchingLeaderboardEnabled: STATE.marchingLeaderboardEnabled,

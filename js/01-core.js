@@ -14,10 +14,47 @@ function initTheme() {
 }
 initTheme();
 
+// ── Band primary color (per-band branding) ────────────────────────────────────
+function _hexToRgb(h) {
+  h = h.replace('#', '');
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+function _mixHex(a, b, t) {
+  const A = _hexToRgb(a), B = _hexToRgb(b);
+  const c = i => Math.round(A[i] + (B[i] - A[i]) * t).toString(16).padStart(2, '0');
+  return '#' + c(0) + c(1) + c(2);
+}
+function _validHexColor(c) { return typeof c === 'string' && /^#?[0-9a-fA-F]{6}$/.test(c.trim()); }
+
+// Apply a band's chosen primary color by deriving the whole --primary* palette
+// (theme-aware light/dark tints). Empty/invalid reverts to the app default.
+function applyBandColor(color) {
+  const root = document.documentElement;
+  const vars = ['--primary', '--primary-dark', '--primary-bg', '--primary-tint', '--primary-tint-2'];
+  if (!_validHexColor(color)) { vars.forEach(v => root.style.removeProperty(v)); return; }
+  const hex  = '#' + color.trim().replace('#', '').toLowerCase();
+  const dark = root.getAttribute('data-theme') === 'dark';
+  root.style.setProperty('--primary', hex);
+  root.style.setProperty('--primary-dark', _mixHex(hex, '#000000', 0.16));
+  if (dark) {
+    const base = '#0f172a';
+    root.style.setProperty('--primary-bg',     _mixHex(hex, base, 0.80));
+    root.style.setProperty('--primary-tint',   _mixHex(hex, base, 0.68));
+    root.style.setProperty('--primary-tint-2', _mixHex(hex, base, 0.58));
+  } else {
+    root.style.setProperty('--primary-bg',     _mixHex(hex, '#ffffff', 0.92));
+    root.style.setProperty('--primary-tint',   _mixHex(hex, '#ffffff', 0.84));
+    root.style.setProperty('--primary-tint-2', _mixHex(hex, '#ffffff', 0.74));
+  }
+}
+// Apply any cached color immediately at boot (before data loads) to avoid a flash.
+try { applyBandColor(localStorage.getItem('bandColor') || ''); } catch {}
+
 function toggleTheme() {
   const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', next);
   localStorage.setItem('bandTheme', next);
+  applyBandColor(STATE.bandColor); // re-derive theme-aware tints
   closeModal();
   showUserMenu();
 }
@@ -173,6 +210,9 @@ const STATE = {
   memorizationExclusions:     [],
   bandName:                   '',
   bandLogo:                   '',
+  // director-chosen primary color (hex); '' = app default. Seeded from cache so
+  // the first paint matches and there's no flash before data loads.
+  bandColor:                  (typeof localStorage !== 'undefined' && localStorage.getItem('bandColor')) || '',
   // Band-wide feature toggles (default on; missing = on, so existing bands keep
   // everything). 'stats' also requires 'marks' — see featureOn().
   features: { attendance: true, marks: true, songs: true, stats: true, drill: true },
