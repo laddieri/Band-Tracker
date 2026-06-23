@@ -1532,24 +1532,27 @@ html, body {
   padding-bottom: 8px;
 }
 
-/* Each collapsible attendance section is a self-contained card, so it's obvious
-   which content belongs to (and collapses with) each header. */
-.att-tab-view .sec-card {
+/* A collapsible section rendered as a self-contained card (attendance, stats and
+   songs tabs) so it's obvious which content belongs to / collapses with each
+   header. Direct-child selectors so nested sub-headers keep their own styling. */
+.sec-card {
   border: 1px solid var(--border);
   border-radius: var(--r-md, 12px);
   background: var(--surface);
   margin-top: 14px;
   overflow: hidden;
 }
-.att-tab-view .sec-card .sec-hdr {
+.sec-card > .sec-hdr,
+.sec-card > .song-cat-hdr {
   margin: 0;
   padding: 12px 14px;
   background: var(--surface-alt, var(--bg));
   border-bottom: 1px solid var(--border);
 }
-.att-tab-view .sec-card .sec-hdr:not(.sec-hdr-open) { border-bottom: none; } /* collapsed: header only */
-.att-tab-view .sec-card > div:not(.sec-hdr) { padding: 10px 14px 12px; }
-/* The chart already has its own inner card — don't double up the border here. */
+.sec-card > .sec-hdr:not(.sec-hdr-open),
+.sec-card > .song-cat-hdr:not(.sec-hdr-open) { border-bottom: none; }
+.sec-card > div:not(.sec-hdr):not(.song-cat-hdr) { padding: 10px 14px 12px; }
+.sec-card .songs-list-grid { padding: 0; }
 .att-tab-view .sec-card .att-chart-card { border: none; box-shadow: none; padding: 0; margin: 0; }
 .lb-marching-hdr {
   display: flex;
