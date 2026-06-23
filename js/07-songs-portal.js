@@ -154,53 +154,59 @@ function viewSongs() {
     </div>
     </div>`;
 
+  // Build the song list (grouped into category sub-sections if any categories
+  // exist), then wrap the whole thing in one "Current Songs" card.
+  let songsInner;
   if (!cats.length) {
-    return `<div class="songs-page">
-      <div class="songs-list-grid">${songs.map(songRow).join('')}</div>
-      ${rosterSection}
-    </div>`;
+    songsInner = `<div class="songs-list-grid">${songs.map(songRow).join('')}</div>`;
+  } else {
+    const grouped = {};
+    const uncategorized = [];
+    cats.forEach(c => { grouped[c] = []; });
+    songs.forEach(song => {
+      if (song.category && grouped[song.category] !== undefined) grouped[song.category].push(song);
+      else uncategorized.push(song);
+    });
+
+    // Categories are collapsible sub-sections within the Current Songs card.
+    const catSection = (catKey, label, rows, idx) => {
+      const id          = `song-cat-${idx}`;
+      const isCollapsed = _songCatCollapsed.has(catKey);
+      return `
+        <div id="${id}-hdr" class="song-cat-hdr ${isCollapsed ? '' : 'sec-hdr-open'}"
+             onclick="toggleSongCat('${esc(catKey)}','${id}')">
+          <span>${esc(label)}</span>
+          <span class="sec-chevron">▾</span>
+        </div>
+        <div id="${id}" class="song-cat-body ${isCollapsed ? 'sec-collapsed' : ''}">
+          ${rows.map(songRow).join('')}
+        </div>`;
+    };
+
+    let inner = '';
+    let idx = 0;
+    cats.forEach(cat => {
+      if (!grouped[cat].length) return;
+      inner += catSection(cat, cat, grouped[cat], idx++);
+    });
+    if (uncategorized.length) {
+      const label = songs.length > uncategorized.length ? 'Other' : '';
+      if (label) inner += catSection('\x00other', label, uncategorized, idx++);
+      else inner += uncategorized.map(songRow).join('');
+    }
+    songsInner = `<div class="songs-list-grid">${inner}</div>`;
   }
 
-  // Group songs by category
-  const grouped = {};
-  const uncategorized = [];
-  cats.forEach(c => { grouped[c] = []; });
-  songs.forEach(song => {
-    if (song.category && grouped[song.category] !== undefined) grouped[song.category].push(song);
-    else uncategorized.push(song);
-  });
-
-  // Each category is its own card, with its own internal song grid.
-  const catSection = (catKey, label, rows, idx) => {
-    const id          = `song-cat-${idx}`;
-    const isCollapsed = _songCatCollapsed.has(catKey);
-    return `
-      <div class="sec-card">
-      <div id="${id}-hdr" class="song-cat-hdr ${isCollapsed ? '' : 'sec-hdr-open'}"
-           onclick="toggleSongCat('${esc(catKey)}','${id}')">
-        <span>${esc(label)}</span>
+  const currentSongsCard = `
+    <div class="sec-card">
+      <div id="songs-current-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('songs-current-sec')">
+        <span class="section-title">Current Songs</span>
         <span class="sec-chevron">▾</span>
       </div>
-      <div id="${id}" class="song-cat-body ${isCollapsed ? 'sec-collapsed' : ''}">
-        <div class="songs-list-grid">${rows.map(songRow).join('')}</div>
-      </div>
-      </div>`;
-  };
+      <div id="songs-current-sec">${songsInner}</div>
+    </div>`;
 
-  let html = '<div class="songs-page">';
-  let idx = 0;
-  cats.forEach(cat => {
-    if (!grouped[cat].length) return;
-    html += catSection(cat, cat, grouped[cat], idx++);
-  });
-  if (uncategorized.length) {
-    const label = songs.length > uncategorized.length ? 'Other' : '';
-    if (label) html += catSection('\x00other', label, uncategorized, idx++);
-    else html += `<div class="songs-list-grid">${uncategorized.map(songRow).join('')}</div>`;
-  }
-  html += rosterSection;
-  html += '</div>';
-  return html;
+  return `<div class="songs-page">${currentSongsCard}${rosterSection}</div>`;
 }
 
 function viewSong(sid) {

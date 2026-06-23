@@ -2526,6 +2526,14 @@ html, body {
   letter-spacing: 0;
   color: var(--text);
 }
+/* Song card headers (Current Songs / Student Progress) match the other tabs' cards. */
+.songs-page .sec-card > .sec-hdr .section-title {
+  font-size: 1rem;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text);
+}
 .song-roster-row {
   display: flex;
   align-items: center;
