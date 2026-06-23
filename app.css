@@ -2019,6 +2019,16 @@ html, body {
   border-radius: var(--r-sm);
   padding: 12px;
 }
+.brand-color-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.brand-color-input {
+  width: 44px; height: 36px; padding: 0; border: 1px solid var(--border);
+  border-radius: var(--r-sm); background: none; cursor: pointer; flex-shrink: 0;
+}
+.brand-color-swatches { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; min-width: 0; }
+.brand-swatch {
+  width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--surface);
+  box-shadow: 0 0 0 1px var(--border); cursor: pointer; padding: 0;
+}
 .brand-logo-preview {
   max-width: 120px;
   max-height: 120px;

@@ -609,7 +609,9 @@ async function resetLocalData() {
 function showBrandSettingsModal() {
   if (!STATE.isAdmin) return;
   _pendingLogoData = null;
+  _pendingBandColor = null;
   const currentLogo = STATE.bandLogo;
+  const SWATCHES = ['#2563eb','#dc2626','#ea580c','#d97706','#16a34a','#0d9488','#0891b2','#7c3aed','#db2777','#475569'];
   openModal(`
     <div class="modal-title">Band Settings</div>
 
@@ -633,6 +635,22 @@ function showBrandSettingsModal() {
           <input type="file" accept="image/*" style="display:none" onchange="handleLogoUpload(event)">
         </label>
         ${currentLogo ? `<button class="btn btn-secondary" onclick="removeBrandLogo()">Remove</button>` : ''}
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">App Color</label>
+      <p style="font-size:.75rem;color:var(--text-muted);margin:-2px 0 8px">
+        The accent color used across the app for your whole band (directors and students).
+      </p>
+      <div class="brand-color-row">
+        <input type="color" id="brand-color-input" class="brand-color-input"
+               value="${esc(STATE.bandColor || _BRAND_DEFAULT_COLOR)}"
+               oninput="pickBandColor(this.value)">
+        <div class="brand-color-swatches">
+          ${SWATCHES.map(c => `<button type="button" class="brand-swatch" style="background:${c}" title="${c}" onclick="pickBandColor('${c}')"></button>`).join('')}
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="pickBandColor('')">Default</button>
       </div>
     </div>
 
@@ -844,6 +862,14 @@ function removeBrandLogo() {
   showBrandSettingsModal(); // re-open without current logo so Remove btn disappears
 }
 
+// Stage a band-color pick ('' = app default). Reflect it in the picker swatch;
+// it's applied for real on Save.
+function pickBandColor(color) {
+  _pendingBandColor = _validHexColor(color) ? ('#' + color.replace('#','').toLowerCase()) : '';
+  const inp = document.getElementById('brand-color-input');
+  if (inp) inp.value = _pendingBandColor || _BRAND_DEFAULT_COLOR;
+}
+
 function handleFeatToggle(key) {
   const featEl     = document.getElementById(`feat-${key}`);
   const portalLbl  = document.getElementById(`feat-portal-lbl-${key}`);
@@ -881,14 +907,18 @@ async function saveBrandSettings() {
   };
   const hideNegativeFromPortal = !(document.getElementById('neg-show-portal')?.checked ?? true);
   const countNegativeInScore   = !!(document.getElementById('neg-count-score')?.checked ?? true);
+  const bandColor              = _pendingBandColor !== null ? _pendingBandColor : STATE.bandColor;
+  _pendingBandColor = null;
   STATE.bandName               = name;
   STATE.bandLogo               = logo;
+  STATE.bandColor              = bandColor;
   STATE.features               = features;
   STATE.portalVisible          = portalVisible;
   STATE.hideNegativeFromPortal = hideNegativeFromPortal;
   STATE.countNegativeInScore   = countNegativeInScore;
+  try { localStorage.setItem('bandColor', bandColor); } catch {}
   await orgCol('settings').doc('presets').set(
-    { bandName: name, bandLogo: logo, features, portalVisible, hideNegativeFromPortal, countNegativeInScore },
+    { bandName: name, bandLogo: logo, bandColor, features, portalVisible, hideNegativeFromPortal, countNegativeInScore },
     { merge: true }
   );
   closeModal();
