@@ -253,6 +253,7 @@ function _attTabFilteredContent() {
   };
 
   const recentSection = `
+    <div class="sec-card">
     <div id="att-tab-recent-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('att-tab-recent')">
       <span class="section-title" style="margin:0">Most Recent — ${esc(fmtDate(latest.date))}${latest.label ? ' · ' + esc(latest.label) : ''}</span>
       <span class="sec-chevron">▾</span>
@@ -271,9 +272,11 @@ function _attTabFilteredContent() {
               onclick="navigate('attendance',{rid:'${esc(latest.id)}',from:'attendance-tab'})">
         View Full Attendance
       </button>` : ''}
+    </div>
     </div>`;
 
   const seasonSection = `
+    <div class="sec-card">
     <div id="att-tab-season-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('att-tab-season')">
       <span class="section-title" style="margin:0">Season Absences</span>
       <span class="sec-chevron">▾</span>
@@ -281,6 +284,7 @@ function _attTabFilteredContent() {
     <div id="att-tab-season">
       ${tabFilterBar}
       <div id="att-tab-season-list">${_buildSeasonListHtml()}</div>
+    </div>
     </div>`;
 
   return recentSection + seasonSection;
@@ -346,6 +350,7 @@ function _renderAttendanceChart() {
   }).join('');
 
   return `
+    <div class="sec-card">
     <div id="att-tab-chart-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('att-tab-chart')">
       <span class="section-title" style="margin:0">Attendance Over Time</span>
       <span class="sec-chevron">▾</span>
@@ -363,6 +368,7 @@ function _renderAttendanceChart() {
           <span class="att-chart-legend-item"><span class="att-chart-dot" style="background:var(--warning)"></span>Late</span>
         </div>
       </div>
+    </div>
     </div>`;
 }
 
@@ -421,12 +427,14 @@ function viewAttendanceTab() {
   }).join('');
 
   const historySection = `
+    <div class="sec-card">
     <div id="att-tab-history-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('att-tab-history')">
       <span class="section-title" style="margin:0">Rehearsal History</span>
       <span class="sec-chevron">▾</span>
     </div>
     <div id="att-tab-history">
       ${historyRows}
+    </div>
     </div>`;
 
   return `<div class="att-tab-view">`

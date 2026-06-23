@@ -28,6 +28,24 @@ function refreshAppData() {
   startListeners();
 }
 
+// ── Resync on resume ──────────────────────────────────────────────────────────
+// Mobile PWAs suspend the Firestore connection while backgrounded, so the first
+// view after reopening can show stale cached data until the socket reconnects
+// (a passive listener may not refresh on its own — a write was forcing it).
+// Toggling the network on resume nudges an immediate resync of all live
+// listeners, without a loading flash or re-resolving membership.
+let _appHiddenAt = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { _appHiddenAt = Date.now(); return; }
+  const away = _appHiddenAt ? Date.now() - _appHiddenAt : 0;
+  _appHiddenAt = 0;
+  if (!STATE.user || away < 8000) return; // brief tab switches don't need a resync
+  Promise.resolve()
+    .then(() => db.disableNetwork())
+    .then(() => db.enableNetwork())
+    .catch(e => console.error('resume resync failed:', e));
+});
+
 (function initPullToRefresh() {
   const main = document.getElementById('main-content');
   const ind  = document.getElementById('ptr-indicator');
