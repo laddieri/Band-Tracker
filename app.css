@@ -3284,7 +3284,7 @@ html, body {
   position: fixed;
   inset: 0;
   z-index: 2000;
-  background: #0a1a0a;
+  background: var(--surface); /* white in light mode, dark in dark mode */
   display: flex;
   flex-direction: column;
   padding: 10px 12px 12px;
@@ -3292,12 +3292,12 @@ html, body {
 }
 #drill-chart-fs.hidden { display: none !important; }
 .drill-fs-nav { display:flex; align-items:center; gap:8px; flex-shrink:0; margin-bottom:8px; }
-.drill-fs-nav .drill-chart-setlabel { color:#e0e0e0; }
+.drill-fs-nav .drill-chart-setlabel { color:var(--text); }
 .drill-fs-svg-wrap { flex:1; min-height:0; overflow:hidden; touch-action:none; position:relative; }
 .drill-fs-bottom { flex-shrink:0; display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:8px; }
 .drill-fs-bottom .drill-chart-legend { margin:0; }
-.drill-fs-bottom .drill-chart-leg-item { color:#aaa; }
-.drill-fs-trace { color:#ffd23f; font-size:0.8rem; font-weight:600; flex:1; }
+.drill-fs-bottom .drill-chart-leg-item { color:var(--text-muted); }
+.drill-fs-trace { color:var(--text); font-size:0.8rem; font-weight:600; flex:1; }
 
 /* Sticky yard-number ruler shown while the fullscreen chart is zoomed in. */
 .drill-fs-axis { position:absolute; inset:0; pointer-events:none; z-index:5; }
@@ -3366,7 +3366,7 @@ html, body {
 
 /* The zoomable chart stage reuses .drill-fs-svg-wrap behaviour (flex:1,
    overflow hidden, touch-action:none, position:relative). */
-.drill-view-stage { background:#0a1a0a; }
+.drill-view-stage { background:var(--surface); } /* white in light mode, dark in dark mode */
 
 .drill-view-foot {
   display:flex; align-items:center; justify-content:space-between; gap:10px;
