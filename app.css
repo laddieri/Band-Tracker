@@ -1531,6 +1531,26 @@ html, body {
   border-bottom: 2px solid var(--border);
   padding-bottom: 8px;
 }
+
+/* Each collapsible attendance section is a self-contained card, so it's obvious
+   which content belongs to (and collapses with) each header. */
+.att-tab-view .sec-card {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 12px);
+  background: var(--surface);
+  margin-top: 14px;
+  overflow: hidden;
+}
+.att-tab-view .sec-card .sec-hdr {
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--surface-alt, var(--bg));
+  border-bottom: 1px solid var(--border);
+}
+.att-tab-view .sec-card .sec-hdr:not(.sec-hdr-open) { border-bottom: none; } /* collapsed: header only */
+.att-tab-view .sec-card > div:not(.sec-hdr) { padding: 10px 14px 12px; }
+/* The chart already has its own inner card — don't double up the border here. */
+.att-tab-view .sec-card .att-chart-card { border: none; box-shadow: none; padding: 0; margin: 0; }
 .lb-marching-hdr {
   display: flex;
   align-items: center;
