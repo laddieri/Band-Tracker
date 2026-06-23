@@ -445,6 +445,7 @@ function viewLeaderboardStudent() {
   const lbRows = (STATE.marchingLeaderboardEnabled && portalFeatureOn('stats') && pub.leaderboard)
     ? pub.leaderboard : null;
   const rankingHtml = lbRows ? `
+        <div class="sec-card">
           <div id="lb-sec-ranking-hdr" class="sec-hdr sec-hdr-open lb-marching-hdr" onclick="toggleCollapse('lb-sec-ranking')">
             <span class="section-title" style="margin:0">Marching Leaderboard</span>
             <span class="sec-chevron">▾</span>
@@ -462,12 +463,13 @@ function viewLeaderboardStudent() {
               </div>`;
               }).join('')}
             </div>
-          </div>` : '';
+          </div>
+        </div>` : '';
 
   return `
     <div class="leaderboard-view">
-      ${_lbAttendanceSectionHtml(rehearsalRows)}
-      ${_lbSongsSectionHtml(songRows)}
+      <div class="sec-card">${_lbAttendanceSectionHtml(rehearsalRows)}</div>
+      <div class="sec-card">${_lbSongsSectionHtml(songRows)}</div>
       ${rankingHtml}
     </div>`;
 }
@@ -502,11 +504,12 @@ function viewLeaderboard() {
   return `
     <div class="leaderboard-view">
 
-      ${_lbAttendanceSectionHtml(rehearsalRows)}
+      <div class="sec-card">${_lbAttendanceSectionHtml(rehearsalRows)}</div>
 
-      ${_lbSongsSectionHtml(songRows)}
+      <div class="sec-card">${_lbSongsSectionHtml(songRows)}</div>
 
       ${(STATE.marchingLeaderboardEnabled || STATE.isAdmin) ? `
+        <div class="sec-card">
           <div id="lb-sec-ranking-hdr" class="sec-hdr sec-hdr-open lb-marching-hdr" onclick="toggleCollapse('lb-sec-ranking')">
             <span class="section-title" style="margin:0">Marching Leaderboard</span>
             <div style="display:flex;align-items:center;gap:8px" onclick="event.stopPropagation()">
@@ -533,7 +536,8 @@ function viewLeaderboard() {
             <div id="lb-rank-list" class="card mb-12" style="padding:0;overflow:hidden">
               ${_buildLbRankRows()}
             </div>
-          </div>` : ''}
+          </div>
+        </div>` : ''}
 
     </div>`;
 }

@@ -135,7 +135,8 @@ function viewSongs() {
   };
 
   const rosterSection = !STATE.isAdmin ? '' : `
-    <div id="songs-prog-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('songs-prog-sec')" style="margin-top:24px">
+    <div class="sec-card">
+    <div id="songs-prog-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('songs-prog-sec')">
       <span class="section-title songs-prog-hdr-title">Student Progress</span>
       <span class="sec-chevron">▾</span>
     </div>
@@ -150,6 +151,7 @@ function viewSongs() {
       <div id="song-roster-list">
         ${_buildSongRosterRows()}
       </div>
+    </div>
     </div>`;
 
   if (!cats.length) {
@@ -168,21 +170,24 @@ function viewSongs() {
     else uncategorized.push(song);
   });
 
+  // Each category is its own card, with its own internal song grid.
   const catSection = (catKey, label, rows, idx) => {
     const id          = `song-cat-${idx}`;
     const isCollapsed = _songCatCollapsed.has(catKey);
     return `
+      <div class="sec-card">
       <div id="${id}-hdr" class="song-cat-hdr ${isCollapsed ? '' : 'sec-hdr-open'}"
            onclick="toggleSongCat('${esc(catKey)}','${id}')">
         <span>${esc(label)}</span>
         <span class="sec-chevron">▾</span>
       </div>
       <div id="${id}" class="song-cat-body ${isCollapsed ? 'sec-collapsed' : ''}">
-        ${rows.map(songRow).join('')}
+        <div class="songs-list-grid">${rows.map(songRow).join('')}</div>
+      </div>
       </div>`;
   };
 
-  let html = '<div class="songs-page"><div class="songs-list-grid">';
+  let html = '<div class="songs-page">';
   let idx = 0;
   cats.forEach(cat => {
     if (!grouped[cat].length) return;
@@ -191,9 +196,10 @@ function viewSongs() {
   if (uncategorized.length) {
     const label = songs.length > uncategorized.length ? 'Other' : '';
     if (label) html += catSection('\x00other', label, uncategorized, idx++);
-    else html += uncategorized.map(songRow).join('');
+    else html += `<div class="songs-list-grid">${uncategorized.map(songRow).join('')}</div>`;
   }
-  html += `</div>${rosterSection}</div>`;
+  html += rosterSection;
+  html += '</div>';
   return html;
 }
 
