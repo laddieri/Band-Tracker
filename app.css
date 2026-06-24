@@ -317,6 +317,33 @@ html, body {
 .rh-cal-legend i.rh-cal-dot { margin: 0 4px 0 0; vertical-align: middle; }
 .rh-cal-legend-hint { flex: 1; min-width: 120px; text-align: right; }
 
+/* Anchored popover bubble when tapping a calendar date */
+.rh-cal-pop {
+  position: fixed; z-index: 900; min-width: 180px; max-width: 244px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-md, 12px); box-shadow: 0 10px 28px rgba(0,0,0,.20);
+  padding: 10px 12px; animation: rhPopIn .12s ease-out;
+}
+@keyframes rhPopIn { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
+.rh-cal-pop::before, .rh-cal-pop::after {
+  content: ''; position: absolute; left: var(--rh-arrow, 50%); transform: translateX(-50%);
+  width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent;
+}
+.rh-cal-pop::before { top: -8px;   border-bottom: 8px solid var(--border); }
+.rh-cal-pop::after  { top: -6.5px; border-bottom: 8px solid var(--surface); }
+.rh-cal-pop--above::before { top: auto; bottom: -8px;   border-bottom: none; border-top: 8px solid var(--border); }
+.rh-cal-pop--above::after  { top: auto; bottom: -6.5px; border-bottom: none; border-top: 8px solid var(--surface); }
+.rh-pop-date { font-weight: 700; font-size: .9rem; margin-bottom: 8px; }
+.rh-pop-item + .rh-pop-item { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.rh-pop-label { font-size: .76rem; color: var(--text-muted); margin-bottom: 6px; }
+.rh-pop-actions { display: flex; flex-direction: column; gap: 6px; }
+.rh-pop-btn {
+  display: block; width: 100%; text-align: left; padding: 9px 10px;
+  border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface);
+  color: var(--text); font-weight: 600; font-size: .85rem; cursor: pointer;
+}
+.rh-pop-btn:active { background: var(--primary-bg); }
+
 .rh-card { border-left: 4px solid transparent; padding-left: 12px; }
 .rh-card-open  { border-left-color: var(--primary); }
 .rh-card-ended { border-left-color: var(--border); }
