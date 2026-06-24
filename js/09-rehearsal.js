@@ -172,8 +172,7 @@ function _rhCalendarHtml() {
     if (list.length) {
       const allEnded = list.every(r => r.ended);
       const dotCls   = allEnded ? 'rh-cal-dot--ended' : 'rh-cal-dot--open';
-      const click    = list.length === 1 ? `calRehearsalClick('${esc(list[0].id)}')` : `showDayRehearsals('${ds}')`;
-      cells += `<button class="rh-cal-cell rh-cal-has${isToday}" onclick="${click}" title="${esc(list.map(r => r.label || 'Rehearsal').join(', '))}">
+      cells += `<button class="rh-cal-cell rh-cal-has${isToday}" onclick="rhDateClick(this,'${ds}')" title="${esc(list.map(r => r.label || 'Rehearsal').join(', '))}">
         <span class="rh-cal-num">${d}</span>
         <span class="rh-cal-dot ${dotCls}">${list.length > 1 ? list.length : ''}</span>
       </button>`;
@@ -209,24 +208,64 @@ function rhCalNav(delta) {
   render();
 }
 
-// Calendar day click → the View Attendance / View Marks options (works for open
-// rehearsals too, and respects which features are enabled).
-function calRehearsalClick(rid) {
-  if (DB.getRehearsals().some(r => r.id === rid)) showEndedRehearsalOptions(rid);
+// Calendar day click → an anchored popover bubble with View Attendance / View
+// Marks for that date's rehearsal(s). Respects which features are enabled.
+function rhDateClick(anchorEl, dateStr) {
+  _closeRhBubble();
+  const list = DB.getRehearsals().filter(r => r.date === dateStr);
+  if (!list.length) return;
+  const multi = list.length > 1;
+  const pop = document.createElement('div');
+  pop.id = 'rh-cal-pop';
+  pop.className = 'rh-cal-pop';
+  pop.innerHTML = `
+    <div class="rh-pop-date">${esc(fmtDate(dateStr))}</div>
+    ${list.map(r => `
+      <div class="rh-pop-item">
+        ${(multi || r.label) ? `<div class="rh-pop-label">${esc(r.label || 'Rehearsal')}${r.ended ? '' : ' · open'}</div>` : ''}
+        <div class="rh-pop-actions">
+          ${featureOn('attendance') ? `<button class="rh-pop-btn" onclick="rhPopGo('attendance','${esc(r.id)}')">📋 Attendance</button>` : ''}
+          ${featureOn('marks')      ? `<button class="rh-pop-btn" onclick="rhPopGo('marks','${esc(r.id)}')">✏️ Marks</button>` : ''}
+        </div>
+      </div>`).join('')}`;
+  pop.onclick = e => e.stopPropagation();
+  document.body.appendChild(pop);
+  _positionRhBubble(pop, anchorEl);
+  // Dismiss on any outside click or scroll (deferred so this click doesn't close it).
+  setTimeout(() => {
+    document.addEventListener('click', _closeRhBubble, { once: true });
+    document.addEventListener('scroll', _closeRhBubble, { once: true, capture: true });
+  }, 0);
 }
 
-function showDayRehearsals(ds) {
-  const list = DB.getRehearsals().filter(r => r.date === ds);
-  if (!list.length) return;
-  if (list.length === 1) { calRehearsalClick(list[0].id); return; }
-  openModal(`
-    <div class="modal-title">${fmtDate(ds)}</div>
-    <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:14px">${list.length} rehearsals this day</p>
-    <div style="display:flex;flex-direction:column;gap:8px">
-      ${list.map(r => `<button class="btn btn-secondary btn-full" onclick="closeModal();calRehearsalClick('${esc(r.id)}')">${esc(r.label || fmtDate(r.date))} · ${r.ended ? 'ended' : 'open'}</button>`).join('')}
-    </div>
-    <div class="modal-actions" style="margin-top:12px"><button class="btn btn-ghost btn-full" onclick="closeModal()">Cancel</button></div>
-  `);
+function _positionRhBubble(pop, anchorEl) {
+  const r = anchorEl.getBoundingClientRect();
+  const pw = pop.offsetWidth, ph = pop.offsetHeight;
+  const margin = 8;
+  let left = r.left + r.width / 2 - pw / 2;
+  left = Math.max(margin, Math.min(left, window.innerWidth - pw - margin));
+  let top = r.bottom + 8, above = false;
+  if (top + ph > window.innerHeight - margin) { top = r.top - ph - 8; above = true; }
+  top = Math.max(margin, top);
+  pop.style.left = `${left}px`;
+  pop.style.top  = `${top}px`;
+  pop.classList.toggle('rh-cal-pop--above', above);
+  // Point the arrow at the date cell even when the bubble is clamped to an edge.
+  const arrow = Math.max(12, Math.min(r.left + r.width / 2 - left, pw - 12));
+  pop.style.setProperty('--rh-arrow', `${arrow}px`);
+}
+
+function _closeRhBubble() {
+  const p = document.getElementById('rh-cal-pop');
+  if (p) p.remove();
+  document.removeEventListener('click', _closeRhBubble);
+  document.removeEventListener('scroll', _closeRhBubble, { capture: true });
+}
+
+function rhPopGo(type, rid) {
+  _closeRhBubble();
+  if (type === 'attendance') navigate('attendance', { rid, from: 'rehearsals' });
+  else viewHistoricalMarks(rid);
 }
 
 // ── View: Attendance Tab ──────────────────────────────────────────────────────
