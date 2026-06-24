@@ -290,6 +290,33 @@ html, body {
 
 /* ── Rehearsal list cards ────────────────────────────────────────────────── */
 .rh-view { width: 100%; }
+
+/* List / Calendar toggle */
+.rh-viewmode { display: flex; gap: 0; margin: 4px 0 14px; border: 1px solid var(--border); border-radius: var(--r-sm); overflow: hidden; }
+.rh-viewmode-btn { flex: 1; padding: 9px 6px; border: none; border-left: 1px solid var(--border); background: var(--surface); color: var(--text); font-weight: 600; font-size: 0.85rem; cursor: pointer; }
+.rh-viewmode-btn:first-child { border-left: none; }
+.rh-viewmode-btn--on { background: var(--primary); color: #fff; }
+
+/* Rehearsals calendar */
+.rh-cal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md, 12px); padding: 10px 12px 12px; }
+.rh-cal-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.rh-cal-title { font-weight: 700; font-size: 1rem; }
+.rh-cal-nav { width: 36px; height: 32px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface); color: var(--text); font-size: 1.1rem; cursor: pointer; }
+.rh-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.rh-cal-dowlbl { text-align: center; font-size: 0.64rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; padding: 2px 0 4px; }
+.rh-cal-cell { position: relative; aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 4px 0 0; border: 1px solid transparent; border-radius: var(--r-sm); background: none; }
+.rh-cal-empty { background: none; border: none; }
+.rh-cal-num { font-size: 0.78rem; color: var(--text); }
+.rh-cal-today { background: var(--primary-bg); border-color: var(--primary); }
+.rh-cal-has { cursor: pointer; background: var(--surface-alt, var(--bg)); border-color: var(--border); }
+.rh-cal-has:active { background: var(--primary-tint); }
+.rh-cal-dot { display: inline-flex; align-items: center; justify-content: center; min-width: 9px; height: 9px; border-radius: 999px; margin-top: 3px; font-size: 0.58rem; font-weight: 700; color: #fff; padding: 0 2px; }
+.rh-cal-dot--open  { background: var(--primary); }
+.rh-cal-dot--ended { background: var(--text-muted); }
+.rh-cal-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; font-size: 0.72rem; color: var(--text-muted); }
+.rh-cal-legend i.rh-cal-dot { margin: 0 4px 0 0; vertical-align: middle; }
+.rh-cal-legend-hint { flex: 1; min-width: 120px; text-align: right; }
+
 .rh-card { border-left: 4px solid transparent; padding-left: 12px; }
 .rh-card-open  { border-left-color: var(--primary); }
 .rh-card-ended { border-left-color: var(--border); }

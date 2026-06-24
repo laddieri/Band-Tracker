@@ -30,20 +30,37 @@ function viewRehearsals() {
     ? `<button class="start-rehearsal-btn" onclick="showNewRehearsalModal()">+ Start a New Rehearsal</button>`
     : '';
 
+  const toggle = `
+    <div class="rh-viewmode">
+      <button class="rh-viewmode-btn${_rhViewMode === 'calendar' ? '' : ' rh-viewmode-btn--on'}" onclick="setRhViewMode('list')">List</button>
+      <button class="rh-viewmode-btn${_rhViewMode === 'calendar' ? ' rh-viewmode-btn--on' : ''}" onclick="setRhViewMode('calendar')">📅 Calendar</button>
+    </div>`;
+
+  const body = _rhViewMode === 'calendar' ? _rhCalendarHtml() : _rhListHtml(rehearsals);
+  return `<div class="rh-view">${startBtn}${toggle}${body}</div>`;
+}
+
+function setRhViewMode(mode) {
+  _rhViewMode = mode;
+  try { localStorage.setItem('rhViewMode', mode); } catch {}
+  render();
+}
+
+const _RH_MONTHS = ['January','February','March','April','May','June',
+                    'July','August','September','October','November','December'];
+
+// The original month-grouped list of rehearsal cards.
+function _rhListHtml(rehearsals) {
   const grouped = {};
   for (const r of rehearsals) {
     const key = r.date.slice(0,7);
     if (!grouped[key]) grouped[key] = [];
     grouped[key].push(r);
   }
-
-  const MONTHS = ['January','February','March','April','May','June',
-                  'July','August','September','October','November','December'];
-
-  return `<div class="rh-view">` + startBtn + Object.entries(grouped).map(([key, group]) => {
+  return Object.entries(grouped).map(([key, group]) => {
     const [y, m] = key.split('-').map(Number);
     return `
-      <div class="section-title">${MONTHS[m-1]} ${y}</div>
+      <div class="section-title">${_RH_MONTHS[m-1]} ${y}</div>
       <div class="rh-cards-grid">${group.map(r => {
         const ents = DB.getRehearsalEntries(r.id);
         const cnt  = Object.values(ents).filter(e => e.mistakes > 0 || e.positives > 0 || e.attendance || e.events?.length).length;
@@ -126,7 +143,90 @@ function viewRehearsals() {
             </div>
           </div>`;
       }).join('')}</div>`;
-  }).join('') + `</div>`;
+  }).join('');
+}
+
+// ── Rehearsals calendar ───────────────────────────────────────────────────────
+
+const _RH_DOW = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+
+function _rhCalendarHtml() {
+  if (!_rhCalMonth) _rhCalMonth = today().slice(0, 7); // default to the current month
+  const [y, m] = _rhCalMonth.split('-').map(Number); // m = 1..12
+  const firstDow    = new Date(y, m - 1, 1).getDay(); // 0 = Sunday
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const todayStr    = today();
+
+  // Rehearsals on each date this month.
+  const byDate = {};
+  DB.getRehearsals().forEach(r => {
+    if (r.date.slice(0, 7) === _rhCalMonth) (byDate[r.date] = byDate[r.date] || []).push(r);
+  });
+
+  let cells = '';
+  for (let i = 0; i < firstDow; i++) cells += `<div class="rh-cal-cell rh-cal-empty"></div>`;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const ds      = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const list    = byDate[ds] || [];
+    const isToday = ds === todayStr ? ' rh-cal-today' : '';
+    if (list.length) {
+      const allEnded = list.every(r => r.ended);
+      const dotCls   = allEnded ? 'rh-cal-dot--ended' : 'rh-cal-dot--open';
+      const click    = list.length === 1 ? `calRehearsalClick('${esc(list[0].id)}')` : `showDayRehearsals('${ds}')`;
+      cells += `<button class="rh-cal-cell rh-cal-has${isToday}" onclick="${click}" title="${esc(list.map(r => r.label || 'Rehearsal').join(', '))}">
+        <span class="rh-cal-num">${d}</span>
+        <span class="rh-cal-dot ${dotCls}">${list.length > 1 ? list.length : ''}</span>
+      </button>`;
+    } else {
+      cells += `<div class="rh-cal-cell${isToday}"><span class="rh-cal-num">${d}</span></div>`;
+    }
+  }
+
+  return `
+    <div class="rh-cal">
+      <div class="rh-cal-hdr">
+        <button class="rh-cal-nav" onclick="rhCalNav(-1)" aria-label="Previous month">‹</button>
+        <span class="rh-cal-title">${_RH_MONTHS[m-1]} ${y}</span>
+        <button class="rh-cal-nav" onclick="rhCalNav(1)" aria-label="Next month">›</button>
+      </div>
+      <div class="rh-cal-grid">${_RH_DOW.map(d => `<div class="rh-cal-dowlbl">${d}</div>`).join('')}</div>
+      <div class="rh-cal-grid">${cells}</div>
+      <div class="rh-cal-legend">
+        <span><i class="rh-cal-dot rh-cal-dot--ended"></i> Ended</span>
+        <span><i class="rh-cal-dot rh-cal-dot--open"></i> Open</span>
+        <span class="rh-cal-legend-hint">Tap a date for its attendance &amp; marks</span>
+      </div>
+    </div>`;
+}
+
+function rhCalNav(delta) {
+  if (!_rhCalMonth) _rhCalMonth = today().slice(0, 7);
+  let [y, m] = _rhCalMonth.split('-').map(Number);
+  m += delta;
+  while (m < 1)  { m += 12; y--; }
+  while (m > 12) { m -= 12; y++; }
+  _rhCalMonth = `${y}-${String(m).padStart(2,'0')}`;
+  render();
+}
+
+// Calendar day click → the View Attendance / View Marks options (works for open
+// rehearsals too, and respects which features are enabled).
+function calRehearsalClick(rid) {
+  if (DB.getRehearsals().some(r => r.id === rid)) showEndedRehearsalOptions(rid);
+}
+
+function showDayRehearsals(ds) {
+  const list = DB.getRehearsals().filter(r => r.date === ds);
+  if (!list.length) return;
+  if (list.length === 1) { calRehearsalClick(list[0].id); return; }
+  openModal(`
+    <div class="modal-title">${fmtDate(ds)}</div>
+    <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:14px">${list.length} rehearsals this day</p>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${list.map(r => `<button class="btn btn-secondary btn-full" onclick="closeModal();calRehearsalClick('${esc(r.id)}')">${esc(r.label || fmtDate(r.date))} · ${r.ended ? 'ended' : 'open'}</button>`).join('')}
+    </div>
+    <div class="modal-actions" style="margin-top:12px"><button class="btn btn-ghost btn-full" onclick="closeModal()">Cancel</button></div>
+  `);
 }
 
 // ── View: Attendance Tab ──────────────────────────────────────────────────────
