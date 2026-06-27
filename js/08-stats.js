@@ -741,15 +741,45 @@ function viewStudent(num) {
         </div>`;
       };
 
+      // Group the still-to-memorize songs by category (each collapsible) when
+      // categories are set; otherwise keep the flat list.
+      const cats = STATE.songCategories || [];
+      const catBlock = (label, rows, idx) => {
+        const id = `stu-songcat-${idx}`;
+        return `
+          <div id="${id}-hdr" class="song-cat-hdr sec-hdr-open" onclick="toggleCollapse('${id}')">
+            <span>${esc(label)} (${rows.length})</span>
+            <span class="sec-chevron">▾</span>
+          </div>
+          <div id="${id}">
+            <div class="card mb-12" style="padding:8px 12px">${rows.map(s => songRow(s)).join('')}</div>
+          </div>`;
+      };
+      let remainingHtml;
+      if (!remaining.length) {
+        remainingHtml = `<p class="empty-state" style="padding:12px 0;font-size:0.88rem">All songs memorized! 🎉</p>`;
+      } else if (!cats.length) {
+        remainingHtml = `<div class="card mb-12" style="padding:8px 12px">${remaining.map(s => songRow(s)).join('')}</div>`;
+      } else {
+        const grouped = {}; const uncategorized = [];
+        cats.forEach(c => { grouped[c] = []; });
+        remaining.forEach(song => {
+          if (song.category && grouped[song.category] !== undefined) grouped[song.category].push(song);
+          else uncategorized.push(song);
+        });
+        let html = ''; let ci = 0;
+        cats.forEach(cat => { if (grouped[cat].length) html += catBlock(cat, grouped[cat], ci++); });
+        if (uncategorized.length) html += catBlock(remaining.length > uncategorized.length ? 'Other' : 'Songs', uncategorized, ci++);
+        remainingHtml = html;
+      }
+
       return `
       <div id="stu-songs-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('stu-songs-sec')">
         <span class="section-title" style="margin:0">Songs to Memorize</span>
         <span class="sec-chevron">▾</span>
       </div>
       <div id="stu-songs-sec">
-        ${remaining.length
-          ? `<div class="card mb-12" style="padding:8px 12px">${remaining.map(s => songRow(s)).join('')}</div>`
-          : `<p class="empty-state" style="padding:12px 0;font-size:0.88rem">All songs memorized! 🎉</p>`}
+        ${remainingHtml}
         ${completed.length ? `
           <div id="stu-songs-done-hdr" class="song-cat-hdr" onclick="toggleCollapse('stu-songs-done')" style="margin-top:4px">
             <span>Songs Completed (${completed.length})</span>
