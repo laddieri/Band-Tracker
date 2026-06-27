@@ -2665,6 +2665,7 @@ html, body {
   border-radius: var(--r-sm);
 }
 .ssp-song-info { flex: 1; min-width: 0; }
+.ssp-song-btns { display: flex; gap: 6px; flex-shrink: 0; }
 .ssp-song-title {
   font-size: 0.88rem;
   font-weight: 500;
