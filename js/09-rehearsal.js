@@ -36,7 +36,19 @@ function viewRehearsals() {
       <button class="rh-viewmode-btn${_rhViewMode === 'calendar' ? ' rh-viewmode-btn--on' : ''}" onclick="setRhViewMode('calendar')">📅 Calendar</button>
     </div>`;
 
-  const body = _rhViewMode === 'calendar' ? _rhCalendarHtml() : _rhListHtml(rehearsals);
+  // In calendar view, surface any open rehearsal's full card above the grid so
+  // the in-progress rehearsal is still front-and-center (as it is in list view).
+  let openBanner = '';
+  if (_rhViewMode === 'calendar') {
+    const openRs = rehearsals.filter(r => !r.ended);
+    if (openRs.length) {
+      openBanner = `
+        <div class="section-title">${openRs.length > 1 ? 'Open Rehearsals' : 'Open Rehearsal'}</div>
+        <div class="rh-cards-grid rh-cal-open-banner">${openRs.map(_rhCardHtml).join('')}</div>`;
+    }
+  }
+
+  const body = _rhViewMode === 'calendar' ? `${openBanner}${_rhCalendarHtml()}` : _rhListHtml(rehearsals);
   return `<div class="rh-view">${startBtn}${toggle}${body}</div>`;
 }
 
@@ -61,7 +73,13 @@ function _rhListHtml(rehearsals) {
     const [y, m] = key.split('-').map(Number);
     return `
       <div class="section-title">${_RH_MONTHS[m-1]} ${y}</div>
-      <div class="rh-cards-grid">${group.map(r => {
+      <div class="rh-cards-grid">${group.map(_rhCardHtml).join('')}</div>`;
+  }).join('');
+}
+
+// One rehearsal card (open or ended) — shared by the list view and the open
+// rehearsal banner shown above the calendar in calendar view.
+function _rhCardHtml(r) {
         const ents = DB.getRehearsalEntries(r.id);
         const cnt  = Object.values(ents).filter(e => e.mistakes > 0 || e.positives > 0 || e.attendance || e.events?.length).length;
         const errs = Object.values(ents).reduce((s,e)=>s+(e.mistakes||0),0);
@@ -142,8 +160,6 @@ function _rhListHtml(rehearsals) {
               </div>
             </div>
           </div>`;
-      }).join('')}</div>`;
-  }).join('');
 }
 
 // ── Rehearsals calendar ───────────────────────────────────────────────────────

@@ -309,6 +309,7 @@ html, body {
 .rh-viewmode-btn--on { background: var(--primary); color: #fff; }
 
 /* Rehearsals calendar */
+.rh-cal-open-banner { margin-bottom: 16px; }
 .rh-cal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md, 12px); padding: 10px 12px 12px; }
 .rh-cal-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .rh-cal-title { font-weight: 700; font-size: 1rem; }
