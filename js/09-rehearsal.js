@@ -806,13 +806,8 @@ function viewRehearsal(rid) {
   ].filter(Boolean).join(' · ') : '';
 
   const attSubmitted = r?.attendanceSubmitted;
-  const showAttBtn   = _view !== 'dashboard' && featureOn('attendance');
-  const dashHeading  = _view === 'dashboard' ? `
-    <div class="dash-reh-heading">
-      Student Feedback for ${esc(fmtDate(r.date))}${r.label ? ` — ${esc(r.label)}` : ''}
-    </div>` : '';
+  const showAttBtn   = featureOn('attendance');
   return `
-    ${dashHeading}
     ${showAttBtn ? `
     <div class="rehearsal-action-row">
       <button class="att-screen-btn ${attSubmitted ? 'att-screen-btn-done' : ''}" style="flex:1;margin-bottom:0" onclick="navigate('attendance',{rid:'${esc(rid)}'})">
@@ -1928,7 +1923,7 @@ function reRender(rid) {
     mc.innerHTML = viewStudent(_params.num);
   } else if (_view === 'attendance') {
     mc.innerHTML = viewAttendance(rid);
-  } else if (_view === 'rehearsal' || _view === 'dashboard') {
+  } else if (_view === 'rehearsal') {
     mc.innerHTML = viewRehearsal(rid);
     if (_blockMode && !_activeNum) initBlockPinch(rid);
   } else if (_view === 'drill' && typeof _drillViewRenderSvg === 'function') {

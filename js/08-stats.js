@@ -11,6 +11,7 @@ function setDashboardRehearsal(rid) {
 function viewDashboard() {
   if (!STATE.isAdmin) return '';
 
+  const openReh    = getActiveRehearsal();
   const rehearsals = [...STATE.rehearsals].sort((a, b) => b.date.localeCompare(a.date));
 
   // Collect entries for selected scope
@@ -89,6 +90,12 @@ function viewDashboard() {
 
   return `
     <div class="dash-view">
+
+      ${openReh ? `
+        <button class="btn btn-primary dash-record-btn" onclick="switchToFeedback('${esc(openReh.id)}')">
+          <span class="dash-record-main">✏️ Record Marks for This Rehearsal</span>
+          <span class="dash-record-sub">${esc(fmtDate(openReh.date))}${openReh.label ? ' — ' + esc(openReh.label) : ''}</span>
+        </button>` : ''}
 
       <div class="dash-select-wrap">
         <select class="dash-select" onchange="setDashboardRehearsal(this.value)">
@@ -846,6 +853,5 @@ function getActiveRehearsal() {
 
 function switchToFeedback(rid) {
   _activeRid = rid;
-  _dashForceHistory = false;
-  navigate('dashboard', { rid });
+  navigate('rehearsal', { rid });
 }

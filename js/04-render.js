@@ -254,19 +254,12 @@ function render() {
       break;
 
     case 'dashboard': {
-      const openR = !_dashForceHistory ? getActiveRehearsal() : null;
-      if (STATE.isAdmin && openR) {
-        _activeRid = openR.id;
-        _params = { ..._params, rid: openR.id };
-        title.textContent = 'Student Feedback';
-        actions.innerHTML = optBtn('showMarksOptionsModal()') + userBtn();
-        main.innerHTML = viewRehearsal(openR.id);
-        if (_blockMode && !_activeNum) initBlockPinch(openR.id);
-      } else {
-        title.textContent = 'Rehearsal Marks';
-        actions.innerHTML = (STATE.isAdmin ? optBtn('showMarksOptionsModal()') : '') + userBtn();
-        main.innerHTML = viewDashboard();
-      }
+      // The Marks tab always shows the summary. Recording for an open rehearsal
+      // happens on the dedicated 'rehearsal' page, reached via a button in
+      // viewDashboard() (so the summary stays available even mid-rehearsal).
+      title.textContent = 'Rehearsal Marks';
+      actions.innerHTML = (STATE.isAdmin ? optBtn('showMarksOptionsModal()') : '') + userBtn();
+      main.innerHTML = viewDashboard();
       break;
     }
   }

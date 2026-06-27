@@ -470,7 +470,6 @@ function showEndedRehearsalOptions(rid) {
 
 function viewHistoricalMarks(rid) {
   _dashRid = rid;
-  _dashForceHistory = true;
   navigate('dashboard');
 }
 
