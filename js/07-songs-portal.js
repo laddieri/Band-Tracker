@@ -61,9 +61,12 @@ function showStudentSongProgress(num) {
         ${when ? `<div class="ssp-song-when">${esc(when)}</div>` : ''}
         ${failNote ? `<div class="ssp-fail-note">📝 ${esc(failNote)}</div>` : ''}
       </div>
-      <span class="portal-song-status ${status === 'passed' ? 'pss-pass' : status === 'failed' ? 'pss-fail' : 'pss-na'}">
-        ${status === 'passed' ? '✓ Passed' : status === 'failed' ? '✗ Failed' : '— Not Attempted'}
-      </span>
+      <div class="ssp-song-btns">
+        <button class="ssb ${status === 'passed' ? 'ssb-on-pass' : 'ssb-pass'}"
+                onclick="sspSetSongStatus('${esc(song.id)}','${esc(String(num))}','passed')">✓</button>
+        <button class="ssb ${status === 'failed' ? 'ssb-on-fail' : 'ssb-fail'}"
+                onclick="sspSetSongStatus('${esc(song.id)}','${esc(String(num))}','failed')">✗</button>
+      </div>
     </div>`;
   };
 
@@ -97,6 +100,15 @@ function showStudentSongProgress(num) {
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Close</button>
     </div>`);
+}
+
+// Change a song's status from within the student song-summary modal. Records
+// the student so _applySongStatus re-opens this summary (rather than the song
+// roster or student page) once the change — and any fail-note/confirm step —
+// completes.
+function sspSetSongStatus(sid, num, status) {
+  _sspContext = String(num);
+  setSongStatus(sid, num, status);
 }
 
 function viewSongs() {
@@ -440,13 +452,19 @@ function _applySongStatus(sid, num, song, status, note = '') {
 
   const listEl = document.getElementById('song-student-list');
   if (listEl) {
+    _sspContext = null;
     const students = Object.values(DB.getStudents())
       .filter(s => !memExcluded(s))
       .sort((a,b) => (a.name||'').localeCompare(b.name||''));
     listEl.innerHTML = songStudentRows(sid, students, song.statuses || {});
   } else if (_view === 'student') {
+    _sspContext = null;
     const mc = document.getElementById('main-content');
     if (mc) { const st = mc.scrollTop; mc.innerHTML = viewStudent(_params.num); mc.scrollTop = st; }
+  } else if (_sspContext != null) {
+    // The change came from the student song-summary modal (possibly via a
+    // fail-note or confirmation step that replaced it) — re-open the summary.
+    showStudentSongProgress(_sspContext);
   }
 }
 
