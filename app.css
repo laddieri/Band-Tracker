@@ -240,11 +240,22 @@ html, body {
   font-size: 0.66rem;
   font-weight: 500;
   transition: color .15s;
-  padding: 8px 2px;
+  padding: 6px 2px;
 }
-.nav-tab svg { width: 22px; height: 22px; }
+/* The icon sits inside a rounded "pill" that lights up on the active tab so
+   the current section is obvious at a glance. Padding is on the svg (content-box
+   keeps the icon 22px) so the pill stays compact enough for 7 tabs on a phone. */
+.nav-tab svg {
+  width: 22px; height: 22px;
+  padding: 4px 10px;
+  box-sizing: content-box;
+  border-radius: 999px;
+  transition: background .18s ease, color .15s;
+}
 .nav-tab span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-tab.active { color: var(--primary); }
+.nav-tab.active svg { background: var(--primary-bg); }
+.nav-tab.active span { font-weight: 700; }
 
 /* ── Cards ──────────────────────────────────────────────────────────────── */
 
@@ -3219,12 +3230,14 @@ html, body {
     width: calc(100% - 16px);
   }
 
-  .nav-tab svg { width: 18px; height: 18px; flex-shrink: 0; }
+  .nav-tab svg { width: 18px; height: 18px; flex-shrink: 0; padding: 0; border-radius: 0; }
 
   .nav-tab.active {
     background: var(--primary-bg);
     color: var(--primary);
   }
+  /* Sidebar uses a full-row pill, so don't double up with the icon pill. */
+  .nav-tab.active svg { background: none; }
 
   /* ── Modal: centered dialog instead of bottom sheet ──────────────────── */
 
