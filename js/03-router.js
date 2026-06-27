@@ -42,7 +42,7 @@ function navigate(view, params = {}, _fromHistory = false) {
   if (_view === 'dashboard' && view !== 'dashboard') {
     _activeNum = null; _trackerFilter = _mkFilter('name', 'asc'); _blockMode = false; _blockPath = []; _drillSelectedNums = [];
     _trackerFilter = _mkFilter('name', 'asc');
-    _dashRid = null; _dashForceHistory = false;
+    _dashRid = null;
   }
   if (_view === 'attendance' && view !== 'attendance') {
     _attModifyMode       = false;
@@ -80,7 +80,6 @@ let _songHidePassedFilter    = false;
 let _songCatCollapsed        = new Set(); // category names that are currently collapsed
 let _dashRid        = null; // null = all rehearsals
 let _activeRid      = null; // which open rehearsal is currently being marked
-let _dashForceHistory = false; // force dashboard into historical view even when rehearsal is open
 let _attModifyMode           = false; // true = show edit UI even when attendance is submitted
 let _attPresentCollapsed     = true;  // collapsed state of the "marked present" section
 let _attAbsentCollapsed      = true;  // collapsed state of the "marked absent" section
