@@ -751,15 +751,13 @@ function viewStudent(num) {
             <span>${esc(label)} (${rows.length})</span>
             <span class="sec-chevron">▾</span>
           </div>
-          <div id="${id}">
-            <div class="card mb-12" style="padding:8px 12px">${rows.map(s => songRow(s)).join('')}</div>
-          </div>`;
+          <div id="${id}">${rows.map(s => songRow(s)).join('')}</div>`;
       };
       let remainingHtml;
       if (!remaining.length) {
         remainingHtml = `<p class="empty-state" style="padding:12px 0;font-size:0.88rem">All songs memorized! 🎉</p>`;
       } else if (!cats.length) {
-        remainingHtml = `<div class="card mb-12" style="padding:8px 12px">${remaining.map(s => songRow(s)).join('')}</div>`;
+        remainingHtml = remaining.map(s => songRow(s)).join('');
       } else {
         const grouped = {}; const uncategorized = [];
         cats.forEach(c => { grouped[c] = []; });
@@ -774,24 +772,25 @@ function viewStudent(num) {
       }
 
       return `
-      <div id="stu-songs-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('stu-songs-sec')">
-        <span class="section-title" style="margin:0">Songs to Memorize</span>
-        <span class="sec-chevron">▾</span>
-      </div>
-      <div id="stu-songs-sec">
-        ${remainingHtml}
-        ${completed.length ? `
-          <div id="stu-songs-done-hdr" class="song-cat-hdr" onclick="toggleCollapse('stu-songs-done')" style="margin-top:4px">
-            <span>Songs Completed (${completed.length})</span>
-            <span class="sec-chevron">▾</span>
-          </div>
-          <div id="stu-songs-done" class="sec-collapsed">
-            <div class="card mb-12" style="padding:8px 12px">${completed.map(s => songRow(s, false)).join('')}</div>
-          </div>` : ''}
+      <div class="sec-card">
+        <div id="stu-songs-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('stu-songs-sec')">
+          <span class="section-title" style="margin:0">Songs to Memorize</span>
+          <span class="sec-chevron">▾</span>
+        </div>
+        <div id="stu-songs-sec">
+          ${remainingHtml}
+          ${completed.length ? `
+            <div id="stu-songs-done-hdr" class="song-cat-hdr" onclick="toggleCollapse('stu-songs-done')" style="margin-top:4px">
+              <span>Songs Completed (${completed.length})</span>
+              <span class="sec-chevron">▾</span>
+            </div>
+            <div id="stu-songs-done" class="sec-collapsed">${completed.map(s => songRow(s, false)).join('')}</div>` : ''}
+        </div>
       </div>`;
     })() : ''}
 
     ${hist.length ? `
+      <div class="sec-card">
       <div id="stu-hist-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('stu-hist-sec')">
         <span class="section-title" style="margin:0">Rehearsal History</span>
         <span class="sec-chevron">▾</span>
@@ -827,6 +826,7 @@ function viewStudent(num) {
           </div>` : ''}
         </div>`;
       }).join('')}
+      </div>
       </div>
     ` : `
       <div class="empty-state" style="padding:24px">

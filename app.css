@@ -1607,6 +1607,7 @@ html, body {
 .sec-card > .song-cat-hdr:not(.sec-hdr-open) { border-bottom: none; }
 .sec-card > div:not(.sec-hdr):not(.song-cat-hdr) { padding: 10px 14px 12px; }
 .sec-card .songs-list-grid { padding: 0; }
+.sec-card .history-row:last-child { margin-bottom: 0; }
 .att-tab-view .sec-card .att-chart-card { border: none; box-shadow: none; padding: 0; margin: 0; }
 .lb-marching-hdr {
   display: flex;
