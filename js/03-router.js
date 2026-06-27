@@ -408,6 +408,13 @@ function fmtDateFromTs(ts) {
   return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 }
 
+// Combined date + time, e.g. "Jun 12, 2026 · 3:45pm" — used to show exactly
+// when a song was passed off or failed.
+function fmtDateTime(ts) {
+  if (!ts) return '';
+  return `${fmtDateFromTs(ts)} · ${fmtTime(ts)}`;
+}
+
 function currentWeekRange() {
   const now = new Date();
   const day = now.getDay(); // 0=Sun … 6=Sat

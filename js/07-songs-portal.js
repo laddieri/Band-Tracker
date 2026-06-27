@@ -52,10 +52,13 @@ function showStudentSongProgress(num) {
     const entry    = song.statuses?.[String(num)];
     const status   = entry?.status || 'not_attempted';
     const failNote = status === 'failed' ? (entry?.note || '') : '';
+    const when     = (status !== 'not_attempted' && entry?.updatedAt)
+      ? `${status === 'passed' ? 'Passed' : 'Failed'} ${fmtDateTime(entry.updatedAt)}` : '';
     return `
     <div class="ssp-song-row">
       <div class="ssp-song-info">
         <div class="ssp-song-title">${esc(song.title)}</div>
+        ${when ? `<div class="ssp-song-when">${esc(when)}</div>` : ''}
         ${failNote ? `<div class="ssp-fail-note">📝 ${esc(failNote)}</div>` : ''}
       </div>
       <span class="portal-song-status ${status === 'passed' ? 'pss-pass' : status === 'failed' ? 'pss-fail' : 'pss-na'}">
@@ -260,7 +263,7 @@ function songStudentRows(sid, students, statuses) {
   const getMeta    = num => {
     const s = statuses[String(num)];
     if (!s || s.status === 'not_attempted') return '';
-    return [s.updatedBy ? dirLabel(s.updatedBy) : '', s.updatedAt ? fmtTime(s.updatedAt) : ''].filter(Boolean).join(' · ');
+    return [s.updatedBy ? dirLabel(s.updatedBy) : '', s.updatedAt ? fmtDateTime(s.updatedAt) : ''].filter(Boolean).join(' · ');
   };
   const scoreMap = {};
   for (const s of students) scoreMap[s.number] = { status: getStatus(s.number) };
@@ -921,12 +924,15 @@ function viewStudentPortal(previewMode = false) {
               const entry    = song.mine;
               const status   = entry?.status || 'not_attempted';
               const failNote = status === 'failed' ? (entry?.note || '') : '';
+              const when     = (status !== 'not_attempted' && entry?.updatedAt)
+                ? `${status === 'passed' ? 'Passed' : 'Failed'} ${fmtDateTime(entry.updatedAt)}` : '';
               const overdue  = song.dueDate && song.dueDate < today() && status !== 'passed';
               return `
               <div class="portal-song-row">
                 <div class="portal-song-info">
                   <div class="portal-song-title">${esc(song.title)}</div>
                   ${song.dueDate ? `<div class="portal-song-due ${overdue ? 'song-overdue' : ''}">Due ${fmtDate(song.dueDate)}</div>` : ''}
+                  ${when ? `<div class="portal-song-when">${esc(when)}</div>` : ''}
                   ${failNote ? `<div class="portal-song-fail-note">📝 ${esc(failNote)}</div>` : ''}
                 </div>
                 <span class="portal-song-status ${status === 'passed' ? 'pss-pass' : status === 'failed' ? 'pss-fail' : 'pss-na'}">

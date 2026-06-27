@@ -2579,6 +2579,7 @@ html, body {
 }
 .pss-pass { background: var(--success-bg); color: var(--success); }
 .pss-fail { background: var(--danger-bg);  color: var(--danger); }
+.portal-song-when { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
 .portal-song-fail-note { font-size: 0.78rem; color: var(--text-muted); margin-top: 4px; font-style: italic; }
 .portal-fail-note-preview { font-size: 0.9rem; background: var(--bg); border-left: 3px solid var(--danger); padding: 8px 12px; border-radius: 0 var(--r-sm) var(--r-sm) 0; color: var(--text); margin: 0; white-space: pre-wrap; word-break: break-word; }
 
@@ -2669,6 +2670,11 @@ html, body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.ssp-song-when {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 2px;
 }
 .ssp-fail-note {
   font-size: 0.75rem;

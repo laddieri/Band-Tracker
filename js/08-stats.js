@@ -714,7 +714,7 @@ function viewStudent(num) {
         const statusData = song.statuses?.[String(num)];
         const metaParts  = [];
         if (statusData && st !== 'not_attempted') {
-          if (statusData.updatedAt) metaParts.push(fmtDateFromTs(statusData.updatedAt));
+          if (statusData.updatedAt) metaParts.push(fmtDateTime(statusData.updatedAt));
           if (statusData.updatedBy) metaParts.push(`by ${dirLabel(statusData.updatedBy)}`);
         }
         const meta     = metaParts.join(' ');
