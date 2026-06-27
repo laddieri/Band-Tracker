@@ -254,7 +254,7 @@ html, body {
 }
 .nav-tab span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-tab.active { color: var(--primary); }
-.nav-tab.active svg { background: var(--primary-bg); }
+.nav-tab.active svg { background: var(--primary); color: #fff; box-shadow: 0 2px 6px var(--primary-bg); }
 .nav-tab.active span { font-weight: 700; }
 
 /* ── Cards ──────────────────────────────────────────────────────────────── */
