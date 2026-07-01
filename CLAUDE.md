@@ -53,6 +53,10 @@ app doesn't show it" is never a justification. Full model:
   `orgs/{STATE.orgId}/...`). Role split happens in `startListeners()`:
   directors get full-collection listeners, students get `studentListeners()`.
 - Always escape user data with `esc()` when interpolating into HTML.
+- Keyboard access for clickable non-button elements is retrofitted at render
+  time (`_a11yRetrofit` in `js/13-boot.js` stamps `role="button"` +
+  `tabindex`; Enter/Space activate). Still prefer real `<button>`s for new
+  UI, and keep `aria-label`s on icon-only buttons.
 - Firestore writes may be fire-and-forget: a global `unhandledrejection`
   handler (`js/13-boot.js`) toasts rejected writes via `_toastSaveError()`.
   Don't add `.catch(() => {})` unless a failure is genuinely best-effort —

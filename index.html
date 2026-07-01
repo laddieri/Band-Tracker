@@ -21,7 +21,7 @@
   <div id="app">
     <header id="app-header">
       <button id="back-btn" class="icon-btn hidden" aria-label="Go back">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <path d="M19 12H5M12 19l-7-7 7-7"/>
         </svg>
       </button>
@@ -35,9 +35,9 @@
 
     <main id="main-content"></main>
 
-    <nav id="bottom-nav">
+    <nav id="bottom-nav" aria-label="Primary">
       <button class="nav-tab" data-view="roster" onclick="navigate('roster')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
           <circle cx="9" cy="7" r="4"/>
           <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
@@ -46,7 +46,7 @@
         <span>Roster</span>
       </button>
       <button class="nav-tab" data-view="rehearsals" onclick="navigate('rehearsals')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
           <line x1="16" y1="2" x2="16" y2="6"/>
           <line x1="8" y1="2" x2="8" y2="6"/>
@@ -55,13 +55,13 @@
         <span>Rehearsals</span>
       </button>
       <button class="nav-tab" data-view="attendance-tab" onclick="navigate('attendance-tab')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
         </svg>
         <span>Attendance</span>
       </button>
       <button class="nav-tab" data-view="dashboard" onclick="navigate('dashboard')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <rect x="3" y="3" width="7" height="9" rx="1"/>
           <rect x="14" y="3" width="7" height="5" rx="1"/>
           <rect x="14" y="12" width="7" height="9" rx="1"/>
@@ -70,7 +70,7 @@
         <span>Marks</span>
       </button>
       <button class="nav-tab" data-view="songs" onclick="navigate('songs')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M9 18V5l12-2v13"/>
           <circle cx="6" cy="18" r="3"/>
           <circle cx="18" cy="16" r="3"/>
@@ -78,14 +78,14 @@
         <span>Songs</span>
       </button>
       <button class="nav-tab" data-view="leaderboard" onclick="navigate('leaderboard')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
           <polyline points="17 6 23 6 23 12"/>
         </svg>
         <span>Stats</span>
       </button>
       <button class="nav-tab" data-view="drill" onclick="navigate('drill')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="4" y1="22" x2="4" y2="3"/>
           <path d="M4 4h13l-2.5 3.5L17 11H4"/>
         </svg>
@@ -95,12 +95,12 @@
   </div>
 
   <div id="modal-overlay" class="hidden" onclick="handleModalClick(event)">
-    <div id="modal-dialog" onclick="event.stopPropagation()">
+    <div id="modal-dialog" role="dialog" aria-modal="true" onclick="event.stopPropagation()">
       <div id="modal-body"></div>
     </div>
   </div>
 
-  <div id="toast-container"></div>
+  <div id="toast-container" role="status" aria-live="polite"></div>
   <div id="drill-chart-fs" class="hidden"></div>
 
   <script>

@@ -15,6 +15,47 @@ document.addEventListener('click', () => {
   document.querySelectorAll('.rh-card-menu-list').forEach(el => el.classList.add('hidden'));
 });
 
+// ── Keyboard accessibility retrofit ───────────────────────────────────────────
+// Views are template-literal HTML where many click targets are plain <div
+// onclick="…">s — invisible to keyboards and screen readers. Rather than
+// hand-annotating every template (and every future one), retrofit at render
+// time: whenever content lands in #main-content or #modal-body, stamp
+// role="button" + tabindex="0" on inline-onclick elements that aren't natively
+// interactive. A delegated keydown handler makes Enter/Space activate them.
+// Focus styling lives in app.css ([role="button"]:focus-visible).
+
+function _a11yRetrofit(root) {
+  if (!root || root.nodeType !== 1) return;
+  // querySelectorAll matches descendants only — include the root itself, which
+  // is the whole element when a list refresh inserts rows one by one.
+  [root, ...root.querySelectorAll('[onclick]')].forEach(el => {
+    if (!el.hasAttribute('onclick')) return;
+    if (el.matches('button, a, input, select, textarea, label, summary')) return;
+    if (el.hasAttribute('role') || el.hasAttribute('tabindex')) return;
+    el.setAttribute('role', 'button');
+    el.tabIndex = 0;
+  });
+}
+
+(function initA11yRetrofit() {
+  const targets = ['main-content', 'modal-body'].map(id => document.getElementById(id)).filter(Boolean);
+  const obs = new MutationObserver(muts => {
+    for (const m of muts) {
+      m.addedNodes.forEach(n => { if (n.nodeType === 1) _a11yRetrofit(n); });
+    }
+  });
+  targets.forEach(t => { _a11yRetrofit(t); obs.observe(t, { childList: true, subtree: true }); });
+})();
+
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const el = e.target;
+  if (el instanceof HTMLElement && el.getAttribute('role') === 'button' && el.hasAttribute('onclick')) {
+    e.preventDefault(); // keep Space from scrolling the page
+    el.click();
+  }
+});
+
 // ── Failed-save safety net ────────────────────────────────────────────────────
 // Most Firestore writes in the app are fire-and-forget (the live listeners
 // update the UI optimistically), so a rejected write becomes an unhandled

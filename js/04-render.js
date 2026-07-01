@@ -160,7 +160,7 @@ function render() {
       const s = DB.getStudents()[_params.num];
       title.textContent = s ? (s.name || 'Student') : 'Student';
       const previewBtn = `<button class="icon-btn" onclick="showStudentPortalPreview('${esc(_params.num)}')" title="Preview student view" aria-label="Preview student view">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
           <circle cx="12" cy="12" r="3"/>
         </svg>
@@ -267,8 +267,8 @@ function render() {
 }
 
 function reportBtn(fn) {
-  return `<button class="icon-btn" onclick="${fn}" title="Attendance Report">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+  return `<button class="icon-btn" onclick="${fn}" title="Attendance Report" aria-label="Attendance Report">
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
       <polyline points="14 2 14 8 20 8"/>
       <line x1="16" y1="13" x2="8" y2="13"/>
@@ -278,23 +278,23 @@ function reportBtn(fn) {
 }
 
 function addBtn(fn) {
-  return `<button class="icon-btn" onclick="${fn}" title="Add">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+  return `<button class="icon-btn" onclick="${fn}" title="Add" aria-label="Add">
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
       <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
     </svg></button>`;
 }
 
 function editBtn(fn) {
-  return `<button class="icon-btn" onclick="${fn}" title="Edit">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+  return `<button class="icon-btn" onclick="${fn}" title="Edit" aria-label="Edit">
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
       <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
     </svg></button>`;
 }
 
 function optBtn(fn) {
-  return `<button class="icon-btn" onclick="${fn}" title="Options">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+  return `<button class="icon-btn" onclick="${fn}" title="Options" aria-label="Options">
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
       <circle cx="12" cy="5" r="1.2" fill="currentColor"/>
       <circle cx="12" cy="12" r="1.2" fill="currentColor"/>
       <circle cx="12" cy="19" r="1.2" fill="currentColor"/>
@@ -303,5 +303,5 @@ function optBtn(fn) {
 
 function userBtn() {
   const initials = (STATE.user?.email || '?').slice(0, 2).toUpperCase();
-  return `<button class="user-btn" onclick="showUserMenu()" title="${esc(STATE.user?.email || '')}">${esc(initials)}</button>`;
+  return `<button class="user-btn" onclick="showUserMenu()" title="${esc(STATE.user?.email || '')}" aria-label="Account menu">${esc(initials)}</button>`;
 }
