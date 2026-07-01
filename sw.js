@@ -1,4 +1,4 @@
-const CACHE = 'band-tracker-v5';
+const CACHE = 'band-tracker-v6';
 
 const PRECACHE = [
   '/',
@@ -14,6 +14,7 @@ const PRECACHE = [
   '/js/07-songs-portal.js',
   '/js/08-stats.js',
   '/js/09-rehearsal.js',
+  '/js/09b-attendance.js',
   '/js/10-modals-settings.js',
   '/js/11-reports.js',
   '/js/12-drill.js',

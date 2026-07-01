@@ -30,7 +30,6 @@ window.addEventListener('popstate', e => {
 function navigate(view, params = {}, _fromHistory = false) {
   if (_view === 'rehearsal' && view !== 'rehearsal') {
     _activeNum = null; _trackerFilter = _mkFilter('name', 'asc'); _blockMode = false; _blockPath = []; _drillSelectedNums = [];
-    _trackerFilter = _mkFilter('name', 'asc');
   }
   if (_view === 'song' && view !== 'song') {
     _songFilter           = _mkFilter('name', 'asc');
@@ -41,7 +40,6 @@ function navigate(view, params = {}, _fromHistory = false) {
   }
   if (_view === 'dashboard' && view !== 'dashboard') {
     _activeNum = null; _trackerFilter = _mkFilter('name', 'asc'); _blockMode = false; _blockPath = []; _drillSelectedNums = [];
-    _trackerFilter = _mkFilter('name', 'asc');
     _dashRid = null;
   }
   if (_view === 'attendance' && view !== 'attendance') {
@@ -142,62 +140,9 @@ function debounced(key, fn, ms = 800) {
   _debounce[key] = setTimeout(fn, ms);
 }
 
-// ── Core filter + sort ────────────────────────────────────────────────────────
-
-function filterAndSortStudents(students, f, scoreMap) {
-  let pool = [...students];
-  // search
-  if (f.search) {
-    const q = f.search.toLowerCase();
-    pool = pool.filter(s =>
-      (s.name||'').toLowerCase().includes(q) ||
-      String(s.number).includes(q) ||
-      normInstrument(s.instrument).toLowerCase().includes(q)
-    );
-  }
-  // filters — OR within category, AND across categories
-  if (f.instruments.length) pool = pool.filter(s => f.instruments.includes(normInstrument(s.instrument)));
-  if (f.grades.length)      pool = pool.filter(s => f.grades.includes(s.grade || ''));
-  if (f.sections.length)    pool = pool.filter(s => f.sections.includes(s.section || ''));
-  // sort
-  pool.sort((a, b) => {
-    let va, vb;
-    switch (f.sortField) {
-      case 'name':       va = (a.name||'').toLowerCase();          vb = (b.name||'').toLowerCase(); break;
-      case 'number':     va = +a.number||0;                        vb = +b.number||0; break;
-      case 'instrument': va = instrOrder(a.instrument); vb = instrOrder(b.instrument); break;
-      case 'section':    va = (a.section||'').toLowerCase();       vb = (b.section||'').toLowerCase(); break;
-      case 'grade':      va = GRADE_LEVELS.indexOf(a.grade||'');   vb = GRADE_LEVELS.indexOf(b.grade||''); break;
-      case 'column':     va = (a.column||'').toUpperCase();        vb = (b.column||'').toUpperCase(); break;
-      case 'row':        va = +a.row||0;                           vb = +b.row||0; break;
-      case 'score': case 'positives': case 'mistakes': case 'passed': case 'missing': {
-        va = scoreMap?.[a.number]?.[f.sortField] ?? -1;
-        vb = scoreMap?.[b.number]?.[f.sortField] ?? -1;
-        break;
-      }
-      case 'absences':   va = scoreMap?.[a.number]?.absences ?? 0; vb = scoreMap?.[b.number]?.absences ?? 0; break;
-      case 'lates':      va = scoreMap?.[a.number]?.lates ?? 0;    vb = scoreMap?.[b.number]?.lates ?? 0; break;
-      case 'attStatus': {
-        const order = { absent: 0, late: 1, present: 2, undefined: 2 };
-        va = order[scoreMap?.[a.number]?.att] ?? 2;
-        vb = order[scoreMap?.[b.number]?.att] ?? 2;
-        break;
-      }
-      case 'songStatus': {
-        const order = { passed: 0, failed: 1, not_attempted: 2 };
-        va = order[scoreMap?.[a.number]?.status] ?? 2;
-        vb = order[scoreMap?.[b.number]?.status] ?? 2;
-        break;
-      }
-      default: va = (a.name||'').toLowerCase(); vb = (b.name||'').toLowerCase();
-    }
-    const cmp = typeof va === 'string' ? va.localeCompare(vb) : (va - vb);
-    return f.sortDir === 'asc' ? cmp : -cmp;
-  });
-  return pool;
-}
-
 // ── Filter bar renderer ───────────────────────────────────────────────────────
+// (filterAndSortStudents — the engine behind every list view — lives in
+// js/00-logic.js so it's unit-testable.)
 
 function renderFilterBar(viewId, f, sortOptions, { hideSearch = false, extra = '' } = {}) {
   const activeCount = f.instruments.length + f.sections.length + f.grades.length;
@@ -236,15 +181,15 @@ function renderFilterBar(viewId, f, sortOptions, { hideSearch = false, extra = '
           <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
         <input class="search-input" type="search" placeholder="Search by name or number…"
-               value="${esc(f.search)}"
+               aria-label="Search students" value="${esc(f.search)}"
                oninput="updateFilter('${viewId}','search',this.value)" autocomplete="off">
       </div>`}
       <div class="sfb-row">
         <div class="sfb-sort-wrap">
-          <select class="sfb-sort-select" onchange="updateFilter('${viewId}','sortField',this.value)">
+          <select class="sfb-sort-select" aria-label="Sort by" onchange="updateFilter('${viewId}','sortField',this.value)">
             ${sortOptions.map(o => `<option value="${esc(o.value)}" ${f.sortField===o.value?'selected':''}>${esc(o.label)}</option>`).join('')}
           </select>
-          <button class="sfb-dir-btn" onclick="updateFilter('${viewId}','sortDir','${f.sortDir==='asc'?'desc':'asc'}')" title="Reverse sort">
+          <button class="sfb-dir-btn" onclick="updateFilter('${viewId}','sortDir','${f.sortDir==='asc'?'desc':'asc'}')" title="Reverse sort" aria-label="Reverse sort order">
             ${f.sortDir === 'asc' ? '↑' : '↓'}
           </button>
         </div>
@@ -437,10 +382,6 @@ function fmtPos(col, row) {
   return `${col || ''}${row || ''}`;
 }
 
-function normInstrument(str) {
-  return (str || '').replace(/^\d+\s*/, '').trim();
-}
-
 // Display label for a mark/status author. New data stamps director uids
 // (entries are student-readable, so emails must stay out of them); the uid is
 // resolved through STATE.dirNames. Legacy data stamped emails directly.
@@ -487,12 +428,29 @@ function handleModalClick(e) {
   if (e.target === document.getElementById('modal-overlay')) closeModal();
 }
 
+let _modalReturnFocus = null; // element to refocus when the modal closes
+
 function closeModal() {
-  document.getElementById('modal-overlay').classList.add('hidden');
+  const overlay  = document.getElementById('modal-overlay');
+  const wasOpen  = !overlay.classList.contains('hidden');
+  overlay.classList.add('hidden');
   drillChartCollapse();
+  // Send focus back where the user was before the modal took over.
+  if (wasOpen && _modalReturnFocus && document.contains(_modalReturnFocus)) {
+    try { _modalReturnFocus.focus(); } catch {}
+  }
+  _modalReturnFocus = null;
+}
+
+function _modalFocusables() {
+  const dialog = document.getElementById('modal-dialog');
+  return [...dialog.querySelectorAll(
+    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+  )].filter(el => !el.disabled && el.offsetParent !== null);
 }
 
 function openModal(html) {
+  _modalReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   document.getElementById('modal-body').innerHTML = `
     <div class="modal-top-row">
       <div class="modal-handle"></div>
@@ -501,7 +459,31 @@ function openModal(html) {
     ${html}`;
   document.getElementById('modal-overlay').classList.remove('hidden');
   history.pushState({ modal: true }, '');
+  // Focus the first control after the close button, falling back to close —
+  // keyboard/screen-reader users land inside the dialog, not behind it.
+  const focusables = _modalFocusables();
+  (focusables[1] || focusables[0])?.focus();
 }
+
+// Escape closes the modal; Tab cycles within it (focus trap) while it's open.
+document.addEventListener('keydown', e => {
+  const overlay = document.getElementById('modal-overlay');
+  if (!overlay || overlay.classList.contains('hidden')) return;
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    closeModal();
+    return;
+  }
+  if (e.key === 'Tab') {
+    const els = _modalFocusables();
+    if (!els.length) return;
+    const first = els[0], last = els[els.length - 1];
+    const inDialog = document.getElementById('modal-dialog').contains(document.activeElement);
+    if (!inDialog) { e.preventDefault(); first.focus(); return; }
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+});
 
 // ── Feature modules ───────────────────────────────────────────────────────────
 // Band-wide toggles configured in Band Settings. Stats depends on Marks (it's

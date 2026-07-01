@@ -173,6 +173,21 @@ html, body {
 
 #header-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
+/* ── Keyboard focus ─────────────────────────────────────────────────────────
+   Clickable rows are retrofitted with role="button" + tabindex at render time
+   (see _a11yRetrofit in js/13-boot.js); give them — and real buttons — a
+   visible focus ring for keyboard users without affecting mouse/touch. */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+/* On the primary-colored header/nav surfaces, ring in the surface's own
+   contrast color so it stays visible. */
+#app-header :focus-visible,
+#bottom-nav :focus-visible {
+  outline-color: currentColor;
+}
+
 /* Banner shown while a director views an archived season (see render()). */
 .season-banner {
   display: flex;

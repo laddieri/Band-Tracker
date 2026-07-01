@@ -259,6 +259,100 @@ function detectCols(headers, customFields = []) {
   return map;
 }
 
+// ── Instruments, grades, and the list filter/sort engine ─────────────────────
+
+// Strip the numeric prefix some imports carry ("12 Trumpet" → "Trumpet").
+function normInstrument(str) {
+  return (str || '').replace(/^\d+\s*/, '').trim();
+}
+
+// Score order: groups of names that all share the same rank position.
+// Includes full names, abbreviations, and plurals to handle any stored variant.
+const _SCORE_ORDER = [
+  ['Majorette','Majorettes'],
+  ['Piccolo'],
+  ['Flute','Flutes'],
+  ['Oboe'],
+  ['Bassoon'],
+  ['Clarinet','Clarinets'],
+  ['Bass Clarinet'],
+  ['Sax','Saxophone','Saxophones','Alto Sax','Alto Saxophone','Tenor Sax','Tenor Saxophone','Bari Sax','Bari Saxophone','Baritone Sax','Baritone Saxophone'],
+  ['Trumpet','Trumpets'],
+  ['Mellophone','Mello','Mellos','French Horn','Horn','Horns'],
+  ['Trombone','Trombones'],
+  ['Bass Trombone'],
+  ['Baritone','Baritone/Euphonium','Euphonium','Baritones'],
+  ['Tuba','Tubas'],
+  ['Snare Drum','Snare','Tenor Drums','Tenors','Tenor','Bass Drum','Cymbals','Marimba','Xylophone','Vibraphone','Percussion','Perc','Pit'],
+  ['Color Guard','Guard'],
+  ['Drum Major','Drum Majors'],
+  ['Other'],
+];
+const _INSTR_IDX = new Map();
+_SCORE_ORDER.forEach((names, i) => names.forEach(n => _INSTR_IDX.set(n.toLowerCase(), i)));
+function instrOrder(name) {
+  return _INSTR_IDX.get((normInstrument(name) || '').toLowerCase()) ?? _SCORE_ORDER.length;
+}
+
+const GRADE_LEVELS = ['8th','9th','10th','11th','12th'];
+
+// The engine behind every filterable list view (roster, tracker, attendance,
+// leaderboard, songs). `f` is a filter object from _mkFilter (search, sort
+// field/dir, instruments/sections/grades arrays); `scoreMap` supplies the
+// per-student values for score-ish sort fields.
+function filterAndSortStudents(students, f, scoreMap) {
+  let pool = [...students];
+  // search
+  if (f.search) {
+    const q = f.search.toLowerCase();
+    pool = pool.filter(s =>
+      (s.name||'').toLowerCase().includes(q) ||
+      String(s.number).includes(q) ||
+      normInstrument(s.instrument).toLowerCase().includes(q)
+    );
+  }
+  // filters — OR within category, AND across categories
+  if (f.instruments.length) pool = pool.filter(s => f.instruments.includes(normInstrument(s.instrument)));
+  if (f.grades.length)      pool = pool.filter(s => f.grades.includes(s.grade || ''));
+  if (f.sections.length)    pool = pool.filter(s => f.sections.includes(s.section || ''));
+  // sort
+  pool.sort((a, b) => {
+    let va, vb;
+    switch (f.sortField) {
+      case 'name':       va = (a.name||'').toLowerCase();          vb = (b.name||'').toLowerCase(); break;
+      case 'number':     va = +a.number||0;                        vb = +b.number||0; break;
+      case 'instrument': va = instrOrder(a.instrument); vb = instrOrder(b.instrument); break;
+      case 'section':    va = (a.section||'').toLowerCase();       vb = (b.section||'').toLowerCase(); break;
+      case 'grade':      va = GRADE_LEVELS.indexOf(a.grade||'');   vb = GRADE_LEVELS.indexOf(b.grade||''); break;
+      case 'column':     va = (a.column||'').toUpperCase();        vb = (b.column||'').toUpperCase(); break;
+      case 'row':        va = +a.row||0;                           vb = +b.row||0; break;
+      case 'score': case 'positives': case 'mistakes': case 'passed': case 'missing': {
+        va = scoreMap?.[a.number]?.[f.sortField] ?? -1;
+        vb = scoreMap?.[b.number]?.[f.sortField] ?? -1;
+        break;
+      }
+      case 'absences':   va = scoreMap?.[a.number]?.absences ?? 0; vb = scoreMap?.[b.number]?.absences ?? 0; break;
+      case 'lates':      va = scoreMap?.[a.number]?.lates ?? 0;    vb = scoreMap?.[b.number]?.lates ?? 0; break;
+      case 'attStatus': {
+        const order = { absent: 0, late: 1, present: 2, undefined: 2 };
+        va = order[scoreMap?.[a.number]?.att] ?? 2;
+        vb = order[scoreMap?.[b.number]?.att] ?? 2;
+        break;
+      }
+      case 'songStatus': {
+        const order = { passed: 0, failed: 1, not_attempted: 2 };
+        va = order[scoreMap?.[a.number]?.status] ?? 2;
+        vb = order[scoreMap?.[b.number]?.status] ?? 2;
+        break;
+      }
+      default: va = (a.name||'').toLowerCase(); vb = (b.name||'').toLowerCase();
+    }
+    const cmp = typeof va === 'string' ? va.localeCompare(vb) : (va - vb);
+    return f.sortDir === 'asc' ? cmp : -cmp;
+  });
+  return pool;
+}
+
 // ── Seasons ───────────────────────────────────────────────────────────────────
 
 // Suggest a season label for a date, e.g. '2026-07-01' → '2026-27'. Marching
@@ -282,5 +376,6 @@ if (typeof module !== 'undefined' && module.exports) {
     checkAutoMarkCondition, computeAutoMarkEvents,
     parseCSVLine, parseCSV, COL_ALIASES, normalizeGrade, detectCols,
     suggestSeasonLabel,
+    normInstrument, instrOrder, GRADE_LEVELS, filterAndSortStudents,
   };
 }
