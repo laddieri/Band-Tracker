@@ -140,9 +140,13 @@ function render() {
   // (header + nav stay put), so it drops #main-content's padding/scroll.
   main.classList.toggle('mc-drill', _view === 'drill');
 
-  // New bands: guide admin to roster on login before any students exist
+  // New bands: guide admin to roster on login before any students exist.
+  // Replace (not push) the history entry so the back button doesn't land on a
+  // 'rehearsals' state that would immediately redirect here again.
   if (STATE.isAdmin && _view === 'rehearsals' && !Object.keys(STATE.students).length) {
-    _view = 'roster';
+    _view   = 'roster';
+    _params = {};
+    history.replaceState({ view: _view, params: _params }, '');
   }
 
   switch (_view) {

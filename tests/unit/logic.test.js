@@ -299,6 +299,54 @@ describe('CSV parsing', () => {
   });
 });
 
+// ── Filter + sort engine ──────────────────────────────────────────────────────
+
+describe('filterAndSortStudents', () => {
+  const mkF = (over = {}) => ({
+    search: '', sortField: 'name', sortDir: 'asc',
+    instruments: [], sections: [], grades: [], ...over,
+  });
+  const pool = [
+    { number: '1', name: 'Cass',  instrument: '12 Trumpet', grade: '9th',  section: 'Brass' },
+    { number: '2', name: 'Ana',   instrument: 'Flute',      grade: '12th', section: 'Woodwinds' },
+    { number: '3', name: 'Blake', instrument: 'Tuba',       grade: '9th',  section: 'Brass' },
+  ];
+
+  it('searches across name, number and normalized instrument', () => {
+    assert.deepStrictEqual(L.filterAndSortStudents(pool, mkF({ search: 'trump' })).map(s => s.number), ['1']);
+    assert.deepStrictEqual(L.filterAndSortStudents(pool, mkF({ search: '3' })).map(s => s.number), ['3']);
+    assert.deepStrictEqual(L.filterAndSortStudents(pool, mkF({ search: 'ana' })).map(s => s.number), ['2']);
+  });
+  it('ORs within a category and ANDs across categories', () => {
+    assert.deepStrictEqual(
+      L.filterAndSortStudents(pool, mkF({ instruments: ['Trumpet', 'Tuba'] })).map(s => s.number),
+      ['3', '1']); // Blake before Cass alphabetically
+    assert.deepStrictEqual(
+      L.filterAndSortStudents(pool, mkF({ instruments: ['Trumpet', 'Tuba'], grades: ['9th'], sections: ['Brass'] })).map(s => s.number),
+      ['3', '1']);
+    assert.deepStrictEqual(
+      L.filterAndSortStudents(pool, mkF({ instruments: ['Trumpet'], grades: ['12th'] })).map(s => s.number),
+      []);
+  });
+  it('sorts by score order for instruments (flute before trumpet before tuba)', () => {
+    assert.deepStrictEqual(
+      L.filterAndSortStudents(pool, mkF({ sortField: 'instrument' })).map(s => s.instrument),
+      ['Flute', '12 Trumpet', 'Tuba']);
+  });
+  it('sorts by scoreMap fields with missing entries last (desc)', () => {
+    const scores = { 1: { score: 5 }, 2: { score: 9 } }; // 3 missing → -1
+    assert.deepStrictEqual(
+      L.filterAndSortStudents(pool, mkF({ sortField: 'score', sortDir: 'desc' }), scores).map(s => s.number),
+      ['2', '1', '3']);
+  });
+  it('respects sortDir and does not mutate the input array', () => {
+    const copy = [...pool];
+    const out = L.filterAndSortStudents(pool, mkF({ sortDir: 'desc' }));
+    assert.deepStrictEqual(out.map(s => s.name), ['Cass', 'Blake', 'Ana']);
+    assert.deepStrictEqual(pool, copy);
+  });
+});
+
 // ── Seasons ───────────────────────────────────────────────────────────────────
 
 describe('suggestSeasonLabel', () => {

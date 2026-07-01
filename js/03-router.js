@@ -30,7 +30,6 @@ window.addEventListener('popstate', e => {
 function navigate(view, params = {}, _fromHistory = false) {
   if (_view === 'rehearsal' && view !== 'rehearsal') {
     _activeNum = null; _trackerFilter = _mkFilter('name', 'asc'); _blockMode = false; _blockPath = []; _drillSelectedNums = [];
-    _trackerFilter = _mkFilter('name', 'asc');
   }
   if (_view === 'song' && view !== 'song') {
     _songFilter           = _mkFilter('name', 'asc');
@@ -41,7 +40,6 @@ function navigate(view, params = {}, _fromHistory = false) {
   }
   if (_view === 'dashboard' && view !== 'dashboard') {
     _activeNum = null; _trackerFilter = _mkFilter('name', 'asc'); _blockMode = false; _blockPath = []; _drillSelectedNums = [];
-    _trackerFilter = _mkFilter('name', 'asc');
     _dashRid = null;
   }
   if (_view === 'attendance' && view !== 'attendance') {
@@ -142,62 +140,9 @@ function debounced(key, fn, ms = 800) {
   _debounce[key] = setTimeout(fn, ms);
 }
 
-// ── Core filter + sort ────────────────────────────────────────────────────────
-
-function filterAndSortStudents(students, f, scoreMap) {
-  let pool = [...students];
-  // search
-  if (f.search) {
-    const q = f.search.toLowerCase();
-    pool = pool.filter(s =>
-      (s.name||'').toLowerCase().includes(q) ||
-      String(s.number).includes(q) ||
-      normInstrument(s.instrument).toLowerCase().includes(q)
-    );
-  }
-  // filters — OR within category, AND across categories
-  if (f.instruments.length) pool = pool.filter(s => f.instruments.includes(normInstrument(s.instrument)));
-  if (f.grades.length)      pool = pool.filter(s => f.grades.includes(s.grade || ''));
-  if (f.sections.length)    pool = pool.filter(s => f.sections.includes(s.section || ''));
-  // sort
-  pool.sort((a, b) => {
-    let va, vb;
-    switch (f.sortField) {
-      case 'name':       va = (a.name||'').toLowerCase();          vb = (b.name||'').toLowerCase(); break;
-      case 'number':     va = +a.number||0;                        vb = +b.number||0; break;
-      case 'instrument': va = instrOrder(a.instrument); vb = instrOrder(b.instrument); break;
-      case 'section':    va = (a.section||'').toLowerCase();       vb = (b.section||'').toLowerCase(); break;
-      case 'grade':      va = GRADE_LEVELS.indexOf(a.grade||'');   vb = GRADE_LEVELS.indexOf(b.grade||''); break;
-      case 'column':     va = (a.column||'').toUpperCase();        vb = (b.column||'').toUpperCase(); break;
-      case 'row':        va = +a.row||0;                           vb = +b.row||0; break;
-      case 'score': case 'positives': case 'mistakes': case 'passed': case 'missing': {
-        va = scoreMap?.[a.number]?.[f.sortField] ?? -1;
-        vb = scoreMap?.[b.number]?.[f.sortField] ?? -1;
-        break;
-      }
-      case 'absences':   va = scoreMap?.[a.number]?.absences ?? 0; vb = scoreMap?.[b.number]?.absences ?? 0; break;
-      case 'lates':      va = scoreMap?.[a.number]?.lates ?? 0;    vb = scoreMap?.[b.number]?.lates ?? 0; break;
-      case 'attStatus': {
-        const order = { absent: 0, late: 1, present: 2, undefined: 2 };
-        va = order[scoreMap?.[a.number]?.att] ?? 2;
-        vb = order[scoreMap?.[b.number]?.att] ?? 2;
-        break;
-      }
-      case 'songStatus': {
-        const order = { passed: 0, failed: 1, not_attempted: 2 };
-        va = order[scoreMap?.[a.number]?.status] ?? 2;
-        vb = order[scoreMap?.[b.number]?.status] ?? 2;
-        break;
-      }
-      default: va = (a.name||'').toLowerCase(); vb = (b.name||'').toLowerCase();
-    }
-    const cmp = typeof va === 'string' ? va.localeCompare(vb) : (va - vb);
-    return f.sortDir === 'asc' ? cmp : -cmp;
-  });
-  return pool;
-}
-
 // ── Filter bar renderer ───────────────────────────────────────────────────────
+// (filterAndSortStudents — the engine behind every list view — lives in
+// js/00-logic.js so it's unit-testable.)
 
 function renderFilterBar(viewId, f, sortOptions, { hideSearch = false, extra = '' } = {}) {
   const activeCount = f.instruments.length + f.sections.length + f.grades.length;
@@ -435,10 +380,6 @@ function fmtShort(d) {
 function fmtPos(col, row) {
   if (!col && !row) return '';
   return `${col || ''}${row || ''}`;
-}
-
-function normInstrument(str) {
-  return (str || '').replace(/^\d+\s*/, '').trim();
 }
 
 // Display label for a mark/status author. New data stamps director uids
