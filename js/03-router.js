@@ -465,6 +465,24 @@ function showToast(msg) {
   setTimeout(() => t.remove(), 2700);
 }
 
+// Surface a failed Firestore write to the user. With offline persistence,
+// latency compensation makes a REJECTED write look successful in the UI (the
+// listener shows the optimistic data, then it silently vanishes when the
+// server rejects it) — so failures must be shouted, not just logged. Writes
+// don't reject for being offline (they queue); a rejection means the server
+// refused the data (rules, invalid data, doc too large), so retrying the same
+// edit usually needs a fix, not a better connection. Rate-capped so a burst of
+// failures (e.g. a batch) produces one toast, not a storm.
+let _lastSaveErrToastAt = 0;
+function _toastSaveError(e, what = 'A change') {
+  console.error(`${what} failed to save:`, e);
+  const now = Date.now();
+  if (now - _lastSaveErrToastAt < 6000) return;
+  _lastSaveErrToastAt = now;
+  const code = e?.code ? ` (${e.code})` : '';
+  showToast(`${what} couldn't be saved${code}. Refresh and try again.`);
+}
+
 function handleModalClick(e) {
   if (e.target === document.getElementById('modal-overlay')) closeModal();
 }

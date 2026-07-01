@@ -53,6 +53,13 @@ app doesn't show it" is never a justification. Full model:
   `orgs/{STATE.orgId}/...`). Role split happens in `startListeners()`:
   directors get full-collection listeners, students get `studentListeners()`.
 - Always escape user data with `esc()` when interpolating into HTML.
+- Firestore writes may be fire-and-forget: a global `unhandledrejection`
+  handler (`js/13-boot.js`) toasts rejected writes via `_toastSaveError()`.
+  Don't add `.catch(() => {})` unless a failure is genuinely best-effort —
+  that swallows the error before the safety net sees it. Writes needing
+  bespoke error UI use their own try/catch. Director listeners also feed the
+  header "Saving…" pill from `hasPendingWrites` (`_notePendingWrites()` in
+  `js/02-data.js`).
 - Entry docs are keyed `{rehearsalId}_{studentNumber}` and must always carry
   `studentNumber` as a **string** (student queries filter on it).
 - One-off admin scripts live in `scripts/` (run locally with a service

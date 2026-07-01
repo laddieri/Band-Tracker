@@ -15,6 +15,26 @@ document.addEventListener('click', () => {
   document.querySelectorAll('.rh-card-menu-list').forEach(el => el.classList.add('hidden'));
 });
 
+// ── Failed-save safety net ────────────────────────────────────────────────────
+// Most Firestore writes in the app are fire-and-forget (the live listeners
+// update the UI optimistically), so a rejected write becomes an unhandled
+// promise rejection — previously invisible outside the console. Catch those
+// here and toast via _toastSaveError. Writes that need bespoke error UI keep
+// their own try/catch (which prevents the rejection from reaching this
+// handler); truly best-effort writes keep an explicit .catch(() => {}).
+window.addEventListener('unhandledrejection', ev => {
+  const e = ev.reason;
+  if (!e || e.name !== 'FirebaseError') return; // not ours — let it log normally
+  const code = String(e.code || '');
+  ev.preventDefault(); // we own the reporting from here
+  if (code.startsWith('auth/')) {
+    // Auth failures aren't "saves"; they're normally handled by the auth views.
+    console.error('Unhandled auth error:', e);
+    return;
+  }
+  _toastSaveError(e);
+});
+
 // ── Pull-to-refresh ───────────────────────────────────────────────────────────
 // Reconnects the live data listeners (or reloads when signed out). The pinned
 // header/nav layout means the browser's native pull-to-refresh can't fire, so
