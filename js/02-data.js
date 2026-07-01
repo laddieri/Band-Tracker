@@ -342,20 +342,41 @@ async function _recordAuthLoss() {
     online:   navigator.onLine,
     email:    (STATE.user && STATE.user.email) || marker?.email || null,
     lastSeen: marker?.lastSeen ? new Date(marker.lastSeen).toISOString() : null,
+    persisted: 'pending',
+    appCheck:  'pending',
   };
-  try { diag.persisted = await (navigator.storage?.persisted?.() ?? null); }
-  catch { diag.persisted = 'err'; }
-  if (typeof RECAPTCHA_V3_SITE_KEY !== 'undefined' && RECAPTCHA_V3_SITE_KEY && firebase.appCheck) {
-    try { await firebase.appCheck().getToken(); diag.appCheck = 'ok'; }
-    catch (e) { diag.appCheck = 'FAILED:' + (e?.code || e?.message || 'err'); }
-  } else { diag.appCheck = 'off'; }
+  // Save the entry BEFORE the async probes below. A hung App Check getToken()
+  // (itself a likely cause of forced sign-outs) previously swallowed the entire
+  // diagnostic, so nothing showed on the login screen. Write first, enrich after.
+  const _persist = () => {
+    try {
+      const log = JSON.parse(localStorage.getItem('authLossLog') || '[]');
+      if (log[0] && log[0].at === diag.at) log[0] = diag; else log.unshift(diag);
+      localStorage.setItem('authLossLog', JSON.stringify(log.slice(0, 8)));
+    } catch {}
+  };
+  _persist();
+  if (!STATE.user) render(); // show the note immediately, before the slow probes
+
+  // Enrich with the slower probes, each capped by a timeout so a hang turns
+  // into data ("timeout"/"FAILED:timeout") instead of losing the whole entry.
   try {
-    const log = JSON.parse(localStorage.getItem('authLossLog') || '[]');
-    log.unshift(diag);
-    localStorage.setItem('authLossLog', JSON.stringify(log.slice(0, 8)));
-  } catch {}
+    diag.persisted = await Promise.race([
+      Promise.resolve(navigator.storage?.persisted?.() ?? null),
+      new Promise(res => setTimeout(() => res('timeout'), 3000)),
+    ]);
+  } catch { diag.persisted = 'err'; }
+  if (typeof RECAPTCHA_V3_SITE_KEY !== 'undefined' && RECAPTCHA_V3_SITE_KEY && firebase.appCheck) {
+    try {
+      diag.appCheck = await Promise.race([
+        firebase.appCheck().getToken().then(() => 'ok'),
+        new Promise(res => setTimeout(() => res('FAILED:timeout'), 5000)),
+      ]);
+    } catch (e) { diag.appCheck = 'FAILED:' + (e?.code || e?.message || 'err'); }
+  } else { diag.appCheck = 'off'; }
+  _persist();
   console.warn('Unexpected sign-out diagnostics:', diag);
-  if (!STATE.user) render(); // refresh the login note now that the async write is done
+  if (!STATE.user) render();
 }
 
 auth.onAuthStateChanged(user => {
