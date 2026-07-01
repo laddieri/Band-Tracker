@@ -126,6 +126,12 @@ firebase.initializeApp(FIREBASE_CONFIG);
 if (typeof RECAPTCHA_V3_SITE_KEY !== 'undefined' && RECAPTCHA_V3_SITE_KEY && firebase.appCheck) {
   try {
     firebase.appCheck().activate(RECAPTCHA_V3_SITE_KEY, /* autoRefresh */ true);
+    // Pre-fetch an App Check token right away so one is cached BEFORE Firebase
+    // Auth runs its cold-start ID-token refresh. If App Check enforcement is on
+    // for Authentication, a refresh that races ahead of the first token can be
+    // rejected and silently sign the user out after the app has been closed a
+    // while (see the random-logout diagnostics). Fire-and-forget.
+    firebase.appCheck().getToken().catch(() => {});
   } catch (e) {
     console.error('App Check activation failed:', e);
   }
