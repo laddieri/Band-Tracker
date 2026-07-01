@@ -259,6 +259,18 @@ function detectCols(headers, customFields = []) {
   return map;
 }
 
+// ── Seasons ───────────────────────────────────────────────────────────────────
+
+// Suggest a season label for a date, e.g. '2026-07-01' → '2026-27'. Marching
+// seasons straddle calendar years like school years; June onward counts as the
+// start of the next school year (summer band camp belongs to the fall season).
+function suggestSeasonLabel(dateStr) {
+  const [y, m] = String(dateStr || '').split('-').map(Number);
+  if (!y || !m) return '';
+  const startY = m >= 6 ? y : y - 1;
+  return `${startY}-${String((startY + 1) % 100).padStart(2, '0')}`;
+}
+
 // ── Node export (browser ignores this) ────────────────────────────────────────
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -269,5 +281,6 @@ if (typeof module !== 'undefined' && module.exports) {
     lbWeights, scoreStudentsCore, buildPublicStats,
     checkAutoMarkCondition, computeAutoMarkEvents,
     parseCSVLine, parseCSV, COL_ALIASES, normalizeGrade, detectCols,
+    suggestSeasonLabel,
   };
 }

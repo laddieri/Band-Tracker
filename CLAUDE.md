@@ -61,7 +61,10 @@ app doesn't show it" is never a justification. Full model:
   header "Saving…" pill from `hasPendingWrites` (`_notePendingWrites()` in
   `js/02-data.js`).
 - Entry docs are keyed `{rehearsalId}_{studentNumber}` and must always carry
-  `studentNumber` as a **string** (student queries filter on it).
+  `studentNumber` as a **string** (student queries filter on it) plus the
+  rehearsal's season via `..._seasonStampFor(rid)` (listeners filter
+  `season == activeSeason`; an unstamped doc drops out of view — see
+  "Seasons" in `docs/DATA_MODEL.md`).
 - One-off admin scripts live in `scripts/` (run locally with a service
   account, never in CI). `service-account.json` and `backup-*.json` are
   gitignored — keep it that way.

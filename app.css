@@ -173,6 +173,31 @@ html, body {
 
 #header-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
+/* Banner shown while a director views an archived season (see render()). */
+.season-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm, 8px);
+  border: 1.5px solid var(--primary);
+  background: var(--primary-bg, rgba(37,99,235,.08));
+  font-size: 0.85rem;
+}
+.season-banner-btn {
+  border: none;
+  background: var(--primary);
+  color: white;
+  font-weight: 700;
+  font-size: 0.78rem;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
 /* "Saving…" pill: shown while local writes are still unacknowledged by the
    server (offline or slow network) — see _notePendingWrites in js/02-data.js. */
 #sync-indicator {

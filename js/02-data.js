@@ -30,6 +30,33 @@ function _resetPendingWrites() {
   document.getElementById('sync-indicator')?.classList.add('hidden');
 }
 
+// ── Season scoping ────────────────────────────────────────────────────────────
+// Rehearsals and entries accumulate forever, so their listeners are bounded to
+// the active season (see "Seasons" in docs/DATA_MODEL.md): docs are stamped
+// with a season label at write time and the queries filter on it. Bands that
+// haven't started a season yet ('' active) keep the unbounded legacy queries.
+// Directors can temporarily view an archived season; that's a local override
+// that re-scopes the two listeners without touching what students see.
+
+let _seasonView = null;          // director-local view override: null = follow the
+                                 // active season · '*' = all time · other = that label
+let _restartSeasonScoped = null; // rebinds the scoped listeners (set by startListeners)
+let _scopedReady = null;         // {reh, ent} first-emission flags — the publisher
+                                 // must not run between a re-scope and fresh data
+
+function _effectiveSeason() {
+  if (_seasonView === '*') return '';
+  return _seasonView || STATE.activeSeason || '';
+}
+
+// The Band Settings season selector ('' = back to the current season).
+function setSeasonView(v) {
+  _seasonView = v || null;
+  closeModal();
+  if (typeof _restartSeasonScoped === 'function') _restartSeasonScoped();
+  navigate('rehearsals');
+}
+
 // ── Firestore listeners ───────────────────────────────────────────────────────
 
 async function startListeners() {
@@ -38,6 +65,8 @@ async function startListeners() {
   STATE.loading = true;
   _lastPublishedJson = '';
   _resetPendingWrites();
+  _restartSeasonScoped = null;
+  _scopedReady = null;
   // Drop any drill state from a previous session/org; listeners repopulate it.
   STATE.drills = {}; STATE.activeDrillId = null; _activeDrillLoadedId = null;
   _drillData = null; _drillPages = null; _drillFileName = null; _drillFlipV = false;
@@ -70,6 +99,63 @@ async function startListeners() {
       render();
     }
   }
+
+  // Rehearsals + entries subscribe season-bounded, so they can only start once
+  // the first settings snapshot delivers activeSeason — and they re-subscribe
+  // when the effective season changes (a new season started, or the director
+  // picked an archived season to view). Everything else subscribes right away.
+  let scopedSeason; // undefined until the first subscribe
+  const subscribeScoped = () => {
+    scopedSeason = _effectiveSeason();
+    STATE.rehearsals = [];
+    STATE.entries    = {};
+    _scopedReady     = { reh: false, ent: false };
+    const rehQ = scopedSeason ? orgCol('rehearsals').where('season', '==', scopedSeason) : orgCol('rehearsals');
+    const entQ = scopedSeason ? orgCol('entries').where('season', '==', scopedSeason)    : orgCol('entries');
+
+    const unsubs = [
+      rehQ.onSnapshot({ includeMetadataChanges: true }, snap => {
+        _scopedReady.reh = true;
+        _notePendingWrites('rehearsals', snap.metadata.hasPendingWrites);
+        if (!snap.docChanges().length && !STATE.loading) return; // metadata-only
+        STATE.rehearsals = snap.docs
+          .map(d => ({ ...d.data(), id: d.id }))
+          .sort((a, b) => b.date.localeCompare(a.date));
+        tick('rehearsals');
+        schedulePublishPublicStats();
+      }),
+
+      entQ.onSnapshot({ includeMetadataChanges: true }, snap => {
+        _scopedReady.ent = true;
+        _notePendingWrites('entries', snap.metadata.hasPendingWrites);
+        const changes = snap.docChanges();
+        if (!changes.length && !STATE.loading) return; // metadata-only
+        changes.forEach(ch => {
+          const d = ch.doc.data();
+          if (!d.rehearsalId || !d.studentNumber) return;
+          if (ch.type === 'removed') {
+            if (STATE.entries[d.rehearsalId]) delete STATE.entries[d.rehearsalId][d.studentNumber];
+          } else {
+            if (!STATE.entries[d.rehearsalId]) STATE.entries[d.rehearsalId] = {};
+            STATE.entries[d.rehearsalId][d.studentNumber] = d;
+          }
+        });
+        tick('entries');
+        schedulePublishPublicStats();
+      }),
+    ];
+    // Old-scope unsubs stay in STATE._unsubs; calling an unsubscribe twice is a
+    // safe no-op, so tearing them down here and again at sign-out is fine.
+    STATE._unsubs.push(...unsubs);
+    return unsubs;
+  };
+  let scopedUnsubs = [];
+  const rescopeIfNeeded = () => {
+    if (scopedSeason !== undefined && _effectiveSeason() === scopedSeason) return;
+    scopedUnsubs.forEach(u => u());
+    scopedUnsubs = subscribeScoped();
+  };
+  _restartSeasonScoped = () => { rescopeIfNeeded(); render(); };
 
   const listeners = [
     // Org metadata (name, plan, invite code) — kept live for the settings UI.
@@ -113,6 +199,11 @@ async function startListeners() {
       STATE.autoMarks                  = Array.isArray(d.autoMarks) ? d.autoMarks : null;
       STATE.lbWeights                  = d.lbWeights || {};
       STATE.pywareMapping              = d.pywareMapping || {};
+      STATE.activeSeason               = d.activeSeason || '';
+      STATE.seasons                    = Array.isArray(d.seasons) ? d.seasons : [];
+      // First settings snapshot starts the season-bounded rehearsals/entries
+      // listeners; later snapshots re-scope them if the active season changed.
+      rescopeIfNeeded();
       // One-time migration: drill data used to live in this doc, where a large
       // Pyware file could push it toward Firestore's 1 MB doc limit and break
       // every settings save. Move it to its own settings/drill doc.
@@ -130,12 +221,18 @@ async function startListeners() {
       }
       if (!STATE.loading) render();
       schedulePublishPublicStats();
-    }, err => console.error('settings/presets listener error:', err)),
+    }, err => {
+      console.error('settings/presets listener error:', err);
+      // Still bind the rehearsals/entries listeners (unbounded) so the app
+      // isn't stuck on the loading spinner if only the settings read failed.
+      rescopeIfNeeded();
+    }),
 
-    // The four high-churn collections listen with metadata so the "Saving…"
-    // pill can track unacknowledged local writes. docChanges() excludes
-    // metadata-only emissions by default, so the `changes.length` guards keep
-    // write acks from triggering full re-renders — only the pill updates.
+    // High-churn collections listen with metadata so the "Saving…" pill can
+    // track unacknowledged local writes. docChanges() excludes metadata-only
+    // emissions by default, so the `changes.length` guards keep write acks
+    // from triggering full re-renders — only the pill updates. (Rehearsals and
+    // entries follow the same pattern inside subscribeScoped above.)
     orgCol('students').onSnapshot({ includeMetadataChanges: true }, snap => {
       _notePendingWrites('students', snap.metadata.hasPendingWrites);
       const changes = snap.docChanges();
@@ -145,34 +242,6 @@ async function startListeners() {
         else STATE.students[ch.doc.id] = { ...ch.doc.data(), _id: ch.doc.id };
       });
       tick('students');
-      schedulePublishPublicStats();
-    }),
-
-    orgCol('rehearsals').onSnapshot({ includeMetadataChanges: true }, snap => {
-      _notePendingWrites('rehearsals', snap.metadata.hasPendingWrites);
-      if (!snap.docChanges().length && !STATE.loading) return; // metadata-only
-      STATE.rehearsals = snap.docs
-        .map(d => ({ ...d.data(), id: d.id }))
-        .sort((a, b) => b.date.localeCompare(a.date));
-      tick('rehearsals');
-      schedulePublishPublicStats();
-    }),
-
-    orgCol('entries').onSnapshot({ includeMetadataChanges: true }, snap => {
-      _notePendingWrites('entries', snap.metadata.hasPendingWrites);
-      const changes = snap.docChanges();
-      if (!changes.length && !STATE.loading) return; // metadata-only
-      changes.forEach(ch => {
-        const d = ch.doc.data();
-        if (!d.rehearsalId || !d.studentNumber) return;
-        if (ch.type === 'removed') {
-          if (STATE.entries[d.rehearsalId]) delete STATE.entries[d.rehearsalId][d.studentNumber];
-        } else {
-          if (!STATE.entries[d.rehearsalId]) STATE.entries[d.rehearsalId] = {};
-          STATE.entries[d.rehearsalId][d.studentNumber] = d;
-        }
-      });
-      tick('entries');
       schedulePublishPublicStats();
     }),
 
@@ -222,7 +291,9 @@ async function startListeners() {
       }, err => console.error('directors listener error:', err))
   ];
 
-  STATE._unsubs = listeners;
+  // push, not assign: subscribeScoped adds the season-scoped unsubs to
+  // STATE._unsubs as they (re)bind — don't replace the array out from under it.
+  STATE._unsubs.push(...listeners);
 }
 
 // Listeners for student accounts — limited to exactly what the rules allow.
@@ -239,6 +310,53 @@ function studentListeners() {
     }
   }
 
+  // Rehearsals + own entries are season-bounded like the director listeners,
+  // so they wait for the first settings/public snapshot (which carries the
+  // active season) and re-subscribe if a director starts a new season.
+  let scopedSeason; // undefined until the first subscribe
+  let scopedUnsubs = [];
+  const subscribeScoped = () => {
+    scopedUnsubs.forEach(u => u());
+    scopedSeason     = STATE.activeSeason || '';
+    STATE.rehearsals = [];
+    STATE.entries    = {};
+    const rehQ = scopedSeason ? orgCol('rehearsals').where('season', '==', scopedSeason) : orgCol('rehearsals');
+    let entQ   = orgCol('entries').where('studentNumber', '==', num); // required by the rules
+    if (scopedSeason) entQ = entQ.where('season', '==', scopedSeason);
+
+    scopedUnsubs = [
+      // Rehearsal metadata (dates/labels) for the portal history.
+      rehQ.onSnapshot(snap => {
+        STATE.rehearsals = snap.docs
+          .map(d => ({ ...d.data(), id: d.id }))
+          .sort((a, b) => b.date.localeCompare(a.date));
+        tick('rehearsals');
+      }, err => {
+        console.error('rehearsals listener error:', err);
+        tick('rehearsals');
+      }),
+
+      // Own entries only.
+      entQ.onSnapshot(snap => {
+        snap.docChanges().forEach(ch => {
+          const d = ch.doc.data();
+          if (!d.rehearsalId || !d.studentNumber) return;
+          if (ch.type === 'removed') {
+            if (STATE.entries[d.rehearsalId]) delete STATE.entries[d.rehearsalId][d.studentNumber];
+          } else {
+            if (!STATE.entries[d.rehearsalId]) STATE.entries[d.rehearsalId] = {};
+            STATE.entries[d.rehearsalId][d.studentNumber] = d;
+          }
+        });
+        tick('entries');
+      }, err => {
+        console.error('entries listener error:', err);
+        tick('entries');
+      }),
+    ];
+    STATE._unsubs.push(...scopedUnsubs);
+  };
+
   return [
     // Director-published, student-safe settings + derived stats.
     orgCol('settings').doc('public').onSnapshot(doc => {
@@ -251,6 +369,7 @@ function studentListeners() {
       STATE.hideNegativeFromPortal     = !!d.hideNegativeFromPortal;
       STATE.songCategories             = d.songCategories || [];
       STATE.memorizationExclusions     = Array.isArray(d.memorizationExclusions) ? d.memorizationExclusions : [];
+      STATE.activeSeason               = d.activeSeason || '';
       STATE.features = {
         attendance: d.features?.attendance !== false,
         marks:      d.features?.marks      !== false,
@@ -264,9 +383,13 @@ function studentListeners() {
         stats:      d.portalVisible?.stats      !== false,
       };
       STATE.publicStats = d.stats || null;
+      if (scopedSeason === undefined || (STATE.activeSeason || '') !== scopedSeason) subscribeScoped();
       tick('settings');
     }, err => {
       console.error('public settings listener error:', err);
+      // Still bind the data listeners (unbounded) so the portal isn't blank if
+      // only the settings read failed.
+      if (scopedSeason === undefined) subscribeScoped();
       tick('settings');
     }),
 
@@ -277,35 +400,6 @@ function studentListeners() {
     }, err => {
       console.error('student doc listener error:', err);
       tick('students');
-    }),
-
-    // Rehearsal metadata (dates/labels) for the portal history.
-    orgCol('rehearsals').onSnapshot(snap => {
-      STATE.rehearsals = snap.docs
-        .map(d => ({ ...d.data(), id: d.id }))
-        .sort((a, b) => b.date.localeCompare(a.date));
-      tick('rehearsals');
-    }, err => {
-      console.error('rehearsals listener error:', err);
-      tick('rehearsals');
-    }),
-
-    // Own entries only — the where() clause is required by the security rules.
-    orgCol('entries').where('studentNumber', '==', num).onSnapshot(snap => {
-      snap.docChanges().forEach(ch => {
-        const d = ch.doc.data();
-        if (!d.rehearsalId || !d.studentNumber) return;
-        if (ch.type === 'removed') {
-          if (STATE.entries[d.rehearsalId]) delete STATE.entries[d.rehearsalId][d.studentNumber];
-        } else {
-          if (!STATE.entries[d.rehearsalId]) STATE.entries[d.rehearsalId] = {};
-          STATE.entries[d.rehearsalId][d.studentNumber] = d;
-        }
-      });
-      tick('entries');
-    }, err => {
-      console.error('entries listener error:', err);
-      tick('entries');
     }),
   ];
 }
@@ -340,11 +434,19 @@ function computePublicStats() {
   });
 }
 
+// True when local rehearsal/entry state doesn't reflect the live season —
+// mid-re-scope or while a director is viewing an archived season. Publishing
+// then would push stale/partial stats to every student.
+function _publishBlocked() {
+  return _seasonView !== null
+    || (_scopedReady && (!_scopedReady.reh || !_scopedReady.ent));
+}
+
 function schedulePublishPublicStats() {
-  if (!STATE.isAdmin || !STATE.orgId || STATE.loading) return;
+  if (!STATE.isAdmin || !STATE.orgId || STATE.loading || _publishBlocked()) return;
   clearTimeout(_publishTimer);
   _publishTimer = setTimeout(() => {
-    if (!STATE.isAdmin || !STATE.orgId) return;
+    if (!STATE.isAdmin || !STATE.orgId || _publishBlocked()) return;
     const pub = {
       bandName:                   STATE.bandName,
       bandLogo:                   STATE.bandLogo,
@@ -355,6 +457,7 @@ function schedulePublishPublicStats() {
       hideNegativeFromPortal:     !!STATE.hideNegativeFromPortal,
       songCategories:             STATE.songCategories,
       memorizationExclusions:     STATE.memorizationExclusions,
+      activeSeason:               STATE.activeSeason || '',
       stats:                      computePublicStats(),
     };
     const json = JSON.stringify(pub);
@@ -476,6 +579,11 @@ auth.onAuthStateChanged(user => {
     STATE.songs      = [];
     STATE.publicStats = null;
     STATE.dirNames   = {};
+    STATE.activeSeason = '';
+    STATE.seasons      = [];
+    _seasonView          = null;
+    _restartSeasonScoped = null;
+    _scopedReady         = null;
     _lastPublishedJson = '';
     _authMode        = 'signin';
     _studentStep     = null;

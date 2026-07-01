@@ -29,6 +29,15 @@ const guest    = ()    => testEnv.unauthenticatedContext().firestore();
 const student  = (uid, code) => testEnv.authenticatedContext(uid, {
   email: `${code.toLowerCase()}@students.bandtracker.app`,
 }).firestore();
+// Custom-claims contexts (token carries membership; NO members doc needed).
+// These exercise the claims-first path in the rules helpers; every other
+// context above exercises the member-doc fallback.
+const claimsDirector = (uid, orgId) => testEnv.authenticatedContext(uid, {
+  orgId, role: 'director',
+}).firestore();
+const claimsStudent = (uid, orgId, studentNumber) => testEnv.authenticatedContext(uid, {
+  orgId, role: 'student', studentNumber,
+}).firestore();
 
 // Seed a known world with admin privileges (bypasses rules).
 //   org "a"  owned by dirA, with co-director coA, student studA, and a roster doc
@@ -126,6 +135,20 @@ describe('student data visibility', () => {
   it('a student can query entries scoped to their own number', async () => {
     await assertSucceeds(
       director('studA').collection('orgs/a/entries').where('studentNumber', '==', '42').get()
+    );
+  });
+  it('a student can query entries scoped to their own number and a season', async () => {
+    // The season-bounded portal query — the extra equality filter must not
+    // break the "provably own entries" rule.
+    await assertSucceeds(
+      director('studA').collection('orgs/a/entries')
+        .where('studentNumber', '==', '42').where('season', '==', '2025-26').get()
+    );
+  });
+  it('a student CANNOT query another student\'s entries even season-scoped', async () => {
+    await assertFails(
+      director('studA').collection('orgs/a/entries')
+        .where('studentNumber', '==', '7').where('season', '==', '2025-26').get()
     );
   });
   it('a student CANNOT list all entries', async () => {
@@ -292,6 +315,45 @@ describe('joining an org', () => {
     await assertFails(
       director('coDir').doc('members/someoneElse').set({ orgId: 'a', role: 'director', inviteCode: 'ICODE' })
     );
+  });
+});
+
+describe('custom-claims membership (claims-first, doc fallback)', () => {
+  // None of these uids have a /members doc — access comes from the token alone.
+  it('a claims director reads and writes their org with no members doc', async () => {
+    await assertSucceeds(claimsDirector('cDir', 'a').doc('orgs/a/students/42').get());
+    await assertSucceeds(claimsDirector('cDir', 'a').doc('orgs/a/students/42').set({ name: 'Sam' }, { merge: true }));
+    await assertSucceeds(claimsDirector('cDir', 'a').doc('orgs/a').get());
+    await assertSucceeds(claimsDirector('cDir', 'a').doc('orgs/a/settings/presets').get());
+  });
+  it('a claims director CANNOT touch another org', async () => {
+    await assertFails(claimsDirector('cDir', 'a').doc('orgs/b/students/1').get());
+    await assertFails(claimsDirector('cDir', 'a').doc('orgs/b/students/1').set({ name: 'x' }));
+  });
+  it('a claims student reads only their own data', async () => {
+    const s = () => claimsStudent('cStud', 'a', '42');
+    await assertSucceeds(s().doc('orgs/a/students/42').get());
+    await assertSucceeds(s().doc('orgs/a/entries/r1_42').get());
+    await assertSucceeds(s().collection('orgs/a/entries').where('studentNumber', '==', '42').get());
+    await assertSucceeds(s().doc('orgs/a/settings/public').get());
+    await assertFails(s().doc('orgs/a/students/7').get());
+    await assertFails(s().doc('orgs/a/entries/r1_7').get());
+    await assertFails(s().doc('orgs/a').get());
+    await assertFails(s().doc('orgs/a/settings/presets').get());
+    await assertFails(s().doc('orgs/a/students/42').set({ name: 'hacked' }));
+  });
+  it('claims are authoritative: a mismatched member doc cannot widen access', async () => {
+    // studA's member doc says org 'a', but this token's claims say org 'b' —
+    // the doc must not be consulted once claims exist.
+    await assertFails(
+      testEnv.authenticatedContext('studA', { orgId: 'b', role: 'director' })
+        .firestore().doc('orgs/a/students/42').get()
+    );
+  });
+  it('a claims director without a studentNumber claim cannot pass the student read path', async () => {
+    // Regression guard for missing-key token access erroring in rules: the
+    // read must fail cleanly, not error the whole evaluation.
+    await assertFails(claimsDirector('cDirB', 'b').doc('orgs/a/students/42').get());
   });
 });
 

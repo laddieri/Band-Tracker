@@ -204,6 +204,12 @@ const STATE = {
   rehearsals:   [],
   entries:      {},
   songs:        [],
+  // Season model: rehearsals/entries are stamped with the active season label
+  // and the listeners filter on it, so old seasons stop being read on every
+  // cold start. '' = band hasn't started using seasons (unbounded, legacy).
+  // `seasons` lists archived season labels for the Band Settings viewer.
+  activeSeason: '',
+  seasons:      [],
   mistakePresets:  [...MISTAKE_PRESETS],
   positivePresets: [...POSITIVE_PRESETS],
   instruments:              [...INSTRUMENTS],
@@ -277,11 +283,21 @@ const DB = {
 
 // ── Firestore write helpers ───────────────────────────────────────────────────
 
+// Season stamp for an entry: entries inherit their rehearsal's season so the
+// season-bounded listeners (where('season','==',…)) can see them. EVERY write
+// that creates/overwrites an entry doc must spread this in (a doc without the
+// stamp silently drops out of the current season's views).
+function _seasonStampFor(rid) {
+  const r = STATE.rehearsals.find(x => x.id === rid);
+  return r?.season ? { season: r.season } : {};
+}
+
 async function fsUpsertEntry(rid, num, data) {
   const docId = `${rid}_${String(num)}`;
   await orgCol('entries').doc(docId).set({
     rehearsalId: rid,
     studentNumber: String(num),
+    ..._seasonStampFor(rid),
     ...data,
     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     // uid, not email: entries are readable by their own student, and director

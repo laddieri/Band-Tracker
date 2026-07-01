@@ -52,6 +52,36 @@ accessCodes/{CODE}                    # controlled-rollout gate for creating a b
   └─ (no fields needed — existence is the check)
 ```
 
+## Seasons (bounding the rehearsal/entry listeners)
+
+Rehearsals and entries accumulate forever (a 150-student band adds ~9,000
+entry docs a season), and directors listen to whole collections — so without a
+boundary every cold start re-reads all of history. Seasons are that boundary:
+
+- `settings/presets.activeSeason` holds the current season label (e.g.
+  `2026-27`); `settings/presets.seasons` lists archived labels. Both flow to
+  students via `settings/public` (`activeSeason` only).
+- New rehearsals are stamped `season: <activeSeason>` at creation, and every
+  entry write inherits its rehearsal's season via `_seasonStampFor(rid)`
+  (js/01-core.js). **Every write that creates/overwrites an entry doc must
+  spread that stamp in** — an unstamped doc silently drops out of the bounded
+  queries.
+- Director and student clients query rehearsals/entries with
+  `where('season', '==', activeSeason)`. These listeners subscribe only after
+  the first settings snapshot (which carries the season) and re-subscribe when
+  it changes. Equality-only filters need no composite index. When
+  `activeSeason` is unset (band predates the model), queries stay unbounded —
+  exactly the legacy behavior.
+- "Start New Season" (Band Settings) ARCHIVES rather than deletes: on the
+  first transition it backfills unstamped docs with the outgoing season's
+  label, then simply switches `activeSeason`. Steady state is just the
+  settings write. Song progress clearing remains an opt-in destructive step.
+  Directors can view archived seasons (or all time) via a local re-scope of
+  the two listeners; publishing to `settings/public` is suspended while the
+  local state isn't the live season.
+- Songs and their pass/fail statuses are NOT season-scoped — memorization
+  carries across years and is reset explicitly from the new-season modal.
+
 ## Controlled rollout: gating new-band creation
 
 During the private rollout, creating a *new* band requires a valid access code.
@@ -76,22 +106,26 @@ Everything that used to be a top-level collection now lives under
 `orgs/{orgId}/…`. Because each org has its own subtree, document IDs only need
 to be unique within an org — exactly what they already are.
 
-## Auth / membership model (interim: Firestore membership)
+## Auth / membership model (claims-first, member-doc fallback)
 
-We are **not** standing up Cloud Functions yet. Instead, membership is stored
-in Firestore and checked by the security rules with `get()`:
+Membership is stored in Firestore and mirrored into custom auth claims:
 
-- `members/{uid}` holds `{ orgId, role }` for every signed-in user.
+- `members/{uid}` holds `{ orgId, role, studentNumber? }` for every signed-in
+  user and remains the source of truth (it's what joins/removals write).
   - `role: "director"` — full read/write within their org.
   - `role: "student"` — read-only within their org.
-- Rules resolve the caller's org via `get(/members/{uid}).data.orgId` and
-  compare it to the `{orgId}` in the document path.
+- The `syncMemberClaims` / `clearMemberClaims` Cloud Functions (`functions/`)
+  mirror that doc into custom auth claims on create/delete.
+- The rules authorize **claims-first**: when the token carries `orgId`, it is
+  trusted (zero extra reads) and is authoritative — a mismatched member doc
+  cannot widen access. Tokens without claims fall back to
+  `get(/members/{uid})`, one extra read per request — the pre-claims
+  behavior, so the functions can be deployed (or not) at any time.
 
-**Cost note:** this adds one document read per request (the `members` lookup).
-That is fine for launch. The migration target is to move `orgId` and `role`
-into **custom auth claims** (set by a Cloud Function) so the rules can read
-them from the JWT for free. The collection layout above does not change when we
-do that — only the rule helper functions do. See the runbook.
+**Activation is optional and deferred** — see the runbook for the deploy
+steps, the `scripts/backfill-claims.js` backfill for pre-existing members,
+and the revocation tradeoff (a removed member's ID token stays valid up to
+~1h under claims; the doc model revoked instantly).
 
 ### How directors get an org
 

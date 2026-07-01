@@ -70,7 +70,7 @@ function viewHome() {
 
 function startToday() {
   const id = genId();
-  const r  = { id, date: today(), label: '' };
+  const r  = { id, date: today(), label: '', ...(STATE.activeSeason ? { season: STATE.activeSeason } : {}) };
   STATE.rehearsals.unshift(r);
   orgCol('rehearsals').doc(id).set(r);
   navigate('attendance-tab');

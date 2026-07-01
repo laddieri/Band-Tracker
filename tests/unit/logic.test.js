@@ -298,3 +298,25 @@ describe('CSV parsing', () => {
     assert.strictEqual(L.normalizeGrade('Senior'), 'Senior'); // unknown → unchanged
   });
 });
+
+// ── Seasons ───────────────────────────────────────────────────────────────────
+
+describe('suggestSeasonLabel', () => {
+  it('treats June onward as the start of the next school year', () => {
+    assert.strictEqual(L.suggestSeasonLabel('2026-06-01'), '2026-27');
+    assert.strictEqual(L.suggestSeasonLabel('2026-07-15'), '2026-27');
+    assert.strictEqual(L.suggestSeasonLabel('2026-12-31'), '2026-27');
+  });
+  it('keeps January–May in the school year that started the prior fall', () => {
+    assert.strictEqual(L.suggestSeasonLabel('2026-01-10'), '2025-26');
+    assert.strictEqual(L.suggestSeasonLabel('2026-05-31'), '2025-26');
+  });
+  it('pads the short year across a century boundary', () => {
+    assert.strictEqual(L.suggestSeasonLabel('2099-09-01'), '2099-00');
+  });
+  it('returns empty for garbage input', () => {
+    assert.strictEqual(L.suggestSeasonLabel(''), '');
+    assert.strictEqual(L.suggestSeasonLabel('not-a-date'), '');
+    assert.strictEqual(L.suggestSeasonLabel(null), '');
+  });
+});

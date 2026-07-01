@@ -99,10 +99,37 @@ an invite code generated in Band Settings. Students still join with their
 student code. This produces `orgs`, `members`, `studentCodes`, and `inviteCodes`
 docs through the rules above.
 
-## 5. Future: move membership to custom claims (cost/perf)
+## 5. Membership custom claims (cost/perf) — built, activation optional
 
-The interim rules call `get(/members/{uid})` on every request (one extra read).
-To remove that cost at scale, add a Cloud Function that stamps `orgId` and
-`role` as custom auth claims, and change the rule helpers (`member()`,
-`belongsTo`, `isDirectorOf`) to read `request.auth.token` instead of `get()`.
-The collection layout does not change.
+Without claims, the rules call `get(/members/{uid})` on every request (one
+extra read, roughly doubling read cost). The claims path is fully built and
+tested but **inert until the functions are deployed** — the rules authorize
+claims-first and fall back to the member doc, so nothing changes for tokens
+without claims and there is no deploy-ordering hazard.
+
+To activate:
+
+1. Upgrade the Firebase project to the **Blaze plan** (Cloud Functions v2
+   requirement; idle cost is $0 at this scale).
+2. `npx firebase-tools deploy --only functions` — installs `syncMemberClaims`
+   (member create → set claims) and `clearMemberClaims` (member delete →
+   clear claims + revoke refresh tokens).
+3. Backfill existing members:
+   `cd scripts && GOOGLE_APPLICATION_CREDENTIALS=./service-account.json node backfill-claims.js`
+   (idempotent; `--dry-run` to preview).
+4. Done. Users pick claims up on their next token refresh (≤1h or next
+   sign-in); until then the doc fallback keeps working per-user.
+
+**Tradeoff to accept before activating:** removing a member (director or
+student) leaves their already-minted ID token valid for up to ~1 hour.
+`clearMemberClaims` revokes their refresh tokens so no new tokens carry the
+stale claims, but rules cannot see revocation on an existing token. Under the
+doc-fallback model, removal was instant. If instant revocation ever matters
+more than the read savings, don't deploy the functions — the fallback remains
+the permanent behavior.
+
+Rollback: delete the two functions AND clear every user's claims (loop
+`admin.auth().setCustomUserClaims(uid, null)` over `members/`, then revoke
+refresh tokens). Clearing is mandatory, not cosmetic: with the functions gone,
+lingering claims would no longer track membership changes — a member removed
+from Firestore would keep org access as long as their claims survive.

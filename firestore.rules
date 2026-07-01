@@ -3,10 +3,19 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-    // Interim membership model: the caller's org/role live in /members/{uid} and
-    // are resolved here with get(). This costs one extra read per request. The
-    // migration target is to move orgId/role into custom auth claims; when that
-    // lands, only these helpers change. See docs/DATA_MODEL.md.
+    // Membership is claims-first with a doc fallback. When the token carries
+    // orgId/role custom claims (mirrored from /members/{uid} by the
+    // syncMemberClaims Cloud Function — see functions/), they are trusted and
+    // no read happens. Tokens without claims (function not yet deployed, or a
+    // token minted before the member doc existed) fall back to get()-ing
+    // /members/{uid}, which costs one extra read per request — the pre-claims
+    // behavior. Claims are authoritative when present: a mismatched member doc
+    // cannot widen access.
+    //
+    // Tradeoff to know about: claims live in the ID token, so removing a
+    // member leaves their existing token valid for up to ~1 hour (the function
+    // revokes refresh tokens on member delete, which blocks minting new ones).
+    // The doc-fallback model revoked instantly. See docs/MULTI_TENANCY_RUNBOOK.md.
 
     function isSignedIn() {
       return request.auth != null;
@@ -14,6 +23,13 @@ service cloud.firestore {
 
     function isAnonymous() {
       return request.auth.token.firebase.sign_in_provider == 'anonymous';
+    }
+
+    // Key-existence check with `in`: reading a MISSING token key errors in
+    // rules (it does not yield null), and an error inside a condition denies —
+    // which would lock out every claims-less (fallback) user.
+    function hasClaims() {
+      return 'orgId' in request.auth.token;
     }
 
     function memberPath() {
@@ -30,12 +46,27 @@ service cloud.firestore {
 
     // True if the caller is a member of the given org (any role).
     function belongsTo(orgId) {
-      return isMember() && member().orgId == orgId;
+      return isSignedIn() && (
+        hasClaims()
+          ? request.auth.token.orgId == orgId
+          : (isMember() && member().orgId == orgId)
+      );
     }
 
     // True if the caller is a director of the given org.
     function isDirectorOf(orgId) {
-      return belongsTo(orgId) && member().role == 'director';
+      return isSignedIn() && (
+        hasClaims()
+          ? (request.auth.token.orgId == orgId && request.auth.token.role == 'director')
+          : (isMember() && member().orgId == orgId && member().role == 'director')
+      );
+    }
+
+    // The caller's own student number (null for directors / no membership).
+    function myStudentNumber() {
+      return hasClaims()
+        ? (('studentNumber' in request.auth.token) ? request.auth.token.studentNumber : null)
+        : member().studentNumber;
     }
 
     // ── Per-org data (subcollections) ─────────────────────────────────────────
@@ -73,7 +104,7 @@ service cloud.firestore {
 
       // A student may read only their own roster doc (doc id == their number).
       match /students/{doc} {
-        allow read:  if canWrite() || (canRead() && member().studentNumber == doc);
+        allow read:  if canWrite() || (canRead() && myStudentNumber() == doc);
         allow write: if canWrite();
       }
 
@@ -87,7 +118,7 @@ service cloud.firestore {
       // with where('studentNumber', '==', <own number>) so the rule can be
       // proven for the whole query.
       match /entries/{doc} {
-        allow read:  if canWrite() || (canRead() && resource.data.studentNumber == member().studentNumber);
+        allow read:  if canWrite() || (canRead() && resource.data.studentNumber == myStudentNumber());
         allow write: if canWrite();
       }
 
