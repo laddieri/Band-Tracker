@@ -20,9 +20,27 @@ const _PY_FRONT_Y  = 37808; // grid Y at the (default) front sideline
 const _PY_UNIT     = 120;   // grid units per marching step
 const _PY_DEPTH    = 84;    // field depth in steps (front sideline to back)
 
+// Scan the buffer for an ASCII marker (used to fingerprint the file variant).
+function _hasMarker(u8, str) {
+  const t = [...str].map(c => c.charCodeAt(0));
+  outer: for (let i = 0; i <= u8.length - t.length; i++) {
+    for (let j = 0; j < t.length; j++) if (u8[i + j] !== t[j]) continue outer;
+    return true;
+  }
+  return false;
+}
+
 function _parsePywareFile(buffer) {
   const u8   = new Uint8Array(buffer);
   const view = new DataView(buffer);
+
+  // A .3dz is a ZIP package (PK\x03\x04), not a drill file — it bundles the
+  // .3dj with artwork/audio. Detect it so the user gets a real explanation
+  // instead of "not a Pyware file". (E_DRILL_* codes let the caller show a
+  // fuller modal; see _onDrillFileLoaded.)
+  if (u8[0]===0x50 && u8[1]===0x4B && u8[2]===0x03 && u8[3]===0x04)
+    throw new Error('E_DRILL_ZIP:This is a .3dz package (a ZIP bundle), not a drill file.');
+
   if (u8[0]!==0x33||u8[1]!==0x44||u8[2]!==0x4A||u8[3]!==0x56)
     throw new Error('This does not look like a Pyware .3dj file.');
 
@@ -41,7 +59,16 @@ function _parsePywareFile(buffer) {
     let bestCount = 0;
     for (const k in tally) if (tally[k] > bestCount) { bestCount = tally[k]; N = +k; }
   }
-  if (!N) throw new Error('No performer position data found in this file.');
+  if (!N) {
+    // Newer Pyware exports ("PYJAVA"/"PG15" frame blocks) store performer
+    // positions in an ENCRYPTED payload (base64 'XLRM'/'CS9W'/'FNXY' blocks,
+    // ~8 bits/byte entropy, no compression). There's no plaintext formation to
+    // read — confirmed by reverse-engineering the PreGame sample — so no
+    // parser can recover it without Pyware's key. Detect it and say so plainly.
+    if (_hasMarker(u8, 'PYJAVA') || _hasMarker(u8, 'PG15'))
+      throw new Error('E_DRILL_ENCRYPTED:This drill was saved in a newer Pyware format that encrypts the performer positions, so the field chart can’t be read.');
+    throw new Error('No performer position data found in this file.');
+  }
 
   // Read every PAGE block (one frame of N records), keyed by the stable id.
   const rawFrames = [];
@@ -244,10 +271,39 @@ function _onDrillFileLoaded(file) {
       else if (document.getElementById('drill-library-modal')) showDrillLibraryModal();
       else                                                     showDrillPickModal();
     } catch (err) {
-      showToast(err.message || 'Failed to read drill file.');
+      _showDrillImportError(err);
     }
   };
   reader.readAsArrayBuffer(file);
+}
+
+// Drill import failed. Known, self-inflicted cases (a .3dz package, or the
+// newer encrypted Pyware format) get a titled modal explaining what to do;
+// anything else falls back to a toast. Messages are tagged 'E_DRILL_*:' by
+// _parsePywareFile.
+function _showDrillImportError(err) {
+  const msg = err?.message || 'Failed to read drill file.';
+  const [tag, rest] = msg.includes(':') ? [msg.slice(0, msg.indexOf(':')), msg.slice(msg.indexOf(':') + 1)] : ['', msg];
+  const bodies = {
+    E_DRILL_ZIP: `
+      <p>${esc(rest)}</p>
+      <p>Unzip it first and upload the <strong>.3dj</strong> file inside. If that
+      .3dj still won’t load, it’s the newer encrypted Pyware format — see below.</p>`,
+    E_DRILL_ENCRYPTED: `
+      <p>${esc(rest)}</p>
+      <p>In Pyware 3D, re-save this show as a <strong>classic .3dj</strong>
+      (the format the app already reads) rather than a packaged
+      <strong>.3dz</strong> export, then upload that file. The drills you’ve
+      loaded before use that classic format.</p>`,
+  };
+  const body = bodies[tag];
+  if (!body) { showToast(rest); return; }
+  openModal(`
+    <div class="modal-title">Can’t read this drill file</div>
+    ${body}
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="closeModal()">OK</button>
+    </div>`);
 }
 
 // One-time migration: the old single drill lived in settings/drill itself. Move
