@@ -5,6 +5,7 @@
   "description": "Tooling for Band Tracker (rules tests + deploy). The app itself is static and needs no build.",
   "scripts": {
     "test:unit": "node --test tests/unit/*.test.js",
+    "check:static": "node tests/check-precache.js && node tests/check-handlers.js",
     "test:rules": "firebase emulators:exec --only firestore \"node --test tests/firestore.test.js\"",
     "deploy:rules": "firebase deploy --only firestore:rules --project band-tracker-ae9b4"
   },

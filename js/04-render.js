@@ -86,20 +86,6 @@ function render() {
     return;
   }
 
-  // Anonymous user with no valid student code — should never reach here normally,
-  // but guard in case tick() check was bypassed
-  if (STATE.user?.isAnonymous && !STATE.studentNum) {
-    backBtn.classList.add('hidden');
-    title.textContent = 'Band Tracker';
-    actions.innerHTML = '';
-    nav.style.display = 'none';
-    main.innerHTML = viewLogin();
-    localStorage.removeItem('bandStudentCode');
-    localStorage.removeItem('bandStudentNum');
-    auth.signOut();
-    return;
-  }
-
   // Student portal — non-admin user with a linked student account
   if (STATE.studentNum && !STATE.isAdmin && _view !== 'leaderboard') {
     backBtn.classList.add('hidden');

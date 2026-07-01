@@ -396,16 +396,13 @@ auth.onAuthStateChanged(user => {
       } catch {}
     }
     if (user.isAnonymous) {
-      // Restore anonymous student session from localStorage
-      const storedCode = localStorage.getItem('bandStudentCode');
-      const storedNum  = localStorage.getItem('bandStudentNum');
-      if (!storedCode && !storedNum) {
-        // Anonymous session with no stored code — sign out immediately
-        auth.signOut();
-        return;
-      }
-      _pendingStudentCode = storedCode || '';
-      if (storedNum) STATE.studentNum = storedNum; // optimistically restore
+      // Legacy pre-PIN anonymous student sessions are no longer supported (the
+      // rules no longer accept anonymous student joins). Sign the session out;
+      // the wizard prefills their remembered code, so they just set a PIN.
+      localStorage.removeItem('bandStudentNum'); // legacy key, no longer read
+      showToast('Student sign-in has changed — enter your code again to set up a PIN.');
+      auth.signOut();
+      return;
     }
     startListeners();
   } else {

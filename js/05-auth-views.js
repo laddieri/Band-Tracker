@@ -495,13 +495,12 @@ async function doLogout() {
   _userInitiatedSignOut = true; // deliberate logout — don't record it as a session loss
   try { localStorage.removeItem('bandLastAuth'); } catch {}
   localStorage.removeItem('bandStudentCode');
-  localStorage.removeItem('bandStudentNum');
   await auth.signOut();
 }
 
 function showUserMenu() {
-  // Students (anonymous legacy OR synthetic-email) get the student view menu;
-  // role — not anonymity — is the distinction now.
+  // Students (synthetic-email accounts) get the student view menu; the
+  // role — not the auth provider — is the distinction.
   if (STATE.studentNum && !STATE.isAdmin) {
     const s = STATE.students[STATE.studentNum];
     openModal(`

@@ -138,9 +138,10 @@ a first-timer to "set your PIN" — without relying on email-enumeration checks.
 student's code (new code → new synthetic email → fresh claim). The old Firebase
 account is orphaned and harmless (its old code no longer maps).
 
-Legacy anonymous student sessions still resolve (rules keep an `|| isAnonymous()`
-branch) so in-flight users aren't kicked out; that branch can be removed once
-everyone has re-signed-in with a PIN.
+Legacy pre-PIN anonymous sessions are no longer supported: the rules reject
+anonymous student joins (`studentJoin()` requires the synthetic email — codes
+are not secret, the PIN is), and the client signs any lingering anonymous
+session out at startup. Those students re-enter their code and set a PIN.
 
 After that, the student's reads are scoped to `orgs/{orgId}/…` like everyone
 else. `studentCodes` is the only collection readable before a membership
