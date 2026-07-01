@@ -106,22 +106,26 @@ Everything that used to be a top-level collection now lives under
 `orgs/{orgId}/…`. Because each org has its own subtree, document IDs only need
 to be unique within an org — exactly what they already are.
 
-## Auth / membership model (interim: Firestore membership)
+## Auth / membership model (claims-first, member-doc fallback)
 
-We are **not** standing up Cloud Functions yet. Instead, membership is stored
-in Firestore and checked by the security rules with `get()`:
+Membership is stored in Firestore and mirrored into custom auth claims:
 
-- `members/{uid}` holds `{ orgId, role }` for every signed-in user.
+- `members/{uid}` holds `{ orgId, role, studentNumber? }` for every signed-in
+  user and remains the source of truth (it's what joins/removals write).
   - `role: "director"` — full read/write within their org.
   - `role: "student"` — read-only within their org.
-- Rules resolve the caller's org via `get(/members/{uid}).data.orgId` and
-  compare it to the `{orgId}` in the document path.
+- The `syncMemberClaims` / `clearMemberClaims` Cloud Functions (`functions/`)
+  mirror that doc into custom auth claims on create/delete.
+- The rules authorize **claims-first**: when the token carries `orgId`, it is
+  trusted (zero extra reads) and is authoritative — a mismatched member doc
+  cannot widen access. Tokens without claims fall back to
+  `get(/members/{uid})`, one extra read per request — the pre-claims
+  behavior, so the functions can be deployed (or not) at any time.
 
-**Cost note:** this adds one document read per request (the `members` lookup).
-That is fine for launch. The migration target is to move `orgId` and `role`
-into **custom auth claims** (set by a Cloud Function) so the rules can read
-them from the JWT for free. The collection layout above does not change when we
-do that — only the rule helper functions do. See the runbook.
+**Activation is optional and deferred** — see the runbook for the deploy
+steps, the `scripts/backfill-claims.js` backfill for pre-existing members,
+and the revocation tradeoff (a removed member's ID token stays valid up to
+~1h under claims; the doc model revoked instantly).
 
 ### How directors get an org
 
