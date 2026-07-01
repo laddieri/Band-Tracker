@@ -173,6 +173,25 @@ html, body {
 
 #header-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
+/* "Saving…" pill: shown while local writes are still unacknowledged by the
+   server (offline or slow network) — see _notePendingWrites in js/02-data.js. */
+#sync-indicator {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.18);
+  color: white;
+  animation: sync-pulse 1.6s ease-in-out infinite;
+}
+#sync-indicator.hidden { display: none !important; }
+@keyframes sync-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .55; }
+}
+
 .icon-btn {
   width: 38px;
   height: 38px;
