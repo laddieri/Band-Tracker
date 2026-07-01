@@ -1220,6 +1220,7 @@ async function markAllPresent(rid) {
     batch.set(orgCol('entries').doc(`${rid}_${String(num)}`), {
       rehearsalId:   rid,
       studentNumber: String(num),
+      ..._seasonStampFor(rid),
       mistakes:      cur.mistakes  || 0,
       positives:     cur.positives || 0,
       notes:         cur.notes     || '',
@@ -1713,6 +1714,7 @@ async function confirmGroupMark(rid, groupName, type, note) {
     const att = cur.attendance || null;
     batch.set(orgCol('entries').doc(`${rid}_${num}`), {
       rehearsalId: rid, studentNumber: num,
+      ..._seasonStampFor(rid),
       mistakes:  STATE.entries[rid][num].mistakes,
       positives: STATE.entries[rid][num].positives,
       notes: cur.notes || '', events,

@@ -249,6 +249,17 @@ function render() {
       break;
     }
   }
+
+  // Banner while a director is viewing an archived season (or all time), so
+  // the scoped-down data isn't mistaken for missing data.
+  if (STATE.isAdmin && _seasonView) {
+    const label = _seasonView === '*' ? 'all seasons' : _seasonView;
+    main.insertAdjacentHTML('afterbegin', `
+      <div class="season-banner">
+        <span>Viewing <strong>${esc(label)}</strong> — archived history.</span>
+        <button class="season-banner-btn" onclick="setSeasonView('')">Back to ${esc(STATE.activeSeason || 'current')}</button>
+      </div>`);
+  }
 }
 
 function reportBtn(fn) {

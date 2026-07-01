@@ -52,6 +52,36 @@ accessCodes/{CODE}                    # controlled-rollout gate for creating a b
   └─ (no fields needed — existence is the check)
 ```
 
+## Seasons (bounding the rehearsal/entry listeners)
+
+Rehearsals and entries accumulate forever (a 150-student band adds ~9,000
+entry docs a season), and directors listen to whole collections — so without a
+boundary every cold start re-reads all of history. Seasons are that boundary:
+
+- `settings/presets.activeSeason` holds the current season label (e.g.
+  `2026-27`); `settings/presets.seasons` lists archived labels. Both flow to
+  students via `settings/public` (`activeSeason` only).
+- New rehearsals are stamped `season: <activeSeason>` at creation, and every
+  entry write inherits its rehearsal's season via `_seasonStampFor(rid)`
+  (js/01-core.js). **Every write that creates/overwrites an entry doc must
+  spread that stamp in** — an unstamped doc silently drops out of the bounded
+  queries.
+- Director and student clients query rehearsals/entries with
+  `where('season', '==', activeSeason)`. These listeners subscribe only after
+  the first settings snapshot (which carries the season) and re-subscribe when
+  it changes. Equality-only filters need no composite index. When
+  `activeSeason` is unset (band predates the model), queries stay unbounded —
+  exactly the legacy behavior.
+- "Start New Season" (Band Settings) ARCHIVES rather than deletes: on the
+  first transition it backfills unstamped docs with the outgoing season's
+  label, then simply switches `activeSeason`. Steady state is just the
+  settings write. Song progress clearing remains an opt-in destructive step.
+  Directors can view archived seasons (or all time) via a local re-scope of
+  the two listeners; publishing to `settings/public` is suspended while the
+  local state isn't the live season.
+- Songs and their pass/fail statuses are NOT season-scoped — memorization
+  carries across years and is reset explicitly from the new-season modal.
+
 ## Controlled rollout: gating new-band creation
 
 During the private rollout, creating a *new* band requires a valid access code.

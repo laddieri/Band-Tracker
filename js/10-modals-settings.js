@@ -373,7 +373,8 @@ function saveNewRehearsal() {
   const date = document.getElementById('m-date').value;
   if (!date) { showToast('Date is required'); return; }
   const id = genId();
-  const r  = { id, date, label: document.getElementById('m-label').value.trim() };
+  const r  = { id, date, label: document.getElementById('m-label').value.trim(),
+               ...(STATE.activeSeason ? { season: STATE.activeSeason } : {}) };
   const scope = _readRehearsalScope();
   if (scope) r.scope = scope;
   STATE.rehearsals.unshift(r);
@@ -619,6 +620,7 @@ async function endRehearsal(rid) {
     batch.set(docRef, {
       rehearsalId:   rid,
       studentNumber: String(num),
+      ..._seasonStampFor(rid),
       mistakes:      entry.mistakes  || 0,
       positives,
       notes:         entry.notes     || '',

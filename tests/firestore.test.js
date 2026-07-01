@@ -128,6 +128,20 @@ describe('student data visibility', () => {
       director('studA').collection('orgs/a/entries').where('studentNumber', '==', '42').get()
     );
   });
+  it('a student can query entries scoped to their own number and a season', async () => {
+    // The season-bounded portal query — the extra equality filter must not
+    // break the "provably own entries" rule.
+    await assertSucceeds(
+      director('studA').collection('orgs/a/entries')
+        .where('studentNumber', '==', '42').where('season', '==', '2025-26').get()
+    );
+  });
+  it('a student CANNOT query another student\'s entries even season-scoped', async () => {
+    await assertFails(
+      director('studA').collection('orgs/a/entries')
+        .where('studentNumber', '==', '7').where('season', '==', '2025-26').get()
+    );
+  });
   it('a student CANNOT list all entries', async () => {
     await assertFails(director('studA').collection('orgs/a/entries').get());
   });

@@ -731,14 +731,27 @@ function showBrandSettingsModal() {
     </div>
 
     <div class="form-group">
-      <label class="form-label" style="color:var(--danger)">Start a new season</label>
+      <label class="form-label">Season</label>
       <p style="font-size:.75rem;color:var(--text-muted);margin:-2px 0 8px">
-        Permanently clears rehearsal history, attendance and marks (and
-        optionally song progress) while keeping your roster, student codes and
-        settings. Do this between seasons so student records don't accumulate
-        forever.
+        ${STATE.activeSeason
+          ? `Current season: <strong>${esc(STATE.activeSeason)}</strong>. Starting a new one archives
+             this season's rehearsals, attendance and marks — nothing is deleted, and you can
+             view archived seasons below.`
+          : `Seasons keep old rehearsals, attendance and marks from piling into the current
+             view (and every device from re-downloading them). Start one at the beginning
+             of each school year.`}
       </p>
-      <button class="btn btn-secondary" style="color:var(--danger)" onclick="showNewSeasonModal()">
+      ${(STATE.seasons.length || STATE.activeSeason) ? `
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <label class="form-label" style="margin:0;font-weight:600">Viewing</label>
+        <select class="form-input" style="width:auto;flex:1;min-width:140px" onchange="setSeasonView(this.value)">
+          <option value="" ${!_seasonView ? 'selected' : ''}>${esc(STATE.activeSeason || 'Current')} (current)</option>
+          ${STATE.seasons.filter(s => s !== STATE.activeSeason).map(s =>
+            `<option value="${esc(s)}" ${_seasonView === s ? 'selected' : ''}>${esc(s)} (archived)</option>`).join('')}
+          <option value="*" ${_seasonView === '*' ? 'selected' : ''}>All time</option>
+        </select>
+      </div>` : ''}
+      <button class="btn btn-secondary" onclick="showNewSeasonModal()">
         Start New Season…
       </button>
     </div>
@@ -925,33 +938,62 @@ async function saveBrandSettings() {
   render();
 }
 
-// ── Season reset ──────────────────────────────────────────────────────────────
-// Clears the per-season records (rehearsals, entries, optionally song
-// progress) while keeping the roster, student codes and settings. Exists so
-// marks/attendance about students don't accumulate across years.
+// ── Start a new season ────────────────────────────────────────────────────────
+// Archives the current season's rehearsals + entries under a season label and
+// switches the active season, so the bounded listeners stop reading them —
+// nothing is deleted. (This replaced a destructive reset that batch-deleted
+// the collections.) Song progress clearing remains genuinely destructive and
+// stays opt-in below. Roster, student codes and settings are untouched.
+//
+// First transition (band predates the season model): existing docs carry no
+// season stamp and can't be query-matched, so they're backfilled with the
+// archived-season label here. Steady state: everything was stamped at write
+// time and this is just a settings change.
 
 function showNewSeasonModal() {
   if (!STATE.isAdmin) return;
   const rehearsalCount = STATE.rehearsals.length;
   const entryCount     = Object.values(STATE.entries).reduce((n, re) => n + Object.keys(re).length, 0);
+  const hasHistory     = rehearsalCount > 0 || entryCount > 0;
+  const needsArchiveName = hasHistory && !STATE.activeSeason;
+  const archiveLabel   = STATE.activeSeason || suggestSeasonLabel(STATE.rehearsals[0]?.date || today());
+  let newSuggestion    = suggestSeasonLabel(today());
+  if (newSuggestion === archiveLabel) {
+    const y = Number(newSuggestion.slice(0, 4)) + 1;
+    newSuggestion = `${y}-${String((y + 1) % 100).padStart(2, '0')}`;
+  }
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title" style="color:var(--danger)">Start New Season</div>
+    <div class="modal-title">Start New Season</div>
     <p style="font-size:.9rem;line-height:1.6;margin-bottom:8px">
-      This permanently deletes <strong>${rehearsalCount} rehearsal${rehearsalCount !== 1 ? 's' : ''}</strong>
-      and <strong>${entryCount} attendance/marks record${entryCount !== 1 ? 's' : ''}</strong>.
-      Your roster, student codes and settings are kept.
+      ${hasHistory
+        ? `Archives <strong>${rehearsalCount} rehearsal${rehearsalCount !== 1 ? 's' : ''}</strong> and
+           <strong>${entryCount} attendance/marks record${entryCount !== 1 ? 's' : ''}</strong> under the season
+           name below. Nothing is deleted — you can view archived seasons anytime from Band
+           Settings. Attendance, marks and stats start fresh.`
+        : `Names the season so rehearsals and marks recorded from now on can be archived
+           cleanly when the next one starts.`}
     </p>
-    <p style="font-size:.8rem;color:var(--text-muted);line-height:1.5;margin-bottom:12px">
-      Tip: run <code>scripts/backup-firestore.js</code> first if you want to
-      keep a copy of this season's records.
-    </p>
+    ${needsArchiveName ? `
+    <div class="form-group">
+      <label class="form-label">Name for the season being archived</label>
+      <input class="form-input" id="season-archive-name" type="text" autocomplete="off"
+             value="${esc(archiveLabel)}" placeholder="e.g. ${esc(archiveLabel)}">
+    </div>` : (STATE.activeSeason ? `
+    <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px">
+      Archiving current season: <strong>${esc(STATE.activeSeason)}</strong>
+    </p>` : '')}
+    <div class="form-group">
+      <label class="form-label">New season name</label>
+      <input class="form-input" id="season-new-name" type="text" autocomplete="off"
+             value="${esc(newSuggestion)}" placeholder="e.g. ${esc(newSuggestion)}">
+    </div>
     <label style="display:flex;align-items:flex-start;gap:10px;padding:6px 0;cursor:pointer">
       <input type="checkbox" id="season-clear-songs" checked
         style="margin-top:3px;width:18px;height:18px;flex-shrink:0">
       <span style="font-size:.88rem">
         <span style="font-weight:600">Reset song progress</span>
-        <span style="display:block;font-size:.75rem;color:var(--text-muted)">Clear every student's pass/fail results (keeps the song list)</span>
+        <span style="display:block;font-size:.75rem;color:var(--text-muted)">Permanently clears every student's pass/fail results (keeps the song list)</span>
       </span>
     </label>
     <label style="display:flex;align-items:flex-start;gap:10px;padding:6px 0 12px;cursor:pointer">
@@ -962,26 +1004,32 @@ function showNewSeasonModal() {
         <span style="display:block;font-size:.75rem;color:var(--text-muted)">Remove the whole song list, not just the results</span>
       </span>
     </label>
-    <div class="form-group" style="margin-bottom:16px">
-      <label class="form-label">Type <strong>RESET</strong> to confirm</label>
-      <input class="form-input" id="season-reset-confirm" type="text"
-             placeholder="RESET" autocomplete="off"
-             oninput="document.getElementById('season-reset-btn').disabled = this.value !== 'RESET'">
-    </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-danger" id="season-reset-btn" disabled onclick="startNewSeason()">Start New Season</button>
+      <button class="btn btn-primary" onclick="startNewSeason()">Start New Season</button>
     </div>
   `);
-  setTimeout(() => document.getElementById('season-reset-confirm')?.focus(), 80);
 }
 
 async function startNewSeason() {
   if (!STATE.isAdmin) return;
+  const newLabel = (document.getElementById('season-new-name')?.value || '').trim();
+  if (!newLabel || newLabel === '*') { showToast('Enter a name for the new season.'); return; }
+  const hasHistory = STATE.rehearsals.length > 0 ||
+    Object.values(STATE.entries).some(re => Object.keys(re).length);
+  let archiveLabel = STATE.activeSeason;
+  if (!archiveLabel && hasHistory) {
+    archiveLabel = (document.getElementById('season-archive-name')?.value || '').trim();
+    if (!archiveLabel) { showToast('Name the season being archived.'); return; }
+  }
+  if (archiveLabel && archiveLabel === newLabel) {
+    showToast('The new season needs a different name than the one being archived.');
+    return;
+  }
   const clearSongProgress = !!document.getElementById('season-clear-songs')?.checked;
   const deleteSongs       = !!document.getElementById('season-delete-songs')?.checked;
   closeModal();
-  showToast('Clearing season data…');
+  showToast('Starting new season…');
 
   const CHUNK = 500;
   const deleteAll = async (snap) => {
@@ -991,11 +1039,25 @@ async function startNewSeason() {
       await batch.commit();
     }
   };
+  // Backfill: stamp docs that predate the season model. Runs only on the first
+  // transition (no activeSeason yet); after that, docs are stamped at write
+  // time. Stamping happens BEFORE the activeSeason switch so a failure leaves
+  // everything still visible under the (unbounded) current view — just retry.
+  const stampAll = async (colName) => {
+    const snap = await orgCol(colName).get();
+    const docs = snap.docs.filter(d => !d.data().season);
+    for (let i = 0; i < docs.length; i += CHUNK) {
+      const batch = db.batch();
+      docs.slice(i, i + CHUNK).forEach(doc => batch.update(doc.ref, { season: archiveLabel }));
+      await batch.commit();
+    }
+  };
 
   try {
-    // Query the collections directly so orphaned docs are removed too.
-    await deleteAll(await orgCol('entries').get());
-    await deleteAll(await orgCol('rehearsals').get());
+    if (!STATE.activeSeason && archiveLabel) {
+      await stampAll('rehearsals');
+      await stampAll('entries');
+    }
 
     if (deleteSongs) {
       await deleteAll(await orgCol('songs').get());
@@ -1019,13 +1081,21 @@ async function startNewSeason() {
         await batch.commit();
       }
     }
+
+    // The switch itself: the settings listener sees the new activeSeason and
+    // re-scopes the rehearsals/entries listeners to it (now empty).
+    await orgCol('settings').doc('presets').set({
+      activeSeason: newLabel,
+      ...(archiveLabel ? { seasons: firebase.firestore.FieldValue.arrayUnion(archiveLabel) } : {}),
+    }, { merge: true });
   } catch (e) {
-    console.error('season reset failed:', e);
-    showToast('Season reset failed partway — check your connection and retry.');
+    console.error('starting a new season failed:', e);
+    showToast('Starting the season failed partway — check your connection and retry.');
     return;
   }
 
-  _activeRid = null;
-  showToast('New season started.');
+  _seasonView = null;
+  _activeRid  = null;
+  showToast(`Season ${newLabel} started.`);
   navigate('rehearsals');
 }
