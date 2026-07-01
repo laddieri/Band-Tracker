@@ -109,7 +109,6 @@ let _drillPlayEnd     = 0;
 let _drillChartSelect = false; // fullscreen chart context: true = select performers, false = view
 let _drillSelectedNums = []; // student numbers selected via drill
 let _pendingSegment    = ''; // currently selected rehearsal segment in mark modal
-let _pendingStudentCode = ''; // code being verified for anonymous student login
 let _pendingMarkAllFilter = null; // { instruments:[], grades:[] } snapshot for multi-select mark-all
 let _pendingLogoData   = null; // null=no change, ''=clear, dataURL=new logo
 let _pendingBandColor  = null; // null=no change, ''=default, hex=new band color

@@ -62,6 +62,11 @@ app doesn't show it" is never a justification. Full model:
 ## Checks
 
 - `node --check` on every JS file — CI runs this on every PR (`syntax.yml`).
+- `npm run check:static` — dependency-free consistency checks, also in
+  `syntax.yml`: `tests/check-precache.js` (every index.html asset is in the
+  `sw.js` PRECACHE and every entry exists) and `tests/check-handlers.js`
+  (every inline `on*=` handler calls a defined top-level global — catches
+  renamed/misspelled functions that would only fail at tap time).
 - `npm run test:unit` — unit tests for the pure logic in `js/00-logic.js`
   (scoring, published stats, auto marks, pseudonyms, CSV parsing). Also runs
   in CI on every PR. Keep `00-logic.js` free of Firebase/STATE/DOM so it

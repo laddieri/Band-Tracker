@@ -3,16 +3,21 @@ name: Syntax Check + Unit Tests
 # Fast guard: parse every committed JS file on each PR so a syntax error
 # (e.g. smart/curly quotes pasted in as string delimiters) can't reach main
 # and blank the app. `node --check` is syntax-only — no dependencies needed.
+# Also runs the dependency-free static consistency checks:
+#   tests/check-precache.js — index.html assets all listed in sw.js PRECACHE
+#   tests/check-handlers.js — inline on*= handlers resolve to defined globals
 
 on:
   pull_request:
     paths:
       - '**/*.js'
+      - 'index.html'
       - '.github/workflows/syntax.yml'
   push:
     branches: [main]
     paths:
       - '**/*.js'
+      - 'index.html'
       - '.github/workflows/syntax.yml'
 
 jobs:
@@ -31,5 +36,7 @@ jobs:
           echo "Checking:"; echo "$files"
           for f in $files; do node --check "$f"; done
           echo "All JS files parsed successfully."
+      - name: Static consistency checks (precache list, inline handlers)
+        run: npm run check:static
       - name: Unit tests (pure logic in js/00-logic.js)
         run: npm run test:unit

@@ -225,15 +225,18 @@ describe('joining an org', () => {
       director('coDir').doc('members/coDir').set({ orgId: 'a', role: 'director', inviteCode: 'ICODE' })
     );
   });
-  it('a student can join with a valid code claiming that code\'s number', async () => {
-    await assertSucceeds(
+  it('an anonymous user CANNOT join with a valid student code (codes are not secret; the PIN is)', async () => {
+    // The legacy anonymous escape hatch is gone: holding a code proves nothing
+    // without the PIN, which only the synthetic-email sign-in verifies.
+    await assertFails(
       anon('newStud').doc('members/newStud').set({ orgId: 'a', role: 'student', studentNumber: '42', joinCode: 'SCODE' })
     );
   });
   it('a student CANNOT use a valid code to claim a different number', async () => {
-    // SCODE maps to '42'; trying to bind to '7' must be rejected.
+    // SCODE maps to '42'; trying to bind to '7' must be rejected — even when
+    // authenticated with SCODE's own synthetic email.
     await assertFails(
-      anon('imposter').doc('members/imposter').set({ orgId: 'a', role: 'student', studentNumber: '7', joinCode: 'SCODE' })
+      student('imposter', 'SCODE').doc('members/imposter').set({ orgId: 'a', role: 'student', studentNumber: '7', joinCode: 'SCODE' })
     );
   });
   it('a synthetic-email student can join the code matching their email', async () => {
@@ -272,7 +275,7 @@ describe('joining an org', () => {
   });
   it('a student join with a bad code fails', async () => {
     await assertFails(
-      anon('badStud').doc('members/badStud').set({ orgId: 'a', role: 'student', studentNumber: '42', joinCode: 'WRONG' })
+      student('badStud', 'WRONG').doc('members/badStud').set({ orgId: 'a', role: 'student', studentNumber: '42', joinCode: 'WRONG' })
     );
   });
   it('a code can be fetched by id (even unauthenticated) but never listed', async () => {

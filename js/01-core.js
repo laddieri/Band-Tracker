@@ -148,12 +148,12 @@ const STUDENT_EMAIL_DOMAIN = 'students.bandtracker.app';
 function studentEmailFor(code) {
   return `${String(code).trim().toLowerCase()}@${STUDENT_EMAIL_DOMAIN}`;
 }
-// The student code for the current user: from their synthetic email (new model)
-// or a legacy anonymous session's stored code (back-compat).
+// The student code for the current user, derived from their synthetic email.
+// (Legacy anonymous student sessions are signed out at auth time — see
+// onAuthStateChanged — so the email is the only source of a code here.)
 function _studentCodeForUser() {
   const email = (STATE.user.email || '').toLowerCase();
   if (email.endsWith('@' + STUDENT_EMAIL_DOMAIN)) return email.split('@')[0].toUpperCase();
-  if (STATE.user.isAnonymous) return (_pendingStudentCode || localStorage.getItem('bandStudentCode') || '').toUpperCase();
   return '';
 }
 db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
@@ -357,9 +357,9 @@ async function resolveMembership() {
     return false;
   }
 
-  // Student with no membership yet — bind it from their code (taken from the
-  // synthetic student email, or a legacy anonymous session). Works for both a
-  // first-time claim and a returning student whose member doc was never written.
+  // Student with no membership yet — bind it from the code in their synthetic
+  // student email. Works for both a first-time claim and a returning student
+  // whose member doc was never written.
   const studentCode = _studentCodeForUser();
   if (studentCode) {
     let codeSnap;
@@ -378,8 +378,8 @@ async function resolveMembership() {
         orgId, studentNumber: String(studentNumber), role: 'student', joinCode: studentCode
       });
       // Mark the code claimed so the sign-in wizard can route returning students
-      // straight to the PIN screen. Best-effort (legacy anonymous users can't,
-      // and it's only a UX hint — the wizard cross-corrects regardless).
+      // straight to the PIN screen. Best-effort — it's only a UX hint; the
+      // wizard cross-corrects regardless.
       if (!codeSnap.data().claimed) {
         db.collection('studentCodes').doc(studentCode).set({ claimed: true }, { merge: true }).catch(() => {});
       }
@@ -387,13 +387,10 @@ async function resolveMembership() {
       STATE.isAdmin    = false;
       STATE.studentNum = String(studentNumber);
       STATE.connError  = false;
-      localStorage.setItem('bandStudentNum', String(studentNumber));
-      _pendingStudentCode = '';
       return true;
     }
     // Code no longer maps to a student (e.g., the director regenerated it).
     localStorage.removeItem('bandStudentCode');
-    localStorage.removeItem('bandStudentNum');
     showToast('That student code is no longer valid — ask your director for your new one.');
     userSignOut();
     return false;
