@@ -529,15 +529,6 @@ function showUserMenu() {
       Signed in as<br><strong style="color:var(--text)">${esc(STATE.user?.email || '')}</strong><br>
       <span style="font-size:0.8rem">${STATE.isAdmin ? '⭐ Admin' : STATE.isStaff ? 'Staff' : 'Director'}</span>
     </div>
-    ${(() => {
-      const log = _authLossLog();
-      if (!log.length) return '';
-      return `<div class="login-diag" style="margin:-8px 0 16px">
-        <strong>Recent unexpected sign-outs${log.length > 1 ? ` · ${log.length}×` : ''}</strong>
-        <ul style="margin:6px 0 0;padding-left:18px">${log.slice(0, 3).map(e => `<li>${_fmtLossEntry(e)}</li>`).join('')}</ul>
-        <button class="link-btn" style="margin-top:6px" onclick="try{localStorage.removeItem('authLossLog')}catch(e){}; closeModal();showUserMenu()">clear</button>
-      </div>`;
-    })()}
     <div class="modal-actions">
       ${STATE.isAdmin ? `
         <button class="btn btn-secondary btn-full" onclick="closeModal();navigate('roster')">Manage Roster</button>
