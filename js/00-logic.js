@@ -394,11 +394,12 @@ function suggestSeasonLabel(dateStr) {
 //     bytes 0-1   = performer index 1..N (stable across frames)
 //     bytes 2-5   = X (signed, big-endian) · bytes 6-9 = Y (signed, big-endian)
 //     bytes 10-13 = a word whose low byte is the section symbol (ASCII)
-//   Positions are signed and centered on the 50-yard line: 625 units = 1 step,
-//   the west goal at X -50000, the front sideline at Y +18750. (Calibrated
-//   against a known pregame block — 4-step spacing, its left edge on the east
-//   35 and right edge halfway between the east 10 and 5, front row 8 steps off
-//   the front sideline — which lands as a clean 12×12 grid of 144 performers.)
+//   Positions are signed: 625 units = 1 step. Calibrated against a known
+//   pregame block on the viewer's field model (front hash at stepsY 28): its
+//   front-west corner "M1" sits on the east 30 (stepsX 112) eight steps in
+//   front of the front hash (stepsY 20), with 4-step spacing extending NE —
+//   which fixes the west goal at raw X -55000 and the front sideline at raw
+//   Y +26250, and lands the whole show inside the field.
 //   NOTE: this is a different beast from the *encrypted* newer .3dj/.3dz, which
 //   stores positions in an unreadable payload (PYJAVA/PG15) and is rejected in
 //   the .3dj branch below.
@@ -410,8 +411,8 @@ const _PY_WESTGOAL = 23168; // .3dj grid X at the west goal line
 const _PY_FRONT_Y  = 37808; // .3dj grid Y at the (default) front sideline
 const _PY_UNIT     = 120;   // .3dj grid units per marching step
 
-const _PY3DA_WESTGOAL = -50000; // .3da raw X at the west goal line
-const _PY3DA_FRONT_Y  = 18750;  // .3da raw Y at the (default) front sideline
+const _PY3DA_WESTGOAL = -55000; // .3da raw X at the west goal line
+const _PY3DA_FRONT_Y  = 26250;  // .3da raw Y at the (default) front sideline
 const _PY3DA_UNIT     = 625;    // .3da raw units per marching step
 
 // Scan a byte array for an ASCII marker. _indexOfMarker returns its offset (or
