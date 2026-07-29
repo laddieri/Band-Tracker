@@ -173,6 +173,9 @@ const STATE = {
   needsOnboarding: false,
   connError:    false, // a transient backend read failed — show a retry, never sign-out/onboarding
   isAdmin:      false,
+  // Staff (e.g. a percussion instructor): records attendance, marks and song
+  // results, but no admin control — see canRecord() and firestore.rules.
+  isStaff:      false,
   studentNum:   null,
   students:     {},
   rehearsals:   [],
@@ -228,6 +231,14 @@ const STATE = {
 function hasField(key) {
   const af = STATE.activeStudentFields;
   return !af || af.includes(key);
+}
+
+// True for the people who record data (directors AND staff). Use this — not
+// STATE.isAdmin — to gate attendance/marks/song-recording UI. STATE.isAdmin
+// stays the gate for admin control: roster and song management, settings,
+// codes, seasons, drills, member management.
+function canRecord() {
+  return STATE.isAdmin || STATE.isStaff;
 }
 
 // Whether a student is excluded from song memorization (bound to STATE; pure
@@ -330,6 +341,7 @@ async function resolveMembership() {
     const m = snap.data();
     STATE.orgId     = m.orgId;
     STATE.isAdmin   = m.role === 'director';
+    STATE.isStaff   = m.role === 'staff';
     if (m.studentNumber) STATE.studentNum = String(m.studentNumber);
     STATE.connError = false;
     STATE.connErrorDetail = '';
@@ -375,6 +387,7 @@ async function resolveMembership() {
       }
       STATE.orgId      = orgId;
       STATE.isAdmin    = false;
+      STATE.isStaff    = false;
       STATE.studentNum = String(studentNumber);
       STATE.connError  = false;
       return true;
@@ -390,6 +403,7 @@ async function resolveMembership() {
   // join a band). The onboarding UI is a separate milestone.
   STATE.orgId           = null;
   STATE.isAdmin         = false;
+  STATE.isStaff         = false;
   STATE.needsOnboarding = true;
   STATE.loading         = false;
   render();

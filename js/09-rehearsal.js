@@ -26,7 +26,7 @@ function viewRehearsals() {
   }
 
   const hasOpen = rehearsals.some(r => !r.ended);
-  const startBtn = STATE.isAdmin && !hasOpen
+  const startBtn = canRecord() && !hasOpen
     ? `<button class="start-rehearsal-btn" onclick="showNewRehearsalModal()">+ Start a New Rehearsal</button>`
     : '';
 
@@ -89,14 +89,16 @@ function _rhCardHtml(r) {
         const stateCls = ended ? 'rh-card-ended' : 'rh-card-open';
         const activeR  = getActiveRehearsal();
         const isActive = !ended && activeR && activeR.id === r.id;
-        const menuBtn = STATE.isAdmin ? `
+        // Staff can edit/plan/reopen a rehearsal (rules allow update) but not
+        // delete one — deletion is director-only, so hide that item for staff.
+        const menuBtn = canRecord() ? `
           <div class="rh-card-menu-wrap">
             <button class="rh-card-menu-btn" onclick="event.stopPropagation();toggleRhMenu('${esc(r.id)}')" aria-label="More options">⋯</button>
             <div class="rh-card-menu-list hidden" id="rh-menu-${esc(r.id)}">
               <button class="rh-card-menu-item" onclick="showRehearsalEditModal('${esc(r.id)}')">Edit Rehearsal</button>
               <button class="rh-card-menu-item" onclick="showRehearsalPlanModal('${esc(r.id)}')">Rehearsal Plan</button>
               ${ended ? `<button class="rh-card-menu-item" onclick="reopenRehearsal('${esc(r.id)}')">Reopen Rehearsal</button>` : ''}
-              <button class="rh-card-menu-item rh-menu-danger" onclick="confirmDeleteRehearsal('${esc(r.id)}')">Delete Rehearsal</button>
+              ${STATE.isAdmin ? `<button class="rh-card-menu-item rh-menu-danger" onclick="confirmDeleteRehearsal('${esc(r.id)}')">Delete Rehearsal</button>` : ''}
             </div>
           </div>` : '';
         if (!ended) {
@@ -121,7 +123,7 @@ function _rhCardHtml(r) {
                   ${menuBtn}
                 </div>
               </div>
-              ${STATE.isAdmin ? `
+              ${canRecord() ? `
               ${featureOn('attendance') || featureOn('marks') ? `
               <div class="rh-card-actions">
                 ${featureOn('attendance') ? `

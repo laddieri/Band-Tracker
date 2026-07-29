@@ -9,7 +9,7 @@ function setDashboardRehearsal(rid) {
 }
 
 function viewDashboard() {
-  if (!STATE.isAdmin) return '';
+  if (!canRecord()) return '';
 
   const openReh    = getActiveRehearsal();
   const rehearsals = [...STATE.rehearsals].sort((a, b) => b.date.localeCompare(a.date));
@@ -239,16 +239,16 @@ function _buildLbRankRows() {
   return scored.map(({ docId, s, name, score }, i) => {
     const isMe = docId === myDocId;
     const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
-    const click = STATE.isAdmin ? `onclick="navigate('student',{num:'${esc(s.number)}'})"` : '';
+    const click = canRecord() ? `onclick="navigate('student',{num:'${esc(s.number)}'})"` : '';
     return `
-    <div class="lb-rank-row ${isMe ? 'lb-rank-me' : ''} ${i % 2 === 1 ? 'lb-stat-row-alt' : ''} ${STATE.isAdmin ? 'lb-row-clickable' : ''}" ${click}>
+    <div class="lb-rank-row ${isMe ? 'lb-rank-me' : ''} ${i % 2 === 1 ? 'lb-stat-row-alt' : ''} ${canRecord() ? 'lb-row-clickable' : ''}" ${click}>
       <span class="lb-rank-medal">${medal}</span>
       <span class="lb-rank-name">
         ${esc(name)}${isMe ? ' <span class="lb-you-badge">you</span>' : ''}
-        ${STATE.isAdmin ? `<span class="lb-real-name">${esc(s.name || `#${s.number}`)}</span>` : ''}
+        ${canRecord() ? `<span class="lb-real-name">${esc(s.name || `#${s.number}`)}</span>` : ''}
       </span>
       <span class="lb-rank-score ${score > 0 ? 'lb-val-ok' : score < 0 ? 'lb-val-warn' : ''}">${score > 0 ? '+' : ''}${score}</span>
-      ${STATE.isAdmin ? `<span class="lb-row-chevron">›</span>` : ''}
+      ${canRecord() ? `<span class="lb-row-chevron">›</span>` : ''}
     </div>`;
   }).join('');
 }
@@ -264,13 +264,13 @@ function _lbAttendanceSectionHtml(rehearsalRows) {
   const seasonTotal  = rehearsalRows.reduce((s, r) => s + r.absent, 0);
   const seasonAvg    = rehearsalRows.length ? (seasonTotal / rehearsalRows.length).toFixed(1) : '—';
 
-  // Director-only drill-downs: a single rehearsal opens its attendance screen;
+  // Director/staff drill-downs: a single rehearsal opens its attendance screen;
   // the week/season aggregates open a breakdown modal. Students see the same
   // card as plain, non-clickable rows.
   const chevron     = `<span class="lb-row-chevron">›</span>`;
-  const recentClick = STATE.isAdmin && last && last.id;
-  const weekClick   = STATE.isAdmin && weekRows.length > 0;
-  const seasonClick = STATE.isAdmin && rehearsalRows.length > 0;
+  const recentClick = canRecord() && last && last.id;
+  const weekClick   = canRecord() && weekRows.length > 0;
+  const seasonClick = canRecord() && rehearsalRows.length > 0;
 
   return `
       <div id="lb-sec-attendance-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('lb-sec-attendance')">
@@ -357,10 +357,10 @@ function showLbAttendanceModal(scope) {
 function _lbSongsSectionHtml(songRows) {
   if (!songRows.length) return '';
   const cats = STATE.songCategories;
-  // Directors can open each song's detail page; the published student rows have
-  // no song id, so they stay non-clickable.
+  // Directors/staff can open each song's detail page; the published student
+  // rows have no song id, so they stay non-clickable.
   const lbSongRow = ({ song, passed, remaining, pct }, i) => {
-    const sid = STATE.isAdmin && song.id ? song.id : null;
+    const sid = canRecord() && song.id ? song.id : null;
     return `
     <div class="lb-song-row ${i % 2 === 1 ? 'lb-stat-row-alt' : ''} ${sid ? 'lb-row-clickable' : ''}"
          ${sid ? `onclick="navigate('song',{sid:'${esc(sid)}'})"` : ''}>
@@ -429,7 +429,7 @@ function _lbSongsSectionHtml(songRows) {
 // from. Directors get the same rendering when previewing the student view
 // (computed locally so the preview is always current).
 function viewLeaderboardStudent() {
-  const pub = STATE.isAdmin ? computePublicStats() : STATE.publicStats;
+  const pub = canRecord() ? computePublicStats() : STATE.publicStats;
 
   if (!pub) {
     return `
@@ -515,7 +515,7 @@ function viewLeaderboard() {
 
       <div class="sec-card">${_lbSongsSectionHtml(songRows)}</div>
 
-      ${(STATE.marchingLeaderboardEnabled || STATE.isAdmin) ? `
+      ${(STATE.marchingLeaderboardEnabled || canRecord()) ? `
         <div class="sec-card">
           <div id="lb-sec-ranking-hdr" class="sec-hdr sec-hdr-open lb-marching-hdr" onclick="toggleCollapse('lb-sec-ranking')">
             <span class="section-title" style="margin:0">Marching Leaderboard</span>

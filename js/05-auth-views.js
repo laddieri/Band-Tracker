@@ -411,6 +411,9 @@ function viewOnboarding() {
       <div class="login-divider"><span>or</span></div>
 
       <div class="login-section-label">Join an existing band</div>
+      <p style="font-size:.75rem;color:var(--text-muted);text-align:center;margin:-4px 0 10px">
+        Use the code a director shared with you — co-director or staff.
+      </p>
       <div id="onboard-join-error"></div>
       <div class="form-group">
         <input class="form-input" id="onboard-invite-code" type="text"
@@ -475,9 +478,12 @@ async function joinBandWithInvite() {
   try {
     const snap = await db.collection('inviteCodes').doc(code).get();
     if (!snap.exists) { onboardErr('onboard-join-error', 'Invite code not found.'); return; }
-    const { orgId } = snap.data();
+    const { orgId, role } = snap.data();
+    // The code decides the role: a staff invite joins as staff (recording
+    // only), anything else is a co-director invite. The rules enforce the
+    // same pairing, so a mismatched role would be rejected server-side.
     await db.collection('members').doc(STATE.user.uid).set({
-      orgId, role: 'director', email: STATE.user.email || '', inviteCode: code
+      orgId, role: role === 'staff' ? 'staff' : 'director', email: STATE.user.email || '', inviteCode: code
     });
 
     STATE.needsOnboarding = false;
@@ -521,7 +527,7 @@ function showUserMenu() {
     <div class="modal-title">Account</div>
     <div style="font-size:0.9rem;color:var(--text-muted);margin-bottom:20px">
       Signed in as<br><strong style="color:var(--text)">${esc(STATE.user?.email || '')}</strong><br>
-      <span style="font-size:0.8rem">${STATE.isAdmin ? '⭐ Admin' : 'Director'}</span>
+      <span style="font-size:0.8rem">${STATE.isAdmin ? '⭐ Admin' : STATE.isStaff ? 'Staff' : 'Director'}</span>
     </div>
     ${(() => {
       const log = _authLossLog();
@@ -731,6 +737,30 @@ function showBrandSettingsModal() {
     </div>
 
     <div class="form-group">
+      <label class="form-label">Staff invite code</label>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <code id="staff-invite-code-display"
+          style="font-size:1.1rem;letter-spacing:.15em;padding:6px 12px;background:var(--surface-2,#eee);border-radius:6px">
+          ${STATE.org?.staffInviteCode ? esc(STATE.org.staffInviteCode) : '— none —'}
+        </code>
+        <button class="btn btn-secondary" onclick="generateStaffInviteCode()">
+          ${STATE.org?.staffInviteCode ? 'Regenerate' : 'Generate'}
+        </button>
+      </div>
+      <p style="font-size:.75rem;color:var(--text-muted);margin-top:6px">
+        Share this code with staff — section instructors, techs, volunteers.
+        Staff can take attendance, record marks and record song memorization,
+        but can't change the roster, songs, settings or this band's members.
+        Regenerating revokes the old code.
+      </p>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Staff</label>
+      <div id="staff-list" style="font-size:.9rem">Loading…</div>
+    </div>
+
+    <div class="form-group">
       <label class="form-label">Season</label>
       <p style="font-size:.75rem;color:var(--text-muted);margin:-2px 0 8px">
         ${STATE.activeSeason
@@ -762,15 +792,17 @@ function showBrandSettingsModal() {
     </div>
   `);
   loadDirectorsList();
+  loadStaffList();
 }
 
-async function loadDirectorsList() {
-  const el = document.getElementById('directors-list');
+// Shared renderer for the Directors and Staff member lists in Band Settings.
+async function _loadMembersList(elId, role, emptyMsg) {
+  const el = document.getElementById(elId);
   if (!el || !STATE.orgId) return;
   try {
     const snap = await db.collection('members')
       .where('orgId', '==', STATE.orgId)
-      .where('role', '==', 'director')
+      .where('role', '==', role)
       .get();
     const me      = STATE.user?.uid;
     const founder = STATE.org?.createdBy;
@@ -787,12 +819,15 @@ async function loadDirectorsList() {
         ${remove}
       </div>`;
     }).join('');
-    el.innerHTML = rows || '<span style="color:var(--text-muted)">No directors found.</span>';
+    el.innerHTML = rows || `<span style="color:var(--text-muted)">${emptyMsg}</span>`;
   } catch (e) {
-    console.error('loadDirectorsList failed:', e);
-    el.innerHTML = '<span style="color:var(--text-muted)">Could not load directors.</span>';
+    console.error(`_loadMembersList(${role}) failed:`, e);
+    el.innerHTML = '<span style="color:var(--text-muted)">Could not load members.</span>';
   }
 }
+
+function loadDirectorsList() { return _loadMembersList('directors-list', 'director', 'No directors found.'); }
+function loadStaffList()     { return _loadMembersList('staff-list',     'staff',    'No staff yet — share the invite code above.'); }
 
 function removeDirector(uid, label) {
   const isSelf = uid === STATE.user?.uid;
@@ -835,6 +870,28 @@ async function generateInviteCode() {
   } catch (e) {
     console.error('generateInviteCode failed:', e);
     showToast('Could not generate invite code.');
+  }
+}
+
+// Staff invite code: same shape as the co-director code, but the code doc is
+// tagged role:'staff' so the join rules grant a staff (recording-only)
+// membership instead of a director one.
+async function generateStaffInviteCode() {
+  if (!STATE.isAdmin || !STATE.orgId) return;
+  const code = genStudentCode();
+  try {
+    const old = STATE.org?.staffInviteCode;
+    await db.collection('inviteCodes').doc(code).set({ orgId: STATE.orgId, role: 'staff' });
+    await db.collection('orgs').doc(STATE.orgId).set({ staffInviteCode: code }, { merge: true });
+    if (old && old !== code) {
+      await db.collection('inviteCodes').doc(old).delete().catch(() => {});
+    }
+    if (STATE.org) STATE.org.staffInviteCode = code; // optimistic; org listener will confirm
+    showToast('Staff invite code generated.');
+    showBrandSettingsModal();
+  } catch (e) {
+    console.error('generateStaffInviteCode failed:', e);
+    showToast('Could not generate staff invite code.');
   }
 }
 

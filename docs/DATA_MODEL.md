@@ -45,8 +45,8 @@ members/{uid}                         # who belongs to which org, and as what
 studentCodes/{CODE}                   # lookup so anonymous students find their org
   └─ (fields) orgId, studentNumber
 
-inviteCodes/{CODE}                    # lookup so a co-director can join an org
-  └─ (fields) orgId
+inviteCodes/{CODE}                    # lookup so a co-director or staff member can join an org
+  └─ (fields) orgId, role?            # role:'staff' marks a staff code; absent = co-director
 
 accessCodes/{CODE}                    # controlled-rollout gate for creating a band
   └─ (no fields needed — existence is the check)
@@ -113,6 +113,8 @@ Membership is stored in Firestore and mirrored into custom auth claims:
 - `members/{uid}` holds `{ orgId, role, studentNumber? }` for every signed-in
   user and remains the source of truth (it's what joins/removals write).
   - `role: "director"` — full read/write within their org.
+  - `role: "staff"` — recording-only (see "The staff role" below): reads the
+    band's data, writes entries/rehearsals/song results, no admin control.
   - `role: "student"` — read-only within their org.
 - The `syncMemberClaims` / `clearMemberClaims` Cloud Functions (`functions/`)
   mirror that doc into custom auth claims on create/delete.
@@ -142,6 +144,29 @@ and the revocation tradeoff (a removed member's ID token stays valid up to
 New directors self-register (email/password) from the login screen; a freshly
 created account has no membership, so the app routes it to the onboarding screen
 (create or join a band).
+
+### The staff role (section instructors, techs, volunteers)
+
+Staff are trusted adults who help run rehearsals — a percussion instructor, a
+guard tech — who should record data but not administer the band.
+
+- **Join:** a director generates a **staff invite code** in Band Settings —
+  an `inviteCodes/{CODE}` doc tagged `role: 'staff'` (mirrored to the org doc
+  as `staffInviteCode`). The joining user signs up like a director and enters
+  the code on the onboarding screen; the client writes `members/{uid}` =
+  `{ orgId, role: 'staff', inviteCode: CODE }`. The rules pair code and role
+  strictly: a staff code can never mint a director membership and vice versa.
+- **Can read:** the roster, entries, songs, rehearsals, all `settings/*` docs
+  and the org's director/staff memberships (to resolve mark authors).
+- **Can write:** entries (attendance + marks), rehearsal create/update (start,
+  edit, end — **not** delete), song `statuses` (field-restricted), the
+  `students/{num}.songStatuses` mirror (field-restricted), and
+  `settings/public` — staff clients run the same publisher as directors so the
+  student portal stays fresh when only staff are recording.
+- **Cannot touch:** the org doc (it holds both invite codes — reading it would
+  let staff escalate to director), `settings/presets` writes, roster
+  management, song/rehearsal deletion, drills, student/invite codes, member
+  management. Directors remove staff from Band Settings like co-directors.
 
 ### How students get an org (code + PIN)
 
@@ -211,8 +236,8 @@ What a **student** can read (everything else is director-only):
 
 ### `settings/public` — the published snapshot
 
-Because students can't read the raw data, **director clients publish a
-sanitized snapshot** to `orgs/{orgId}/settings/public` (debounced, deduped by
+Because students can't read the raw data, **director and staff clients publish
+a sanitized snapshot** to `orgs/{orgId}/settings/public` (debounced, deduped by
 content hash): band name/logo, feature flags, song categories, the
 memorization-exclusion list (instruments/sections that skip song memorization,
 e.g. majorettes), plus derived stats — per-rehearsal absence counts, per-song
@@ -220,9 +245,10 @@ passed/remaining aggregates (computed over only the students who memorize
 music), and the pseudonymized leaderboard (`{num, pseudonym, score}`, only
 while the leaderboard is enabled).
 
-This needs no Cloud Functions: all band data is director-written, so a
-director's client is online whenever the data changes and the snapshot stays
-fresh by construction.
+This needs no Cloud Functions: all band data is director- or staff-written,
+and both roles run the publisher, so a publishing client is online whenever
+the data changes and the snapshot stays fresh by construction (`settings/public`
+is the only settings doc staff may write).
 
 Known tradeoff: published leaderboard rows include the student number so each
 student can find their own row. A student who knows a classmate's number can

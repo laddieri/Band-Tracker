@@ -149,7 +149,7 @@ function viewSongs() {
     </div>`;
   };
 
-  const rosterSection = !STATE.isAdmin ? '' : `
+  const rosterSection = !canRecord() ? '' : `
     <div class="sec-card">
     <div id="songs-prog-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('songs-prog-sec')">
       <span class="section-title songs-prog-hdr-title">Student Progress</span>
@@ -832,7 +832,7 @@ function previewLeaderboard(num) {
 // (it lives in director-only settings/presets), so they look their name up in
 // the published leaderboard; directors compute it directly.
 function portalPseudonym(num) {
-  if (STATE.isAdmin) return fakeAnimalName(num);
+  if (canRecord()) return fakeAnimalName(num);
   const row = (STATE.publicStats?.leaderboard || []).find(r => String(r.num) === String(num));
   return row ? row.name : '';
 }
@@ -844,7 +844,7 @@ function _portalSongs(num) {
   if (!portalFeatureOn('songs')) return [];
   // Students in an excluded group (e.g. majorettes) don't memorize music.
   if (memExcluded(STATE.students[String(num)])) return [];
-  if (STATE.isAdmin) {
+  if (canRecord()) {
     return STATE.songs.map(song => ({
       id: song.id, title: song.title, dueDate: song.dueDate || '',
       category: song.category || '', mine: song.statuses?.[String(num)] || null,

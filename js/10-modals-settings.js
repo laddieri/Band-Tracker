@@ -510,10 +510,10 @@ function showRehearsalPlanModal(rid) {
         ${segments.map((s, i) => `
           <div class="seg-plan-item">
             <span>${esc(s)}</span>
-            ${STATE.isAdmin ? `<button class="seg-plan-remove" onclick="removeSegment('${esc(rid)}',${i})" title="Remove">×</button>` : ''}
+            ${canRecord() ? `<button class="seg-plan-remove" onclick="removeSegment('${esc(rid)}',${i})" title="Remove">×</button>` : ''}
           </div>`).join('')}
       </div>` : `<p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:10px">No segments added yet.</p>`}
-    ${STATE.isAdmin ? `
+    ${canRecord() ? `
       <div class="flex gap-8" style="margin-top:12px">
         <input class="form-input" id="seg-input" type="text"
                placeholder="e.g. Warmup, Closer drill…" autocomplete="off"

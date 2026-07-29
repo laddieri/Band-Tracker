@@ -76,8 +76,9 @@ async function startListeners() {
 
   // Students get a restricted set of listeners matching what the security
   // rules let them read: own student doc, own entries, rehearsal metadata and
-  // the director-published settings/public snapshot.
-  if (!STATE.isAdmin) {
+  // the director-published settings/public snapshot. Staff share the director
+  // listeners below, minus the director-only org doc and drill library.
+  if (!canRecord()) {
     if (!STATE.studentNum) {
       // Member with a student role but no student number — nothing we can
       // show. Should not happen via any join flow; bail to login.
@@ -158,11 +159,15 @@ async function startListeners() {
   _restartSeasonScoped = () => { rescopeIfNeeded(); render(); };
 
   const listeners = [
-    // Org metadata (name, plan, invite code) — kept live for the settings UI.
-    db.collection('orgs').doc(STATE.orgId).onSnapshot(doc => {
-      STATE.org = doc.exists ? { id: doc.id, ...doc.data() } : null;
-      if (!STATE.loading) render();
-    }),
+    // Org metadata (name, plan, invite codes) — kept live for the settings UI.
+    // Director-only: the rules deny staff this doc (it carries the invite
+    // codes, which would let staff escalate to director).
+    ...(STATE.isAdmin ? [
+      db.collection('orgs').doc(STATE.orgId).onSnapshot(doc => {
+        STATE.org = doc.exists ? { id: doc.id, ...doc.data() } : null;
+        if (!STATE.loading) render();
+      }),
+    ] : []),
 
     // Settings — all members (students need the leaderboard toggle + pseudonym salt)
     orgCol('settings').doc('presets').onSnapshot(doc => {
@@ -261,29 +266,32 @@ async function startListeners() {
     // Drill library — one small metadata doc per drill (the heavy position
     // payload lives in each drill's data/main subdoc, loaded on demand for the
     // active drill only). See _drillSyncActive() in js/12-drill.js.
-    orgCol('drills').onSnapshot(snap => {
-      STATE.drills = {};
-      snap.docs.forEach(d => { STATE.drills[d.id] = { id: d.id, ...d.data() }; });
-      _drillSyncActive();
-      if (!STATE.loading) render();
-    }, err => console.error('drills listener error:', err)),
+    // Director-only: the rules keep drills off-limits to staff.
+    ...(STATE.isAdmin ? [
+      orgCol('drills').onSnapshot(snap => {
+        STATE.drills = {};
+        snap.docs.forEach(d => { STATE.drills[d.id] = { id: d.id, ...d.data() }; });
+        _drillSyncActive();
+        if (!STATE.loading) render();
+      }, err => console.error('drills listener error:', err)),
 
-    // School-wide active-drill pointer. Also performs the one-time migration of
-    // the legacy single-drill doc into the library.
-    orgCol('settings').doc('drill').onSnapshot(doc => {
-      const d = doc.exists ? doc.data() : {};
-      if (d.drillSections?.length && d.drillPages?.length) { _migrateLegacyDrill(d); return; }
-      STATE.activeDrillId = d.activeId || null;
-      _drillSyncActive();
-      if (!STATE.loading) render();
-    }, err => console.error('active-drill listener error:', err)),
+      // School-wide active-drill pointer. Also performs the one-time migration of
+      // the legacy single-drill doc into the library.
+      orgCol('settings').doc('drill').onSnapshot(doc => {
+        const d = doc.exists ? doc.data() : {};
+        if (d.drillSections?.length && d.drillPages?.length) { _migrateLegacyDrill(d); return; }
+        STATE.activeDrillId = d.activeId || null;
+        _drillSyncActive();
+        if (!STATE.loading) render();
+      }, err => console.error('active-drill listener error:', err)),
+    ] : []),
 
-    // Directors of this org, for resolving mark-author uids to names via
-    // dirLabel(). Mark events store uids — never emails — because students can
-    // read their own entries. Not part of the loading gate.
+    // Directors + staff of this org, for resolving mark-author uids to names
+    // via dirLabel(). Mark events store uids — never emails — because students
+    // can read their own entries. Not part of the loading gate.
     db.collection('members')
       .where('orgId', '==', STATE.orgId)
-      .where('role', '==', 'director')
+      .where('role', 'in', ['director', 'staff'])
       .onSnapshot(snap => {
         STATE.dirNames = {};
         snap.docs.forEach(d => { STATE.dirNames[d.id] = d.data().email || ''; });
@@ -405,11 +413,12 @@ function studentListeners() {
 }
 
 // ── Published student-safe stats (settings/public) ───────────────────────────
-// Students cannot read the raw roster, entries or songs, so director clients
-// publish a sanitized snapshot instead: branding, feature flags, per-rehearsal
-// absence counts, song progress aggregates and the pseudonymized leaderboard.
-// All band data is director-written, so a director's client is online whenever
-// the data changes and the snapshot stays fresh by construction.
+// Students cannot read the raw roster, entries or songs, so director/staff
+// clients publish a sanitized snapshot instead: branding, feature flags,
+// per-rehearsal absence counts, song progress aggregates and the pseudonymized
+// leaderboard. All band data is director- or staff-written, so a recording
+// client is online whenever the data changes and the snapshot stays fresh by
+// construction.
 
 let _publishTimer      = null;
 let _lastPublishedJson = '';
@@ -443,10 +452,13 @@ function _publishBlocked() {
 }
 
 function schedulePublishPublicStats() {
-  if (!STATE.isAdmin || !STATE.orgId || STATE.loading || _publishBlocked()) return;
+  // Staff publish too: they write the data the snapshot derives from, so a
+  // staff-only session (e.g. an instructor taking attendance) must keep the
+  // student portal fresh. The rules let staff write ONLY settings/public.
+  if (!canRecord() || !STATE.orgId || STATE.loading || _publishBlocked()) return;
   clearTimeout(_publishTimer);
   _publishTimer = setTimeout(() => {
-    if (!STATE.isAdmin || !STATE.orgId || _publishBlocked()) return;
+    if (!canRecord() || !STATE.orgId || _publishBlocked()) return;
     const pub = {
       bandName:                   STATE.bandName,
       bandLogo:                   STATE.bandLogo,
@@ -572,6 +584,7 @@ auth.onAuthStateChanged(user => {
     STATE.org        = null;
     STATE.needsOnboarding = false;
     STATE.isAdmin    = false;
+    STATE.isStaff    = false;
     STATE.studentNum = null;
     STATE.students   = {};
     STATE.rehearsals = [];
