@@ -462,7 +462,7 @@ function _drillFieldSvg(positions, opts = {}) {
   }
 
   return `
-    <svg viewBox="0 0 ${SW} ${SH}" xmlns="http://www.w3.org/2000/svg" style="display:block;${fs ? 'width:100%;height:auto' : `width:${SW}px;max-width:100%`}">
+    <svg viewBox="0 0 ${SW} ${SH}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" style="display:block;${fs ? 'width:100%;height:100%' : `width:${SW}px;max-width:100%`}">
       <rect x="${ML}" y="${MT}" width="${FW}" height="${FH}" fill="${P.field}"/>
       <rect x="${ML}" y="${MT}" width="${FW}" height="${FH}" fill="none" stroke="${P.border}" stroke-width="1.2"/>
       ${lines}${trace}${dots}${labels}${focus}

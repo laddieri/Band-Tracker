@@ -425,10 +425,10 @@ function build3da(frames, N) {
 
 describe('Pyware .3da parser', () => {
   it('reads performer positions and maps raw units to field steps', () => {
-    // west goal at raw X -50000, front sideline at raw Y +18750, 625 units/step.
+    // west goal at raw X -55000, front sideline at raw Y +26250, 625 units/step.
     const frame = [
-      { x: -50000, y: 18750, sym: 'A' }, // -> stepsX 0,  stepsY 0  (west goal, front sideline)
-      { x: 0,      y: -7500, sym: 'A' }, // -> stepsX 80, stepsY 42 (50-yd line, mid-depth)
+      { x: -55000, y: 26250, sym: 'A' }, // -> stepsX 0,  stepsY 0  (west goal, front sideline)
+      { x: -5000,  y: 8750,  sym: 'A' }, // -> stepsX 80, stepsY 28 (50-yd line, front hash)
     ];
     const { pages, sections } = L._parsePywareFile(build3da([frame], 2));
     assert.strictEqual(pages.length, 1);
@@ -439,7 +439,7 @@ describe('Pyware .3da parser', () => {
     assert.strictEqual(byLabel.A1.stepsX, 0);
     assert.strictEqual(byLabel.A1.stepsY, 0);
     assert.strictEqual(byLabel.A2.stepsX, 80);
-    assert.strictEqual(byLabel.A2.stepsY, 42);
+    assert.strictEqual(byLabel.A2.stepsY, 28);
   });
 
   it('assigns section letters and per-section ranks', () => {
