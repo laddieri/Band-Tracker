@@ -489,6 +489,16 @@ function showRehearsalEditModal(rid) {
              placeholder="e.g. Evening, Full Band…" autocomplete="off">
     </div>
     ${_rehearsalScopeFields(r.scope || null)}
+    <div class="form-group">
+      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
+        <input type="checkbox" id="m-hide-students" ${r.hiddenFromStudents ? 'checked' : ''}
+               style="margin-top:3px;width:18px;height:18px;flex-shrink:0">
+        <span>
+          <span style="font-weight:600">Hide from students</span>
+          <span style="display:block;font-size:.75rem;color:var(--text-muted)">Students won't see this rehearsal's attendance, marks, or history, and it won't affect their leaderboard — useful for optional rehearsals. Directors and staff still see everything.</span>
+        </span>
+      </label>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveRehearsalEdit('${esc(rid)}')">Save</button>
@@ -558,14 +568,18 @@ function saveRehearsalEdit(rid) {
   const idx = STATE.rehearsals.findIndex(r => r.id === rid);
   if (idx === -1) return;
   const scope = _readRehearsalScope();
+  const hide  = !!document.getElementById('m-hide-students')?.checked;
   const patch = {
     date:  document.getElementById('m-date').value,
     label: document.getElementById('m-label').value.trim(),
     // Persist the scope, or clear it back to full band when nothing is checked.
     scope: scope || firebase.firestore.FieldValue.delete(),
+    // Flag (or clear) hidden-from-students. Absent = visible, so delete when off.
+    hiddenFromStudents: hide ? true : firebase.firestore.FieldValue.delete(),
   };
   const next = { ...STATE.rehearsals[idx], date: patch.date, label: patch.label };
   if (scope) next.scope = scope; else delete next.scope;
+  if (hide) next.hiddenFromStudents = true; else delete next.hiddenFromStudents;
   STATE.rehearsals[idx] = next;
   orgCol('rehearsals').doc(rid).set(patch, { merge: true });
   closeModal();

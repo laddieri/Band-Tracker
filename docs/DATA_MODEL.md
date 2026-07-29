@@ -230,9 +230,24 @@ What a **student** can read (everything else is director-only):
 | `settings/public`             | ✅ — director-published, student-safe (see below)  |
 | `students/{num}`              | own doc only (`members/{uid}.studentNumber == num`) |
 | `entries/{id}`                | own entries only; queries must filter `studentNumber == <own>` |
-| `rehearsals/*`                | ✅ — schedule metadata (dates/labels)              |
+| `rehearsals/*`                | ✅ — schedule metadata (dates/labels, incl. `hiddenFromStudents`) |
 | `songs/*`                     | ❌ — embeds every student's pass/fail + fail notes |
 | `drills/*` (+ `drills/*/data/*`) | ❌ — Pyware field-chart library is director-only |
+
+**Hiding a rehearsal from students.** A director can flag a rehearsal
+`hiddenFromStudents: true` (Edit Rehearsal → "Hide from students") — e.g. an
+optional early-season practice where attendance was taken but shouldn't count.
+Hidden rehearsals drop out of everything students see: the portal
+attendance/marks/history (`viewStudentPortal` filters them) and the published
+snapshot's per-rehearsal rows **and** leaderboard scores (`buildPublicStats`
+excludes them, so a hidden absence can't leak through a lowered rank). The
+director's own live views are unaffected. This is a **presentation-level**
+hide, not a hard security boundary: it concerns the student's *own* attendance
+(their data, not another student's), and per-entry rules enforcement is
+impractical for the bulk `where studentNumber ==` query — so a student using
+the raw SDK could still read their own hidden entry. The app never shows it,
+which is the intent; if you ever need hard enforcement, stamp entries with the
+flag and query on it.
 
 ### `settings/public` — the published snapshot
 

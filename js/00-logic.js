@@ -144,7 +144,15 @@ function buildPublicStats({ students, entries, rehearsals, songs, weights, flags
   const memList = studentList.filter(s => !isMemorizationExcluded(s, memExclusions));
   const total   = memList.length;
 
-  const rehearsalRows = rehearsals.map(r => ({
+  // Rehearsals a director flagged hidden-from-students are dropped from every
+  // student-facing aggregate: the per-rehearsal absence row AND the leaderboard
+  // scores (so a hidden absence can't leak through a lowered rank). The
+  // director's own live views score from the full data and are unaffected.
+  const visRehearsals = rehearsals.filter(r => !r.hiddenFromStudents);
+  const visEntries = {};
+  for (const r of visRehearsals) if (entries[r.id]) visEntries[r.id] = entries[r.id];
+
+  const rehearsalRows = visRehearsals.map(r => ({
     date:   r.date,
     label:  r.label || '',
     absent: Object.values(entries[r.id] || {}).filter(e => e.attendance === 'absent').length,
@@ -162,7 +170,7 @@ function buildPublicStats({ students, entries, rehearsals, songs, weights, flags
   // Rows carry the student number so each student can find their own row;
   // names and per-event details are never included.
   const leaderboard = (flags.leaderboardEnabled && flags.statsOn)
-    ? scoreStudentsCore(students, entries, flags.songsOn ? songs : [], weights, flags, salt)
+    ? scoreStudentsCore(students, visEntries, flags.songsOn ? songs : [], weights, flags, salt)
         .sort((a, b) => b.score - a.score)
         .map(({ docId, name, score }) => ({ num: docId, name, score }))
     : null;

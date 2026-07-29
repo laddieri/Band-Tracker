@@ -111,6 +111,7 @@ function _rhCardHtml(r) {
                   <div class="rh-status-row">
                     <span class="rh-badge rh-badge-open">Open</span>
                     ${isActive ? `<span class="rh-badge rh-badge-active">Active</span>` : ''}
+                    ${r.hiddenFromStudents ? `<span class="rh-badge rh-badge-hidden">🙈 Hidden from students</span>` : ''}
                     ${featureOn('attendance') && attDone ? `<span class="rh-badge rh-badge-att">Attendance ✓</span>` : ''}
                     ${r.scope ? `<span class="rh-badge rh-badge-scope">👥 ${esc(rehearsalScopeLabel(r.scope))}</span>` : ''}
                   </div>
@@ -149,6 +150,7 @@ function _rhCardHtml(r) {
                 ${r.label ? `<div class="text-muted text-sm mt-4">${esc(r.label)}</div>` : ''}
                 <div class="rh-status-row">
                   <span class="rh-badge rh-badge-ended">Ended</span>
+                  ${r.hiddenFromStudents ? `<span class="rh-badge rh-badge-hidden">🙈 Hidden from students</span>` : ''}
                   ${featureOn('attendance') && attDone ? `<span class="rh-badge rh-badge-att">Attendance ✓</span>` : ''}
                   ${r.scope ? `<span class="rh-badge rh-badge-scope">👥 ${esc(rehearsalScopeLabel(r.scope))}</span>` : ''}
                 </div>
