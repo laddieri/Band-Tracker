@@ -2196,6 +2196,18 @@ html, body {
   width: 100%;
   text-align: left;
 }
+/* Non-error confirmation in the auth form (e.g. password-reset sent). */
+.auth-note {
+  background: var(--primary-bg);
+  border: 1.5px solid var(--primary);
+  border-radius: var(--r-sm);
+  padding: 10px 14px;
+  font-size: 0.875rem;
+  color: var(--text);
+  margin-bottom: 16px;
+  width: 100%;
+  text-align: left;
+}
 .login-divider {
   width: 100%;
   display: flex;

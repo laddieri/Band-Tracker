@@ -38,6 +38,12 @@ function viewLogin() {
       </div>
       <button class="btn btn-secondary btn-full" onclick="doLogin()">Director Sign In</button>
       <div style="text-align:center;margin-top:12px">
+        <button class="btn-link" onclick="doForgotPassword()"
+          style="background:none;border:none;color:var(--primary);text-decoration:underline;cursor:pointer;font-size:.85rem">
+          Forgot password?
+        </button>
+      </div>
+      <div style="text-align:center;margin-top:10px">
         <button class="btn-link" onclick="setAuthMode('signup')"
           style="background:none;border:none;color:var(--primary);text-decoration:underline;cursor:pointer;font-size:.85rem">
           New director? Create an account
@@ -230,6 +236,11 @@ function showAuthError(msg) {
   if (el) el.innerHTML = `<div class="auth-error">${esc(msg)}</div>`;
 }
 
+function showAuthNote(msg) {
+  const el = document.getElementById('auth-error');
+  if (el) el.innerHTML = `<div class="auth-note">${esc(msg)}</div>`;
+}
+
 function authMsg(code) {
   const map = {
     'auth/user-not-found':        'No account found with that email.',
@@ -241,6 +252,23 @@ function authMsg(code) {
     'auth/invalid-credential':    'Incorrect email or password.',
   };
   return map[code] || 'Something went wrong. Please try again.';
+}
+
+// Password reset for directors AND staff — both authenticate with a real
+// email/password, so Firebase can email them a reset link. (Students use a PIN
+// their director resets by regenerating the code — a different flow.) The
+// reset keeps the same Firebase uid, so the member's org, role and any custom
+// claims survive untouched. To avoid revealing which emails are registered, a
+// missing account shows the same confirmation as a real one.
+async function doForgotPassword() {
+  const email = document.getElementById('auth-email')?.value.trim();
+  if (!email) { showAuthError('Enter your email above first, then tap “Forgot password?”.'); return; }
+  try {
+    await auth.sendPasswordResetEmail(email);
+  } catch (e) {
+    if (e.code !== 'auth/user-not-found') { showAuthError(authMsg(e.code)); return; }
+  }
+  showAuthNote(`If an account exists for ${email}, a password-reset link is on its way. Check your inbox (and spam folder).`);
 }
 
 async function doLogin() {
