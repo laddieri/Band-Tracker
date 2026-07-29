@@ -1,173 +1,13 @@
-// Band Tracker — js/12-drill.js — Pyware drill parser, picker, field chart, mapping.
+// Band Tracker — js/12-drill.js — Pyware drill picker, field chart, playback, mapping.
 // Plain script sharing global scope; load order is set in index.html.
 
-// ── Pyware 3D Drill Integration ───────────────────────────────────────────────
-//
-// .3dj performer record (20 bytes), reverse-engineered and verified exactly
-// against two known drills (every set's yard lines and step depths matched):
-//   byte 1      = stable performer id (follows a performer across all frames)
-//   byte 6      = per-frame ordinal (re-assigned each frame — NOT an identity)
-//   byte 8      = section/symbol letter, ASCII
-//   bytes 13-14 = X, big-endian
-//   bytes 15-16 = Y, big-endian
-// The marching field occupies a FIXED rectangle in Pyware's internal grid,
-// identical across files: 120 units = 1 step (192 = 1 yard); the west goal line
-// is at X 23168, and the two sidelines are at Y 27728 and 37808 (84 steps
-// apart). Pyware's "facing" setting decides which sideline is the front; we
-// default to the high-Y sideline and offer a flip in the chart.
-const _PY_WESTGOAL = 23168; // grid X at the west goal line
-const _PY_FRONT_Y  = 37808; // grid Y at the (default) front sideline
-const _PY_UNIT     = 120;   // grid units per marching step
-const _PY_DEPTH    = 84;    // field depth in steps (front sideline to back)
 
-// Scan the buffer for an ASCII marker (used to fingerprint the file variant).
-function _hasMarker(u8, str) {
-  const t = [...str].map(c => c.charCodeAt(0));
-  outer: for (let i = 0; i <= u8.length - t.length; i++) {
-    for (let j = 0; j < t.length; j++) if (u8[i + j] !== t[j]) continue outer;
-    return true;
-  }
-  return false;
-}
+// ── Pyware drill integration ──────────────────────────────────────────────────
+// The file PARSER (_parsePywareFile and the .3dj/.3da format readers) is pure
+// byte-wrangling with no STATE/DOM, so it lives in js/00-logic.js where it can be
+// unit-tested (tests/unit/logic.test.js). Everything below is the picker, field
+// chart, playback and roster-mapping UI that consumes { pages, sections }.
 
-function _parsePywareFile(buffer) {
-  const u8   = new Uint8Array(buffer);
-  const view = new DataView(buffer);
-
-  // A .3dz is a ZIP package (PK\x03\x04), not a drill file — it bundles the
-  // .3dj with artwork/audio. Detect it so the user gets a real explanation
-  // instead of "not a Pyware file". (E_DRILL_* codes let the caller show a
-  // fuller modal; see _onDrillFileLoaded.)
-  if (u8[0]===0x50 && u8[1]===0x4B && u8[2]===0x03 && u8[3]===0x04)
-    throw new Error('E_DRILL_ZIP:This is a .3dz package (a ZIP bundle), not a drill file.');
-
-  if (u8[0]!==0x33||u8[1]!==0x44||u8[2]!==0x4A||u8[3]!==0x56)
-    throw new Error('This does not look like a Pyware .3dj file.');
-
-  // Determine the band's performer count. Each PAGE block tags its performer
-  // count at byte 8 (big-endian u16); bands vary (we've seen 144 and 148), so
-  // take the most common value across all PAGE tags — robust against any
-  // coincidental 'PAGE' bytes in the data.
-  let N = 0;
-  {
-    const tally = {};
-    for (let i = 0; i < u8.length - 10; i++) {
-      if (u8[i]!==0x50||u8[i+1]!==0x41||u8[i+2]!==0x47||u8[i+3]!==0x45) continue;
-      const c = view.getUint16(i + 8, false);
-      if (c >= 1 && c <= 2000) tally[c] = (tally[c] || 0) + 1;
-    }
-    let bestCount = 0;
-    for (const k in tally) if (tally[k] > bestCount) { bestCount = tally[k]; N = +k; }
-  }
-  if (!N) {
-    // Newer Pyware exports ("PYJAVA"/"PG15" frame blocks) store performer
-    // positions in an ENCRYPTED payload (base64 'XLRM'/'CS9W'/'FNXY' blocks,
-    // ~8 bits/byte entropy, no compression). There's no plaintext formation to
-    // read — confirmed by reverse-engineering the PreGame sample — so no
-    // parser can recover it without Pyware's key. Detect it and say so plainly.
-    if (_hasMarker(u8, 'PYJAVA') || _hasMarker(u8, 'PG15'))
-      throw new Error('E_DRILL_ENCRYPTED:This drill was saved in a newer Pyware format that encrypts the performer positions, so the field chart can’t be read.');
-    throw new Error('No performer position data found in this file.');
-  }
-
-  // Read every PAGE block (one frame of N records), keyed by the stable id.
-  const rawFrames = [];
-  let firstPage = -1;
-  for (let i = 0; i < u8.length - 10; i++) {
-    if (u8[i]!==0x50||u8[i+1]!==0x41||u8[i+2]!==0x47||u8[i+3]!==0x45) continue; // 'PAGE'
-    if (view.getUint16(i + 8, false) !== N) continue;
-    if (firstPage < 0) firstPage = i;
-    const base0 = i + 10;
-    if (base0 + N * 20 > u8.length) break;
-    const frame = [];
-    for (let e = 0; e < N; e++) {
-      const b = base0 + e * 20;
-      const xRaw = (u8[b + 13] << 8) | u8[b + 14];
-      const yRaw = (u8[b + 15] << 8) | u8[b + 16];
-      frame.push({
-        pid:     u8[b + 1],
-        section: String.fromCharCode(u8[b + 8]),
-        stepsX: (xRaw - _PY_WESTGOAL) / _PY_UNIT, // steps from west goal (0..160)
-        stepsY: (_PY_FRONT_Y - yRaw)  / _PY_UNIT, // steps off the front sideline (0..84)
-      });
-    }
-    rawFrames.push(frame);
-    i += 9 + N * 20; // skip past this block's records to the next tag
-  }
-  if (!rawFrames.length) throw new Error('No performer position data found in this file.');
-
-  // Assign each performer a fixed drill label from the FIRST frame — section
-  // letter + front-to-back rank within that section (so "A1" is the front-most
-  // of column A, matching Pyware) — and bind it to the stable id so a label
-  // always means the same physical performer across every set.
-  const labelOf = {}, sectionOf = {};
-  const bySec = {};
-  rawFrames[0].forEach(p => { (bySec[p.section] = bySec[p.section] || []).push(p); });
-  Object.values(bySec).forEach(arr => {
-    arr.sort((a, b) => a.stepsY - b.stepsY).forEach((p, idx) => {
-      labelOf[p.pid] = p.section + (idx + 1);
-      sectionOf[p.pid] = p.section;
-    });
-  });
-
-  const allFrames = rawFrames.map(f => f.map(p => ({
-    label:   labelOf[p.pid]   || p.section,
-    section: sectionOf[p.pid] || p.section,
-    stepsX:  p.stepsX,
-    stepsY:  p.stepsY,
-  })));
-
-  // Collapse consecutive identical formations (holds / duplicate layers) so the
-  // Read Pyware's marked-set table, which sits immediately before the PAGE
-  // blocks: a run of 18-byte records (count as big-endian u16 at bytes 0-1,
-  // byte 14 = 0x01), set 1 (count 0) first. We walk backward from the first
-  // PAGE block, which is exactly where the table ends.
-  let setCounts = [];
-  {
-    let off = firstPage - 18, prev = Infinity;
-    while (off >= 0) {
-      const c = view.getUint16(off, false);
-      if (c >= prev || u8[off + 14] !== 0x01) break;
-      setCounts.unshift(c);
-      prev = c;
-      if (c === 0) break;
-      off -= 18;
-    }
-  }
-  // Fallback: if the table isn't found, detect sets geometrically — Pyware
-  // moves performers in straight lines between sets, so a set is a count where
-  // many performers' motion bends. (Misses sets the form marches straight
-  // through, so it's only a fallback.)
-  if (setCounts.length < 2 || setCounts[0] !== 0) {
-    const maps = allFrames.map(f => { const m = {}; f.forEach(p => m[p.label] = p); return m; });
-    setCounts = [0];
-    for (let i = 1; i < allFrames.length - 1; i++) {
-      let bends = 0;
-      for (const lbl in maps[i]) {
-        const a = maps[i-1][lbl], b = maps[i][lbl], c = maps[i+1][lbl];
-        if (!a || !c) continue;
-        if (Math.abs(b.stepsX - (a.stepsX + c.stepsX)/2) > 0.02 ||
-            Math.abs(b.stepsY - (a.stepsY + c.stepsY)/2) > 0.02) bends++;
-      }
-      if (bends >= Math.max(8, Math.round(N * 0.1)) && i - setCounts[setCounts.length-1] > 2) setCounts.push(i);
-    }
-  }
-
-  // Each page = a marked set (its count + the formation at that count).
-  const pages = setCounts.filter(c => allFrames[c]).map(c => ({ count: c, performers: allFrames[c] }));
-  if (!pages.length) pages.push({ count: 0, performers: allFrames[0] });
-
-  // Sections (A,B,…) with their performer labels (A1,A2,…A10 in order).
-  const labelNum = lbl => parseInt(lbl.replace(/^\D+/, ''), 10) || 0;
-  const secMap = {};
-  pages[0].performers.forEach(p => { (secMap[p.section] = secMap[p.section] || []).push(p.label); });
-  const sections = Object.keys(secMap).sort().map(letter => ({
-    letter,
-    performers: secMap[letter].sort((a, b) => labelNum(a) - labelNum(b)),
-  }));
-
-  return { pages, sections };
-}
 
 
 // Tracks which drill's heavy position payload is currently in _drillData/_drillPages.
@@ -179,7 +19,7 @@ function _drillFileInput() {
     inp = document.createElement('input');
     inp.type = 'file';
     inp.id   = 'drill-file-input';
-    inp.accept = '.3dj';
+    inp.accept = '.3dj,.3da';
     inp.style.display = 'none';
     inp.onchange = e => { if (e.target.files[0]) _onDrillFileLoaded(e.target.files[0]); e.target.value = ''; };
     document.body.appendChild(inp);
@@ -246,7 +86,7 @@ function _onDrillFileLoaded(file) {
       const parsed = _parsePywareFile(e.target.result);
       const ref    = orgCol('drills').doc();
       const meta   = {
-        name:           file.name.replace(/\.3dj$/i, ''),
+        name:           file.name.replace(/\.3d[ja]$/i, ''),
         fileName:       file.name,
         setCount:       parsed.pages.length,
         performerCount: parsed.pages[0]?.performers?.length || 0,
@@ -291,10 +131,11 @@ function _showDrillImportError(err) {
       .3dj still won’t load, it’s the newer encrypted Pyware format — see below.</p>`,
     E_DRILL_ENCRYPTED: `
       <p>${esc(rest)}</p>
-      <p>In Pyware 3D, re-save this show as a <strong>classic .3dj</strong>
-      (the format the app already reads) rather than a packaged
-      <strong>.3dz</strong> export, then upload that file. The drills you’ve
-      loaded before use that classic format.</p>`,
+      <p>In Pyware 3D, export this show as a <strong>.3da</strong> file
+      (File → Export, the plaintext “analog” format) and upload that instead —
+      the app reads <strong>.3da</strong> and <strong>.3dj</strong>. The encrypted
+      <strong>.3dj</strong>/<strong>.3dz</strong> package can’t be read without
+      Pyware’s key.</p>`,
   };
   const body = bodies[tag];
   if (!body) { showToast(rest); return; }
@@ -1005,8 +846,8 @@ function viewDrill() {
         <div class="empty-icon">🚩</div>
         <p>${Object.keys(STATE.drills || {}).length ? 'No drill selected.' : 'No drill loaded yet.'}</p>
         <p style="color:var(--text-muted);max-width:300px;margin:6px auto 0">
-          Upload a Pyware <strong>.3dj</strong> file to view your field chart, step through sets,
-          label dots, and trace a performer's path.
+          Upload a Pyware <strong>.3dj</strong> or <strong>.3da</strong> file to view your field chart,
+          step through sets, label dots, and trace a performer's path.
         </p>
         ${Object.keys(STATE.drills || {}).length
           ? `<button class="btn btn-primary" style="margin-top:14px" onclick="showDrillLibraryModal()">Open Drill Library</button>`

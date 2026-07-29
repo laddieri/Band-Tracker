@@ -90,8 +90,10 @@ app doesn't show it" is never a justification. Full model:
   (every inline `on*=` handler calls a defined top-level global — catches
   renamed/misspelled functions that would only fail at tap time).
 - `npm run test:unit` — unit tests for the pure logic in `js/00-logic.js`
-  (scoring, published stats, auto marks, pseudonyms, CSV parsing). Also runs
-  in CI on every PR. Keep `00-logic.js` free of Firebase/STATE/DOM so it
-  stays requireable from Node; bind it to STATE via thin wrappers elsewhere.
+  (scoring, published stats, auto marks, pseudonyms, CSV parsing, and the
+  Pyware `.3dj`/`.3da` drill-file parser). Also runs in CI on every PR. Keep
+  `00-logic.js` free of Firebase/STATE/DOM so it stays requireable from Node;
+  bind it to STATE via thin wrappers elsewhere. The drill parser lives here
+  (pure byte-wrangling); the viewer UI that consumes it is in `js/12-drill.js`.
 - `npm run test:rules` — Firestore rules tests against the emulator.
 - There is no build step; do not introduce one casually.
