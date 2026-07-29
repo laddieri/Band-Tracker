@@ -118,7 +118,10 @@ let _sspContext        = null; // student number whose song-summary modal is bei
 // ── Unified filter state ──────────────────────────────────────────────────────
 
 function _mkFilter(sortField, sortDir) {
-  return { search: '', sortField, sortDir, instruments: [], sections: [], grades: [], panelOpen: false };
+  // draft holds the staged instrument/section/grade selections while the filter
+  // panel is open; nothing filters the list until "Apply filter" copies it into
+  // the arrays above. null when the panel is closed. See applyFilter/cancelFilter.
+  return { search: '', sortField, sortDir, instruments: [], sections: [], grades: [], panelOpen: false, draft: null };
 }
 let _rosterFilter  = _mkFilter('name',     'asc');
 let _trackerFilter = _mkFilter('name',     'asc');
@@ -151,6 +154,10 @@ function renderFilterBar(viewId, f, sortOptions, { hideSearch = false, extra = '
   const grades      = gradesInRoster();
 
   const panel = f.panelOpen ? (() => {
+    // Selections are staged in the draft; the list doesn't change until Apply.
+    // Fall back to the applied arrays if a draft wasn't initialized (defensive).
+    const draft = f.draft || { instruments: f.instruments, sections: f.sections, grades: f.grades };
+    const draftCount = draft.instruments.length + draft.sections.length + draft.grades.length;
     const checkGroup = (title, items, selected, field) => !items.length ? '' : `
       <div class="sfb-group">
         <div class="sfb-group-label">${title}</div>
@@ -164,13 +171,22 @@ function renderFilterBar(viewId, f, sortOptions, { hideSearch = false, extra = '
         </div>
       </div>`;
     const groups = [
-      checkGroup('Instrument', instruments, f.instruments, 'instruments'),
-      checkGroup('Grade',      grades,      f.grades,      'grades'),
-      checkGroup('Section',    sections,    f.sections,    'sections'),
+      checkGroup('Instrument', instruments, draft.instruments, 'instruments'),
+      checkGroup('Grade',      grades,      draft.grades,      'grades'),
+      checkGroup('Section',    sections,    draft.sections,    'sections'),
     ].join('');
     return `<div class="sfb-panel">
       ${groups || '<p class="sfb-empty-msg">No filter options yet — add instrument, section, or grade to students to enable filters.</p>'}
-      ${activeCount ? `<button class="sfb-clear-btn" onclick="clearFilter('${viewId}')">Clear all filters</button>` : ''}
+      ${groups ? `
+      <div class="sfb-panel-actions">
+        ${activeCount ? `<button class="sfb-clear-btn" onclick="clearFilter('${viewId}')">Clear all filters</button>` : '<span></span>'}
+        <div class="sfb-panel-btns">
+          <button class="btn btn-secondary btn-sm" onclick="cancelFilter('${viewId}')">Cancel</button>
+          <button class="btn btn-primary btn-sm" onclick="applyFilter('${viewId}')" ${draftCount ? '' : 'disabled'}>
+            Apply filter${draftCount ? ` (${draftCount})` : ''}
+          </button>
+        </div>
+      </div>` : ''}
     </div>`;
   })() : '';
 
@@ -267,6 +283,14 @@ function _refreshFilterList(viewId) {
 function updateFilter(viewId, field, value) {
   const f = _getFilterObj(viewId);
   if (!f) return;
+  // Opening the panel stages a draft from the applied filters; toggling it shut
+  // via the Filters button acts like Cancel (discard the draft, applied stays).
+  if (field === 'panelOpen') {
+    f.panelOpen = value;
+    f.draft = value ? { instruments: [...f.instruments], sections: [...f.sections], grades: [...f.grades] } : null;
+    _rerenderForFilter(viewId);
+    return;
+  }
   f[field] = value;
   // Tracker search drives student lookup: numbers auto-select, names show suggestions.
   if (viewId === 'tracker' && field === 'search') {
@@ -300,20 +324,52 @@ function updateFilter(viewId, field, value) {
   _rerenderForFilter(viewId);
 }
 
+// Toggling a checkbox only stages the choice in the draft — the list is not
+// re-filtered until applyFilter(). Re-render so the panel (Apply button state,
+// count) reflects the change; the visible list stays put (applied arrays are
+// untouched).
 function toggleFilterItem(viewId, field, item, checked) {
   const f = _getFilterObj(viewId);
   if (!f) return;
-  if (checked) { if (!f[field].includes(item)) f[field].push(item); }
-  else f[field] = f[field].filter(x => x !== item);
+  if (!f.draft) f.draft = { instruments: [...f.instruments], sections: [...f.sections], grades: [...f.grades] };
+  if (checked) { if (!f.draft[field].includes(item)) f.draft[field].push(item); }
+  else f.draft[field] = f.draft[field].filter(x => x !== item);
   _rerenderForFilter(viewId);
 }
 
+// Commit the staged draft to the applied filters and close the panel. No-op
+// when nothing is selected (the Apply button is disabled in that state).
+function applyFilter(viewId) {
+  const f = _getFilterObj(viewId);
+  if (!f || !f.draft) return;
+  if (!(f.draft.instruments.length + f.draft.sections.length + f.draft.grades.length)) return;
+  f.instruments = [...f.draft.instruments];
+  f.sections    = [...f.draft.sections];
+  f.grades      = [...f.draft.grades];
+  f.panelOpen = false;
+  f.draft = null;
+  _rerenderForFilter(viewId);
+}
+
+// Discard the staged draft and close the panel; applied filters are unchanged.
+function cancelFilter(viewId) {
+  const f = _getFilterObj(viewId);
+  if (!f) return;
+  f.panelOpen = false;
+  f.draft = null;
+  _rerenderForFilter(viewId);
+}
+
+// Remove all applied filters immediately (the panel's escape hatch, since Apply
+// can't commit an empty selection). Keeps the panel open with an empty draft so
+// the user can pick fresh filters.
 function clearFilter(viewId) {
   const f = _getFilterObj(viewId);
   if (!f) return;
   f.instruments = [];
   f.sections    = [];
   f.grades      = [];
+  if (f.panelOpen) f.draft = { instruments: [], sections: [], grades: [] };
   _rerenderForFilter(viewId);
 }
 
