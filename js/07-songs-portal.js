@@ -881,6 +881,7 @@ function viewStudentPortal(previewMode = false) {
       </div>
 
       ${(hist.length > 0 && portalFeatureOn('attendance')) ? `
+        <div class="sec-card">
         <div id="portal-sec-attendance-hdr" class="sec-hdr" onclick="toggleCollapse('portal-sec-attendance')">
           <span class="section-title" style="margin:0">Attendance</span>
           <span class="sec-chevron">▾</span>
@@ -890,7 +891,6 @@ function viewStudentPortal(previewMode = false) {
             const absences = hist.filter(({entry:e}) => e.attendance === 'absent');
             const lates    = hist.filter(({entry:e}) => e.attendance === 'late');
             return `
-              <div class="card mb-12" style="padding:12px 16px">
                 <div class="att-summary-row">
                   <span class="att-summary-chip att-chip-absent">${absences.length} Absence${absences.length!==1?'s':''}</span>
                   <span class="att-summary-chip att-chip-late">${lates.length} Late${lates.length!==1?'s':''}</span>
@@ -904,13 +904,14 @@ function viewStudentPortal(previewMode = false) {
                   <div class="att-date-list">
                     <span class="att-date-heading">Late:</span>
                     ${lates.map(({rehearsal:r}) => `<span class="att-date-chip att-chip-late">${fmtDate(r.date)}</span>`).join('')}
-                  </div>` : ''}
-              </div>`;
+                  </div>` : ''}`;
           })()}
+        </div>
         </div>
       ` : ''}
 
       ${(hist.length > 0 && portalFeatureOn('marks')) ? `
+        <div class="sec-card">
         <div id="portal-sec-marks-hdr" class="sec-hdr" onclick="toggleCollapse('portal-sec-marks')">
           <span class="section-title" style="margin:0">Marks</span>
           <span class="sec-chevron">▾</span>
@@ -928,9 +929,11 @@ function viewStudentPortal(previewMode = false) {
             </button>
           </div>
         </div>
+        </div>
       ` : ''}
 
       ${mySongs.length > 0 ? `
+        <div class="sec-card">
         <div id="portal-sec-songs-hdr" class="sec-hdr" onclick="toggleCollapse('portal-sec-songs')">
           <span class="section-title" style="margin:0">Songs to Memorize</span>
           <span class="sec-chevron">▾</span>
@@ -997,9 +1000,11 @@ function viewStudentPortal(previewMode = false) {
             return html;
           })()}
         </div>
+        </div>
       ` : ''}
 
       ${hist.length > 0 ? `
+        <div class="sec-card">
         <div id="portal-sec-history-hdr" class="sec-hdr" onclick="toggleCollapse('portal-sec-history')">
           <span class="section-title" style="margin:0">Rehearsal History</span>
           <span class="sec-chevron">▾</span>
@@ -1043,6 +1048,7 @@ function viewStudentPortal(previewMode = false) {
             </div>
           </div>`;
         }).join('')}
+        </div>
         </div>
       ` : `<p class="empty-state" style="padding:24px 0">No rehearsal history yet.</p>`}
 
