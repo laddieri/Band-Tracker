@@ -62,6 +62,18 @@ service cloud.firestore {
       );
     }
 
+    // True if the caller is a staff member (e.g. a section instructor) of the
+    // given org. Staff can record attendance, marks and song results but have
+    // no admin powers: no roster/settings/song management, no drills, no org
+    // doc (it holds the invite codes), no member management.
+    function isStaffOf(orgId) {
+      return isSignedIn() && (
+        hasClaims()
+          ? (request.auth.token.orgId == orgId && request.auth.token.role == 'staff')
+          : (isMember() && member().orgId == orgId && member().role == 'staff')
+      );
+    }
+
     // The caller's own student number (null for directors / no membership).
     function myStudentNumber() {
       return hasClaims()
@@ -70,7 +82,9 @@ service cloud.firestore {
     }
 
     // ── Per-org data (subcollections) ─────────────────────────────────────────
-    // Writes: directors of the org only. Reads are scoped per collection:
+    // Writes: directors of the org (staff get narrower, recording-only writes —
+    // entries, rehearsal create/update, song statuses, the songStatuses mirror
+    // and settings/public). Reads are scoped per collection:
     // students only ever see their own records plus the director-published
     // settings/public snapshot — never the raw roster, other students' marks,
     // song results, or director-only settings. See "Student data visibility"
@@ -92,43 +106,61 @@ service cloud.firestore {
 
       function canRead()  { return belongsTo(orgId); }
       function canWrite() { return isDirectorOf(orgId); }
+      // Directors + staff: the people who record attendance, marks and song
+      // results, and therefore may read the raw roster/entries/songs.
+      function canRecord() { return canWrite() || isStaffOf(orgId); }
 
       // settings/public is the student-safe doc that director clients publish
       // (branding, feature flags, derived stats with pseudonyms). Everything
       // else under settings — notably 'presets', which holds the pseudonym
-      // salt, score weights and drill data — is director-only.
+      // salt, score weights and drill data — is director/staff-only. Staff may
+      // READ presets (their client needs presets, features, the active season
+      // and the publish inputs) and may WRITE only 'public', so a staff client
+      // can keep the student snapshot fresh after recording data.
       match /settings/{doc} {
-        allow read:  if canWrite() || (doc == 'public' && canRead());
-        allow write: if canWrite();
+        allow read:  if canRecord() || (doc == 'public' && canRead());
+        allow write: if canWrite() || (doc == 'public' && isStaffOf(orgId));
       }
 
       // A student may read only their own roster doc (doc id == their number).
+      // Staff read the whole roster; their only write is the songStatuses
+      // mirror kept in sync by _applySongStatus (roster management — names,
+      // codes, everything else — stays director-only).
       match /students/{doc} {
-        allow read:  if canWrite() || (canRead() && myStudentNumber() == doc);
-        allow write: if canWrite();
+        allow read:   if canRecord() || (canRead() && myStudentNumber() == doc);
+        allow write:  if canWrite();
+        allow update: if isStaffOf(orgId)
+                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['songStatuses']);
       }
 
       // Rehearsal metadata (dates/labels) is schedule info — safe for members.
+      // Staff can start/edit/end rehearsals (e.g. a sectional they run) but
+      // not delete them.
       match /rehearsals/{doc} {
-        allow read:  if canRead();
-        allow write: if canWrite();
+        allow read:   if canRead();
+        allow write:  if canWrite();
+        allow create, update: if isStaffOf(orgId);
       }
 
       // A student may read only their own entries. Student clients must query
       // with where('studentNumber', '==', <own number>) so the rule can be
-      // proven for the whole query.
+      // proven for the whole query. Entries (attendance + marks) are exactly
+      // what staff are for, so they get full write access.
       match /entries/{doc} {
-        allow read:  if canWrite() || (canRead() && resource.data.studentNumber == myStudentNumber());
-        allow write: if canWrite();
+        allow read:  if canRecord() || (canRead() && resource.data.studentNumber == myStudentNumber());
+        allow write: if canWrite() || isStaffOf(orgId);
       }
 
       // Song docs embed every student's pass/fail status and fail notes, so
-      // they are director-only. Students get the song catalog + aggregate
+      // they are director/staff-only. Students get the song catalog + aggregate
       // progress from settings/public, and their own results from the
-      // songStatuses mirror on their own student doc.
+      // songStatuses mirror on their own student doc. Staff record results
+      // (the statuses map) but can't create/edit/delete the songs themselves.
       match /songs/{doc} {
-        allow read:  if canWrite();
-        allow write: if canWrite();
+        allow read:   if canRecord();
+        allow write:  if canWrite();
+        allow update: if isStaffOf(orgId)
+                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['statuses']);
       }
 
       // Drill library (Pyware field charts). Director-only — students never see
@@ -152,13 +184,18 @@ service cloud.firestore {
     // an org you are entitled to.
 
     match /members/{uid} {
+      // Staff also read the org's memberships (to resolve mark-author uids to
+      // names via dirLabel), but only directors may remove members.
       allow read: if isSignedIn() && (
         request.auth.uid == uid
         || isDirectorOf(resource.data.orgId)
+        || isStaffOf(resource.data.orgId)
       );
 
       // Director join: allowed if you either created the org (create-a-band) or
-      // hold a valid invite code that maps to it (co-director invite).
+      // hold a valid invite code that maps to it (co-director invite). A code
+      // tagged role:'staff' must NOT grant a director membership — codes
+      // without a role field are legacy co-director codes.
       function directorJoin() {
         let m = request.resource.data;
         return !isAnonymous()
@@ -169,8 +206,23 @@ service cloud.firestore {
             ||
             (m.inviteCode is string
               && exists(/databases/$(database)/documents/inviteCodes/$(m.inviteCode))
-              && get(/databases/$(database)/documents/inviteCodes/$(m.inviteCode)).data.orgId == m.orgId)
+              && get(/databases/$(database)/documents/inviteCodes/$(m.inviteCode)).data.orgId == m.orgId
+              && (!('role' in get(/databases/$(database)/documents/inviteCodes/$(m.inviteCode)).data)
+                  || get(/databases/$(database)/documents/inviteCodes/$(m.inviteCode)).data.role == 'director'))
           );
+      }
+
+      // Staff join: only with an invite code explicitly tagged role:'staff'
+      // for that org (generated by a director in Band Settings). A co-director
+      // code cannot be used to sneak in as staff, and vice versa.
+      function staffJoin() {
+        let m = request.resource.data;
+        return !isAnonymous()
+          && m.role == 'staff'
+          && m.inviteCode is string
+          && exists(/databases/$(database)/documents/inviteCodes/$(m.inviteCode))
+          && get(/databases/$(database)/documents/inviteCodes/$(m.inviteCode)).data.orgId == m.orgId
+          && get(/databases/$(database)/documents/inviteCodes/$(m.inviteCode)).data.role == 'staff';
       }
 
       // Student self-join: only with a valid student code, and only to claim the
@@ -197,7 +249,7 @@ service cloud.firestore {
       }
 
       allow create: if isSignedIn() && request.auth.uid == uid
-                    && (directorJoin() || studentJoin());
+                    && (directorJoin() || staffJoin() || studentJoin());
       allow update: if false;
 
       // A director may remove a member of their own org, but never the org's
@@ -238,10 +290,11 @@ service cloud.firestore {
       }
     }
 
-    // ── Co-director invite codes ──────────────────────────────────────────────
-    // Readable by any signed-in user so a joining director can resolve the org
-    // before a membership exists. Exposes only an org id. Managed by the org's
-    // directors.
+    // ── Co-director / staff invite codes ──────────────────────────────────────
+    // Readable by any signed-in user so a joining director or staff member can
+    // resolve the org before a membership exists. Exposes only an org id (and,
+    // for staff codes, role:'staff'). Managed by the org's directors — staff
+    // cannot mint codes.
 
     match /inviteCodes/{code} {
       // Fetchable by a known code (a joining co-director resolves the org before

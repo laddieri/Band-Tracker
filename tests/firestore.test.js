@@ -38,6 +38,9 @@ const claimsDirector = (uid, orgId) => testEnv.authenticatedContext(uid, {
 const claimsStudent = (uid, orgId, studentNumber) => testEnv.authenticatedContext(uid, {
   orgId, role: 'student', studentNumber,
 }).firestore();
+const claimsStaff = (uid, orgId) => testEnv.authenticatedContext(uid, {
+  orgId, role: 'staff',
+}).firestore();
 
 // Seed a known world with admin privileges (bypasses rules).
 //   org "a"  owned by dirA, with co-director coA, student studA, and a roster doc
@@ -50,6 +53,7 @@ async function seed() {
     await db.doc('orgs/a').set({ createdBy: 'dirA', name: 'Org A', inviteCode: 'ICODE' });
     await db.doc('members/dirA').set({ orgId: 'a', role: 'director', email: 'dir@a.com' });
     await db.doc('members/coA').set({ orgId: 'a', role: 'director', email: 'co@a.com' });
+    await db.doc('members/staffA').set({ orgId: 'a', role: 'staff', email: 'staff@a.com' });
     await db.doc('members/studA').set({ orgId: 'a', role: 'student', studentNumber: '42' });
     await db.doc('orgs/a/students/42').set({ name: 'Sam' });
     await db.doc('orgs/a/students/7').set({ name: 'Riley' });
@@ -71,6 +75,7 @@ async function seed() {
     await db.doc('accessCodes/GOOD').set({ active: true });
     await db.doc('studentCodes/SCODE').set({ orgId: 'a', studentNumber: '42' });
     await db.doc('inviteCodes/ICODE').set({ orgId: 'a' });
+    await db.doc('inviteCodes/STAFFCODE').set({ orgId: 'a', role: 'staff' });
   });
 }
 
@@ -204,6 +209,85 @@ describe('student data visibility', () => {
   });
 });
 
+describe('staff role (recording access, no admin control)', () => {
+  const staff = () => director('staffA'); // password user with a staff member doc
+
+  it('staff can read the roster (list and single doc)', async () => {
+    await assertSucceeds(staff().doc('orgs/a/students/42').get());
+    await assertSucceeds(staff().collection('orgs/a/students').get());
+  });
+  it('staff can read and write entries (attendance + marks)', async () => {
+    await assertSucceeds(staff().doc('orgs/a/entries/r1_7').get());
+    await assertSucceeds(staff().collection('orgs/a/entries').get());
+    await assertSucceeds(staff().doc('orgs/a/entries/r1_7').set(
+      { rehearsalId: 'r1', studentNumber: '7', attendance: 'late', updatedBy: 'staffA' }, { merge: true }));
+  });
+  it('staff can create and update rehearsals but NOT delete them', async () => {
+    await assertSucceeds(staff().doc('orgs/a/rehearsals/r2').set({ date: '2026-06-02', label: 'Percussion sectional' }));
+    await assertSucceeds(staff().doc('orgs/a/rehearsals/r1').set({ ended: true }, { merge: true }));
+    await assertFails(staff().doc('orgs/a/rehearsals/r1').delete());
+  });
+  it('staff can record song results (statuses only)', async () => {
+    await assertSucceeds(staff().doc('orgs/a/songs/s1').get());
+    await assertSucceeds(staff().doc('orgs/a/songs/s1').set(
+      { statuses: { 42: { status: 'passed', note: '' } } }, { merge: true }));
+  });
+  it('staff CANNOT create, delete, or retitle songs', async () => {
+    await assertFails(staff().doc('orgs/a/songs/s2').set({ title: 'New song' }));
+    await assertFails(staff().doc('orgs/a/songs/s1').delete());
+    await assertFails(staff().doc('orgs/a/songs/s1').set({ title: 'Renamed' }, { merge: true }));
+  });
+  it('staff can update ONLY the songStatuses mirror on a student doc', async () => {
+    await assertSucceeds(staff().doc('orgs/a/students/42').set(
+      { songStatuses: { s1: { status: 'passed', note: '', updatedAt: 1 } } }, { merge: true }));
+    await assertFails(staff().doc('orgs/a/students/42').set({ name: 'Renamed' }, { merge: true }));
+    await assertFails(staff().doc('orgs/a/students/42').set(
+      { name: 'Renamed', songStatuses: {} }, { merge: true }));
+    await assertFails(staff().doc('orgs/a/students/99').set({ songStatuses: {} })); // no creates
+  });
+  it('staff can read settings and publish settings/public, but NOT write presets', async () => {
+    await assertSucceeds(staff().doc('orgs/a/settings/presets').get());
+    await assertSucceeds(staff().doc('orgs/a/settings/public').get());
+    await assertSucceeds(staff().doc('orgs/a/settings/public').set({ bandName: 'Org A', stats: {} }));
+    await assertFails(staff().doc('orgs/a/settings/presets').set({ bandName: 'x' }, { merge: true }));
+  });
+  it('staff CANNOT read the org doc (it holds the invite codes)', async () => {
+    await assertFails(staff().doc('orgs/a').get());
+  });
+  it('staff CANNOT touch the drill library', async () => {
+    await assertFails(staff().doc('orgs/a/drills/d1').get());
+    await assertFails(staff().doc('orgs/a/drills/d1/data/main').get());
+    await assertFails(staff().doc('orgs/a/drills/d1').set({ name: 'x' }, { merge: true }));
+  });
+  it('staff CANNOT mint invite or student codes', async () => {
+    await assertFails(staff().doc('inviteCodes/EVIL').set({ orgId: 'a', role: 'staff' }));
+    await assertFails(staff().doc('studentCodes/EVIL').set({ orgId: 'a', studentNumber: '42' }));
+  });
+  it('staff can resolve members of their org (dirLabel) but CANNOT remove them', async () => {
+    await assertSucceeds(staff().doc('members/dirA').get());
+    await assertSucceeds(staff().collection('members').where('orgId', '==', 'a').get());
+    await assertFails(staff().doc('members/coA').delete());
+  });
+  it('staff CANNOT touch another org', async () => {
+    await assertFails(staff().doc('orgs/b/students/1').get());
+    await assertFails(staff().doc('orgs/b/entries/x_1').set({ studentNumber: '1' }));
+  });
+  it('a director can remove a staff member', async () => {
+    await assertSucceeds(director('dirA').doc('members/staffA').delete());
+  });
+  it('claims staff have the same powers and limits (no members doc)', async () => {
+    const s = () => claimsStaff('cStaff', 'a');
+    await assertSucceeds(s().doc('orgs/a/students/42').get());
+    await assertSucceeds(s().doc('orgs/a/entries/r1_42').set(
+      { rehearsalId: 'r1', studentNumber: '42', attendance: 'present' }, { merge: true }));
+    await assertSucceeds(s().doc('orgs/a/settings/presets').get());
+    await assertFails(s().doc('orgs/a').get());
+    await assertFails(s().doc('orgs/a/settings/presets').set({ bandName: 'x' }, { merge: true }));
+    await assertFails(s().doc('orgs/a/drills/d1').get());
+    await assertFails(s().doc('orgs/b/students/1').get());
+  });
+});
+
 describe('membership visibility', () => {
   it('a user can read their own membership', async () => {
     await assertSucceeds(director('dirA').doc('members/dirA').get());
@@ -289,6 +373,31 @@ describe('joining an org', () => {
     await assertFails(
       student('tamperClaim', 'SCODE').doc('studentCodes/SCODE')
         .set({ orgId: 'a', studentNumber: '7', claimed: true }, { merge: true })
+    );
+  });
+  it('a staff member can join with a staff invite code', async () => {
+    await assertSucceeds(
+      director('newStaff').doc('members/newStaff').set({ orgId: 'a', role: 'staff', email: 'perc@a.com', inviteCode: 'STAFFCODE' })
+    );
+  });
+  it('a staff code CANNOT be used to join as a director', async () => {
+    await assertFails(
+      director('sneaky').doc('members/sneaky').set({ orgId: 'a', role: 'director', inviteCode: 'STAFFCODE' })
+    );
+  });
+  it('a co-director code CANNOT be used to join as staff', async () => {
+    await assertFails(
+      director('sneaky2').doc('members/sneaky2').set({ orgId: 'a', role: 'staff', inviteCode: 'ICODE' })
+    );
+  });
+  it('an anonymous user CANNOT join as staff even with a valid code', async () => {
+    await assertFails(
+      anon('anonStaff').doc('members/anonStaff').set({ orgId: 'a', role: 'staff', inviteCode: 'STAFFCODE' })
+    );
+  });
+  it('a staff code for one org CANNOT join another org', async () => {
+    await assertFails(
+      director('crossStaff').doc('members/crossStaff').set({ orgId: 'b', role: 'staff', inviteCode: 'STAFFCODE' })
     );
   });
   it('joining as director with no code/ownership fails', async () => {

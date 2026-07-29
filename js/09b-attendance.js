@@ -116,7 +116,7 @@ function _attTabFilteredContent() {
   const latestTotal     = latest.scope ? rehearsalStudents(latest).length : students.length;
   const latestPresent   = latestTotal - latestAbsent.length - latestLate.length;
   const latestSubmitted = !!latest.attendanceSubmitted;
-  const openReh         = STATE.isAdmin ? getActiveRehearsal() : null;
+  const openReh         = canRecord() ? getActiveRehearsal() : null;
   const latestIsOpenAndUnsub = openReh && latest.id === openReh.id && !latestSubmitted;
 
   const tabFilterBar = renderFilterBar('att-tab', _attTabFilter, _ATT_TAB_SORT_OPTS);
@@ -257,7 +257,7 @@ function viewAttendanceTab() {
 
   // ── Open-rehearsal attendance CTA ─────────────────────────────────────────
 
-  const openReh = STATE.isAdmin ? getActiveRehearsal() : null;
+  const openReh = canRecord() ? getActiveRehearsal() : null;
   let attendanceCta = '';
   if (openReh) {
     if (!openReh.attendanceSubmitted) {

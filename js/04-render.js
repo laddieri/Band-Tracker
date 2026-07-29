@@ -115,12 +115,14 @@ function render() {
       ((_view === 'attendance' || _view === 'attendance-block') && _params.from !== 'attendance-tab' && _params.from !== 'rehearsals' && match === 'rehearsals') ||
       (_view === 'song'       && match === 'songs')
     );
-    // Hide tabs for disabled features (and the admin-only tabs for students).
-    if (match === 'roster')         t.style.display = STATE.isAdmin ? '' : 'none';
+    // Hide tabs for disabled features. Staff get the recording surfaces
+    // (attendance, marks, songs, stats, read-only roster); Drill stays
+    // director-only (so do the rules).
+    if (match === 'roster')         t.style.display = canRecord() ? '' : 'none';
     if (match === 'attendance-tab') t.style.display = featureOn('attendance') ? '' : 'none';
     if (match === 'songs')          t.style.display = featureOn('songs') ? '' : 'none';
-    if (match === 'leaderboard')    t.style.display = (STATE.isAdmin && featureOn('stats')) ? '' : 'none';
-    if (match === 'dashboard')      t.style.display = (STATE.isAdmin && featureOn('marks')) ? '' : 'none';
+    if (match === 'leaderboard')    t.style.display = (canRecord() && featureOn('stats')) ? '' : 'none';
+    if (match === 'dashboard')      t.style.display = (canRecord() && featureOn('marks')) ? '' : 'none';
     if (match === 'drill')          t.style.display = (STATE.isAdmin && featureOn('drill')) ? '' : 'none';
   });
 
@@ -176,14 +178,14 @@ function render() {
       const _hasOpen = STATE.rehearsals.some(r => !r.ended);
       const _hasAny  = STATE.rehearsals.length > 0;
       title.textContent = 'Rehearsals';
-      actions.innerHTML = (STATE.isAdmin && (!_hasAny || _hasOpen) ? addBtn('showNewRehearsalModal()') : '') + userBtn();
+      actions.innerHTML = (canRecord() && (!_hasAny || _hasOpen) ? addBtn('showNewRehearsalModal()') : '') + userBtn();
       main.innerHTML = viewRehearsals();
       break;
     }
 
     case 'attendance-tab':
       title.textContent = 'Attendance';
-      actions.innerHTML = (STATE.isAdmin ? optBtn('showAttendanceReportModal()') : '') + userBtn();
+      actions.innerHTML = (canRecord() ? optBtn('showAttendanceReportModal()') : '') + userBtn();
       main.innerHTML = viewAttendanceTab();
       break;
 
@@ -240,7 +242,7 @@ function render() {
     case 'leaderboard':
       title.textContent = 'Band Stats';
       actions.innerHTML = (STATE.isAdmin ? optBtn('showLeaderboardSettingsModal()') : '') + userBtn();
-      main.innerHTML = STATE.isAdmin ? viewLeaderboard() : viewLeaderboardStudent();
+      main.innerHTML = canRecord() ? viewLeaderboard() : viewLeaderboardStudent();
       break;
 
     case 'dashboard': {

@@ -3,8 +3,11 @@
 Multi-tenant PWA for tracking marching-band rehearsal attendance, marks and
 song memorization. Vanilla JS (no build step): `index.html` + `app.js` +
 `app.css`, Firebase Auth + Firestore, deployed to GitHub Pages on merge to
-`main`. Directors sign in with email/password; students sign in anonymously
-with a student code and see only their own portal.
+`main`. Directors and staff sign in with email/password (staff join via a
+role-tagged invite code and can only record — attendance, marks, song
+results — no admin control; gate UI with `canRecord()` vs `STATE.isAdmin`);
+students sign in anonymously with a student code and see only their own
+portal.
 
 ## Privacy invariants — do not break these
 
@@ -17,7 +20,9 @@ app doesn't show it" is never a justification. Full model:
    `entries` (queries must filter `studentNumber == <own>`), `rehearsals`
    metadata, and `settings/public`. Everything else — the org doc, the
    roster, other students' entries, `songs`, `settings/presets` — is
-   director-only.
+   director/staff-only (and the org doc plus `drills` are director-only even
+   from staff; staff writes are limited to recording — see the staff section
+   in `docs/DATA_MODEL.md`).
 2. **Never store emails or other director PII in entries or student docs.**
    Stamp `STATE.user.uid` in `updatedBy`/`by` fields. For display, resolve
    uids with `dirLabel()` via `STATE.dirNames` (director clients build this
@@ -32,8 +37,11 @@ app doesn't show it" is never a justification. Full model:
 4. **Per-student song results** live in the director-only song docs AND are
    mirrored to `students/{num}.songStatuses.{songId}` (status/note/updatedAt
    only) by `_applySongStatus()`. Keep both writes in sync.
-5. **The org doc holds the co-director invite code.** It must stay
-   director-only readable, or students can escalate to directors.
+5. **The org doc holds the co-director and staff invite codes.** It must stay
+   director-only readable (not even staff), or students/staff can escalate to
+   directors. The rules also pair invite codes with roles: a `role:'staff'`
+   code can only mint a staff membership, and codes without a role only a
+   director one.
 6. **Any `firestore.rules` change requires matching tests** in
    `tests/firestore.test.js`. Run them with `npm run test:rules` (needs Java
    for the emulator). CI deploys rules only after tests pass.
