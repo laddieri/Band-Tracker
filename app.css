@@ -3235,8 +3235,12 @@ html, body {
 .sfb-check-label { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border: 1.5px solid var(--border); border-radius: 20px; font-size: 0.82rem; font-weight: 500; cursor: pointer; user-select: none; transition: background .12s, border-color .12s; background: var(--bg); }
 .sfb-check-label:has(.sfb-checkbox:checked) { background: var(--primary-bg); border-color: var(--primary); color: var(--primary); }
 .sfb-checkbox { display: none; }
-.sfb-clear-btn { font-size: 0.8rem; color: var(--danger); background: none; border: none; padding: 0; cursor: pointer; font-family: inherit; text-decoration: underline; margin-top: 4px; }
+.sfb-clear-btn { font-size: 0.8rem; color: var(--danger); background: none; border: none; padding: 0; cursor: pointer; font-family: inherit; text-decoration: underline; }
 .sfb-empty-msg { font-size: 0.82rem; color: var(--text-muted); margin: 0; }
+/* Apply / Cancel row at the foot of the filter panel. */
+.sfb-panel-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.sfb-panel-btns { display: flex; gap: 8px; margin-left: auto; }
+.sfb-panel-btns .btn { width: auto; margin: 0; }
 
 /* ── Song / rehearsal list grid wrappers (base — mobile is single column) ── */
 .songs-list-grid { padding: 8px 0; }
