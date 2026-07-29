@@ -538,7 +538,6 @@ function showUserMenu() {
         <button class="link-btn" style="margin-top:6px" onclick="try{localStorage.removeItem('authLossLog')}catch(e){}; closeModal();showUserMenu()">clear</button>
       </div>`;
     })()}
-    <div id="auth-health" class="login-diag" style="margin:-8px 0 16px;background:var(--surface-alt);border-color:var(--border)">Checking connection health…</div>
     <div class="modal-actions">
       ${STATE.isAdmin ? `
         <button class="btn btn-secondary btn-full" onclick="closeModal();navigate('roster')">Manage Roster</button>
@@ -550,40 +549,6 @@ function showUserMenu() {
       <button class="btn btn-danger btn-full" onclick="doLogout()">Sign Out</button>
     </div>
   `);
-  _renderAuthHealth();
-}
-
-// Live check (independent of any recorded sign-out): is durable storage granted
-// — i.e. can the browser evict our login — and can App Check still mint a token?
-// Surfaces the two most likely causes of the recurring logouts on demand.
-async function _renderAuthHealth() {
-  const el = document.getElementById('auth-health');
-  if (!el) return;
-  let persisted = null;
-  try { persisted = await (navigator.storage?.persisted?.() ?? null); } catch { persisted = 'err'; }
-  let ac = 'off';
-  if (typeof RECAPTCHA_V3_SITE_KEY !== 'undefined' && RECAPTCHA_V3_SITE_KEY && firebase.appCheck) {
-    try { await firebase.appCheck().getToken(); ac = 'ok'; }
-    catch (e) { ac = 'FAILED: ' + (e?.code || e?.message || 'err'); }
-  }
-  // Force an actual server read (bypassing cache) — the capability that fails
-  // when data goes stale or the session drops. This is the most direct signal.
-  let srv = '—';
-  try {
-    if (STATE.user) { await db.collection('members').doc(STATE.user.uid).get({ source: 'server' }); srv = 'ok'; }
-  } catch (e) { srv = 'FAILED: ' + (e?.code || e?.message || 'err'); }
-
-  const storageWarn = persisted === false;
-  const acWarn  = typeof ac === 'string' && ac.startsWith('FAILED');
-  const srvWarn = typeof srv === 'string' && srv.startsWith('FAILED');
-  el.innerHTML = `
-    <strong>Connection health</strong><br>
-    Durable storage: <strong>${persisted === true ? 'granted ✓' : persisted === false ? 'NOT granted ⚠️' : esc(String(persisted))}</strong>
-    · App&nbsp;Check: <strong>${esc(String(ac))}</strong>
-    · Live server read: <strong>${esc(String(srv))}</strong>
-    ${srvWarn ? `<div style="margin-top:4px">This device can't reach the database right now — that's why data goes stale and you get signed out. Try another network; if it persists, App Check enforcement is the likely cause.</div>` : ''}
-    ${storageWarn ? `<div style="margin-top:4px">Your browser may clear your login. Installing this app to your home screen usually fixes it.</div>` : ''}
-    ${acWarn ? `<div style="margin-top:4px">The security check is failing — try a different network, or have your admin set App Check to “Unenforced.”</div>` : ''}`;
 }
 
 // Drop this device's Firestore offline cache + any stuck un-synced writes, then
