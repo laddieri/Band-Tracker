@@ -425,10 +425,10 @@ function build3da(frames, N) {
 
 describe('Pyware .3da parser', () => {
   it('reads performer positions and maps raw units to field steps', () => {
-    // west goal at raw X -100000, front sideline at raw Y +52500, 1250 units/step.
+    // west goal at raw X -50000, front sideline at raw Y +18750, 625 units/step.
     const frame = [
-      { x: -100000, y: 52500, sym: 'A' }, // -> stepsX 0,  stepsY 0  (west goal, front)
-      { x: 0,       y: 0,     sym: 'A' }, // -> stepsX 80, stepsY 42 (50-yd line, mid-depth)
+      { x: -50000, y: 18750, sym: 'A' }, // -> stepsX 0,  stepsY 0  (west goal, front sideline)
+      { x: 0,      y: -7500, sym: 'A' }, // -> stepsX 80, stepsY 42 (50-yd line, mid-depth)
     ];
     const { pages, sections } = L._parsePywareFile(build3da([frame], 2));
     assert.strictEqual(pages.length, 1);
