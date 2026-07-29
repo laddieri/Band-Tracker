@@ -383,3 +383,111 @@ describe('suggestSeasonLabel', () => {
     assert.strictEqual(L.suggestSeasonLabel(null), '');
   });
 });
+
+// ── Pyware drill file parsing (.3dj / .3da) ───────────────────────────────────
+// The parsers are pure byte-wrangling (js/00-logic.js). We build synthetic
+// buffers here rather than commit multi-MB Pyware exports; the byte layouts
+// mirror the real files reverse-engineered from Pyware 3D output.
+
+// Build a minimal .3da ("3DAP") buffer. `frames` is an array of frames; each
+// frame is an array of { x, y, sym } of length N (raw signed grid units, and
+// the ASCII section symbol). Layout matches the real export: a single PAGE
+// block whose header is [u16][u16][u16 frameCount][u16 N], then each frame is
+// N 14-byte records (u16 index, i32 X, i32 Y, i32 whose low byte is the symbol)
+// separated by a 4-byte inter-frame header.
+function build3da(frames, N) {
+  const REC = 14;
+  const size = 6 /*3DAP+2*/ + 4 /*PAGE*/ + 8 /*hdr*/ +
+    frames.length * N * REC + (frames.length - 1) * 4 /*inter-frame hdrs*/ + 4 /*END */;
+  const ab = new ArrayBuffer(size);
+  const dv = new DataView(ab);
+  const u8 = new Uint8Array(ab);
+  let o = 0;
+  const putStr = s => { for (const ch of s) u8[o++] = ch.charCodeAt(0); };
+  putStr('3DAP'); u8[o++] = 0x01; u8[o++] = 0x00;
+  putStr('PAGE');
+  dv.setUint16(o, 9, false); o += 2;
+  dv.setUint16(o, 0, false); o += 2;
+  dv.setUint16(o, frames.length, false); o += 2;
+  dv.setUint16(o, N, false); o += 2;
+  frames.forEach((frame, fi) => {
+    if (fi > 0) { dv.setUint16(o, 0, false); o += 2; dv.setUint16(o, N, false); o += 2; }
+    frame.forEach((p, e) => {
+      dv.setUint16(o, e + 1, false); o += 2;
+      dv.setInt32(o, p.x, false); o += 4;
+      dv.setInt32(o, p.y, false); o += 4;
+      dv.setInt32(o, p.sym.charCodeAt(0) & 0xff, false); o += 4; // low byte = symbol
+    });
+  });
+  putStr('END ');
+  return ab;
+}
+
+describe('Pyware .3da parser', () => {
+  it('reads performer positions and maps raw units to field steps', () => {
+    // west goal at raw X -100000, front sideline at raw Y +52500, 1250 units/step.
+    const frame = [
+      { x: -100000, y: 52500, sym: 'A' }, // -> stepsX 0,  stepsY 0  (west goal, front)
+      { x: 0,       y: 0,     sym: 'A' }, // -> stepsX 80, stepsY 42 (50-yd line, mid-depth)
+    ];
+    const { pages, sections } = L._parsePywareFile(build3da([frame], 2));
+    assert.strictEqual(pages.length, 1);
+    assert.deepStrictEqual(sections, [{ letter: 'A', performers: ['A1', 'A2'] }]);
+    const byLabel = Object.fromEntries(pages[0].performers.map(p => [p.label, p]));
+    // Rank within a section is front-to-back (ascending stepsY): the front
+    // performer (stepsY 0) is A1.
+    assert.strictEqual(byLabel.A1.stepsX, 0);
+    assert.strictEqual(byLabel.A1.stepsY, 0);
+    assert.strictEqual(byLabel.A2.stepsX, 80);
+    assert.strictEqual(byLabel.A2.stepsY, 42);
+  });
+
+  it('assigns section letters and per-section ranks', () => {
+    const frame = [
+      { x: 0, y: 10000, sym: 'A' },
+      { x: 0, y: 30000, sym: 'A' }, // higher y => lower stepsY => ranks ahead
+      { x: 0, y: 10000, sym: 'B' },
+    ];
+    const { sections } = L._parsePywareFile(build3da([frame], 3));
+    assert.deepStrictEqual(sections, [
+      { letter: 'A', performers: ['A1', 'A2'] },
+      { letter: 'B', performers: ['B1'] },
+    ]);
+  });
+
+  it('detects marked sets geometrically where trajectories bend', () => {
+    const N = 80;
+    const frameAt = t => Array.from({ length: N }, (_, e) => {
+      // Straight line out to count 4, then a sharp bend back for every performer.
+      const x = t <= 4 ? t * 1250 : (8 - t) * 1250;
+      return { x, y: e * 1250 - 40000, sym: String.fromCharCode(65 + (e % 4)) };
+    });
+    const frames = Array.from({ length: 9 }, (_, t) => frameAt(t));
+    const { pages } = L._parsePywareFile(build3da(frames, N));
+    const counts = pages.map(p => p.count);
+    assert.ok(counts.includes(0), 'set 0 is always present');
+    assert.ok(counts.includes(4), 'the bend at count 4 is a marked set');
+    assert.ok(pages.length >= 2);
+  });
+});
+
+describe('Pyware file format dispatch', () => {
+  const buf = bytes => new Uint8Array(bytes).buffer;
+  const strBytes = s => [...s].map(c => c.charCodeAt(0));
+
+  it('rejects a .3dz ZIP package with a helpful code', () => {
+    assert.throws(() => L._parsePywareFile(buf([0x50, 0x4b, 0x03, 0x04, 0, 0, 0, 0])),
+      /E_DRILL_ZIP/);
+  });
+
+  it('flags the encrypted newer .3dj format', () => {
+    // 3DJV signature, no PAGE blocks, contains the PYJAVA marker.
+    const bytes = strBytes('3DJV').concat(new Array(16).fill(0)).concat(strBytes('PYJAVA2'));
+    assert.throws(() => L._parsePywareFile(buf(bytes)), /E_DRILL_ENCRYPTED/);
+  });
+
+  it('rejects a file that is not a Pyware drill at all', () => {
+    assert.throws(() => L._parsePywareFile(buf(strBytes('HELLOWORLD'))),
+      /does not look like a Pyware/);
+  });
+});
