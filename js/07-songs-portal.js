@@ -860,7 +860,11 @@ function _portalSongs(num) {
 function viewStudentPortal(previewMode = false) {
   const num  = STATE.studentNum;
   const s    = STATE.students[num];
-  const hist = DB.getStudentHistory(num);
+  // Rehearsals a director flagged hidden-from-students drop out of everything
+  // the student sees — attendance summary, marks totals and history. (The
+  // director "preview student view" uses this same path, so it shows exactly
+  // what the student sees.)
+  const hist = DB.getStudentHistory(num).filter(h => !h.rehearsal.hiddenFromStudents);
   const mySongs   = _portalSongs(num);
   const pseudonym = portalPseudonym(num);
 

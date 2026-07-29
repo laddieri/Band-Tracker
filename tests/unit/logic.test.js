@@ -161,6 +161,21 @@ describe('buildPublicStats', () => {
     assert.strictEqual(rows[0].passed, 1);     // only Sam passed
     assert.strictEqual(rows[0].remaining, 0);  // Sam is the only eligible student
   });
+  it('drops hidden-from-students rehearsals from the rows and the leaderboard', () => {
+    // Hide r1 (which holds #7's only entry — an absence — and some of #42's marks).
+    const rehearsals = [
+      { id: 'r1', date: '2026-06-01', label: 'Sectionals', hiddenFromStudents: true },
+      { id: 'r2', date: '2026-06-08' },
+    ];
+    const { rehearsals: rows, leaderboard } = L.buildPublicStats({ ...args, rehearsals });
+    // Only the visible rehearsal has a row.
+    assert.deepStrictEqual(rows, [{ date: '2026-06-08', label: '', absent: 0 }]);
+    // #7's single entry was the hidden absence, so their published score is 0
+    // (the absence can't leak through a lowered rank).
+    assert.strictEqual(leaderboard.find(r => r.num === '7').score, 0);
+    // #42 keeps only r2: 1 song + 1 positive − 0.5 late = 1.5.
+    assert.strictEqual(leaderboard.find(r => r.num === '42').score, 1.5);
+  });
 });
 
 // ── Rehearsal scope ───────────────────────────────────────────────────────────
