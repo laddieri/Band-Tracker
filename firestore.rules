@@ -119,7 +119,13 @@ service cloud.firestore {
       // can keep the student snapshot fresh after recording data.
       match /settings/{doc} {
         allow read:  if canRecord() || (doc == 'public' && canRead());
-        allow write: if canWrite() || (doc == 'public' && isStaffOf(orgId));
+        // Staff may write 'public' (keep the student snapshot fresh) and may
+        // switch the school-wide active drill ('drill' → activeId only, so they
+        // can view any show to record marks). Everything else is director-only.
+        allow write: if canWrite()
+                     || (doc == 'public' && isStaffOf(orgId))
+                     || (doc == 'drill' && isStaffOf(orgId)
+                         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activeId']));
       }
 
       // A student may read only their own roster doc (doc id == their number).
@@ -163,15 +169,19 @@ service cloud.firestore {
                       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['statuses']);
       }
 
-      // Drill library (Pyware field charts). Director-only — students never see
-      // drill data. The heavy position payload lives in a /data subcollection
-      // so listing the library stays cheap.
+      // Drill library (Pyware field charts). Students never see drill data.
+      // Directors AND staff may READ it (staff view the chart to record marks),
+      // but only directors may WRITE — so staff can't add, delete, rename, or
+      // change spot assignments (the label→student map lives on the drill doc,
+      // so a director-only write keeps assignments director-controlled). The
+      // heavy position payload lives in a /data subcollection so listing the
+      // library stays cheap.
       match /drills/{drillId} {
-        allow read:  if canWrite();
+        allow read:  if canRecord();
         allow write: if canWrite();
 
         match /data/{doc} {
-          allow read:  if canWrite();
+          allow read:  if canRecord();
           allow write: if canWrite();
         }
       }

@@ -36,7 +36,7 @@ orgs/{orgId}                          # org metadata
   ├─ rehearsals/{rehearsalId}         # was: /rehearsals/{rehearsalId}
   ├─ entries/{rehearsalId}_{number}   # was: /entries/{...}
   ├─ songs/{songId}                   # was: /songs/{songId}
-  └─ drills/{drillId}                 # drill library (director-only): metadata + per-show spot map
+  └─ drills/{drillId}                 # drill library (director-write, director+staff read): metadata + per-show spot map
        │  (fields) name, fileName, setCount, …,
        │  mapping:{label→studentNumber | [studentNumbers]}  # a spot may be shared by >1 student
        └─ data/main                   #   heavy Pyware position payload (loaded on demand)
@@ -158,17 +158,21 @@ guard tech — who should record data but not administer the band.
   the code on the onboarding screen; the client writes `members/{uid}` =
   `{ orgId, role: 'staff', inviteCode: CODE }`. The rules pair code and role
   strictly: a staff code can never mint a director membership and vice versa.
-- **Can read:** the roster, entries, songs, rehearsals, all `settings/*` docs
-  and the org's director/staff memberships (to resolve mark authors).
+- **Can read:** the roster, entries, songs, rehearsals, drills (to view the
+  field chart), all `settings/*` docs and the org's director/staff memberships
+  (to resolve mark authors).
 - **Can write:** entries (attendance + marks), rehearsal create/update (start,
   edit, end — **not** delete), song `statuses` (field-restricted), the
-  `students/{num}.songStatuses` mirror (field-restricted), and
-  `settings/public` — staff clients run the same publisher as directors so the
-  student portal stays fresh when only staff are recording.
+  `students/{num}.songStatuses` mirror (field-restricted), `settings/public`
+  (staff clients run the same publisher as directors so the student portal
+  stays fresh when only staff are recording), and `settings/drill.activeId`
+  (switch the school-wide active drill to view any show while recording).
 - **Cannot touch:** the org doc (it holds both invite codes — reading it would
   let staff escalate to director), `settings/presets` writes, roster
-  management, song/rehearsal deletion, drills, student/invite codes, member
-  management. Directors remove staff from Band Settings like co-directors.
+  management, song/rehearsal deletion, **drill writes** (add/delete/rename or
+  change spot assignments — the label→student map lives on the drill doc, which
+  only directors write), student/invite codes, member management. Directors
+  remove staff from Band Settings like co-directors.
 
 ### How students get an org (code + PIN)
 
@@ -234,7 +238,7 @@ What a **student** can read (everything else is director-only):
 | `entries/{id}`                | own entries only; queries must filter `studentNumber == <own>` |
 | `rehearsals/*`                | ✅ — schedule metadata (dates/labels, incl. `hiddenFromStudents`) |
 | `songs/*`                     | ❌ — embeds every student's pass/fail + fail notes |
-| `drills/*` (+ `drills/*/data/*`) | ❌ — Pyware field-chart library is director-only |
+| `drills/*` (+ `drills/*/data/*`) | ❌ — Pyware field-chart library (director-write; directors + staff read) |
 
 **Hiding a rehearsal from students.** A director can flag a rehearsal
 `hiddenFromStudents: true` (Edit Rehearsal → "Hide from students") — e.g. an

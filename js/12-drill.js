@@ -36,7 +36,7 @@ function drillAddFile() {
 // Entry from the tab empty-state / tracker button: pick performers from the
 // active drill if one is loaded, otherwise import the first file.
 function openDrillPicker() {
-  if (!STATE.isAdmin) return;
+  if (!canRecord()) return;
   if (_drillData) { showDrillPickModal(); return; }
   drillAddFile();
 }
@@ -790,7 +790,7 @@ function drillChartFlip() {
 let _drillMappingSection = 0;
 
 function showDrillMappingModal() {
-  if (!_drillData) return;
+  if (!STATE.isAdmin || !_drillData) return; // assigning spots is director-only
   _drillMappingSection = 0;
   _renderDrillMappingModal();
 }
@@ -1028,19 +1028,21 @@ function drillSpotApplyImport() {
 // one performer's path across every set.
 
 function viewDrill() {
-  if (!STATE.isAdmin) return `<div class="empty-state"><p>Directors only.</p></div>`;
+  if (!canRecord()) return `<div class="empty-state"><p>Directors only.</p></div>`;
   if (!_drillData || !_drillPages || !_drillPages.length) {
+    const hasDrills = Object.keys(STATE.drills || {}).length > 0;
     return `
       <div class="empty-state" style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px">
         <div class="empty-icon">🚩</div>
-        <p>${Object.keys(STATE.drills || {}).length ? 'No drill selected.' : 'No drill loaded yet.'}</p>
+        <p>${hasDrills ? 'No drill selected.' : 'No drill loaded yet.'}</p>
         <p style="color:var(--text-muted);max-width:300px;margin:6px auto 0">
-          Upload a Pyware <strong>.3dj</strong> or <strong>.3da</strong> file to view your field chart,
-          step through sets, label dots, and trace a performer's path.
+          ${STATE.isAdmin
+            ? `Upload a Pyware <strong>.3dj</strong> or <strong>.3da</strong> file to view your field chart, step through sets, label dots, and trace a performer's path.`
+            : hasDrills ? `Open the library to pick the field chart to view.` : `A director hasn't added a field chart yet.`}
         </p>
-        ${Object.keys(STATE.drills || {}).length
+        ${hasDrills
           ? `<button class="btn btn-primary" style="margin-top:14px" onclick="showDrillLibraryModal()">Open Drill Library</button>`
-          : `<button class="btn btn-primary" style="margin-top:14px" onclick="drillAddFile()">Load Drill File</button>`}
+          : (STATE.isAdmin ? `<button class="btn btn-primary" style="margin-top:14px" onclick="drillAddFile()">Load Drill File</button>` : '')}
       </div>`;
   }
   return `<div id="drill-view-root" class="drill-view">${_drillViewInner()}</div>`;
@@ -1224,7 +1226,7 @@ function drillInfoToggleEdit() {
 
 // Add a quick mark to the selected performer's student in the open rehearsal.
 function drillQuickMark(num, type) {
-  if (!STATE.isAdmin) return;
+  if (!canRecord()) return;
   const reh = getActiveRehearsal();
   if (!reh) { showToast('No open rehearsal.'); return; }
   showMarkModal(reh.id, num, type);
@@ -1531,7 +1533,7 @@ function _drillCoord(stepsX, stepsY) {
 }
 
 function showDrillOptionsModal() {
-  if (!STATE.isAdmin) return;
+  if (!canRecord()) return;
   const has   = !!(_drillData && _drillPages && _drillPages.length);
   const count = Object.keys(STATE.drills || {}).length;
   openModal(`
@@ -1540,9 +1542,9 @@ function showDrillOptionsModal() {
     <div class="options-menu">
       <button class="options-menu-item" onclick="closeModal();showDrillLibraryModal()">
         <div class="options-menu-icon">📚</div>
-        <div><div class="options-menu-label">Drill Library</div><div class="options-menu-sub">${count ? `${count} drill${count!==1?'s':''} · switch, add or remove` : 'Add your first drill file'}</div></div>
+        <div><div class="options-menu-label">Drill Library</div><div class="options-menu-sub">${count ? `${count} drill${count!==1?'s':''} · ${STATE.isAdmin ? 'switch, add or remove' : 'switch drills'}` : (STATE.isAdmin ? 'Add your first drill file' : 'No drills yet')}</div></div>
       </button>
-      ${has ? `
+      ${(has && STATE.isAdmin) ? `
       <button class="options-menu-item" onclick="closeModal();showDrillMappingModal()">
         <div class="options-menu-icon">🔗</div>
         <div><div class="options-menu-label">Assign Spots</div><div class="options-menu-sub">This show's spots → students · tap or CSV</div></div>
@@ -1603,7 +1605,7 @@ function _drillSortedIds() {
 }
 
 function showDrillLibraryModal() {
-  if (!STATE.isAdmin) return;
+  if (!canRecord()) return;
   const ids = _drillSortedIds();
   const rows = ids.map(id => {
     const d = STATE.drills[id];
@@ -1616,17 +1618,18 @@ function showDrillLibraryModal() {
           <div class="drill-lib-name">${esc(d.name || d.fileName || 'Drill')}${active ? '<span class="drill-lib-badge">active</span>' : ''}</div>
           <div class="drill-lib-sub">${esc(sub)}</div>
         </button>
+        ${STATE.isAdmin ? `
         <button class="drill-lib-act" onclick="drillRenamePrompt('${esc(id)}')" title="Rename" aria-label="Rename">✎</button>
-        <button class="drill-lib-act drill-lib-act--danger" onclick="drillDeletePrompt('${esc(id)}')" title="Delete" aria-label="Delete">🗑</button>
+        <button class="drill-lib-act drill-lib-act--danger" onclick="drillDeletePrompt('${esc(id)}')" title="Delete" aria-label="Delete">🗑</button>` : ''}
       </div>`;
   }).join('');
   openModal(`
     <div id="drill-library-modal">
       <div class="modal-handle"></div>
       <div class="modal-title">Drill Library</div>
-      <p class="modal-sub" style="margin:0 0 10px">Tap a drill to make it the active field chart for your whole director team.</p>
+      <p class="modal-sub" style="margin:0 0 10px">Tap a drill to make it the active field chart for everyone.</p>
       ${ids.length ? `<div class="drill-lib-list">${rows}</div>` : `<p style="color:var(--text-muted);text-align:center;padding:20px 0">No drills saved yet.</p>`}
-      <button class="btn btn-secondary btn-full" style="margin-top:12px" onclick="drillAddFile()">＋ Add drill file</button>
+      ${STATE.isAdmin ? `<button class="btn btn-secondary btn-full" style="margin-top:12px" onclick="drillAddFile()">＋ Add drill file</button>` : ''}
       <div class="modal-actions" style="margin-top:8px">
         <button class="btn btn-secondary btn-full" onclick="closeModal()">Done</button>
       </div>

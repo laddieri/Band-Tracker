@@ -65,6 +65,7 @@ async function seed() {
     await db.doc('orgs/a/songs/s1').set({ title: 'Anthem', statuses: { 7: { status: 'failed', note: 'bars 12-16' } } });
     await db.doc('orgs/a/drills/d1').set({ name: '2026 Show', fileName: 'show.3dj', setCount: 30 });
     await db.doc('orgs/a/drills/d1/data/main').set({ sections: [], pages: [] });
+    await db.doc('orgs/a/settings/drill').set({ activeId: 'd1' });
 
     await db.doc('orgs/b').set({ createdBy: 'dirB', name: 'Org B' });
     await db.doc('members/dirB').set({ orgId: 'b', role: 'director', email: 'dir@b.com' });
@@ -254,10 +255,21 @@ describe('staff role (recording access, no admin control)', () => {
   it('staff CANNOT read the org doc (it holds the invite codes)', async () => {
     await assertFails(staff().doc('orgs/a').get());
   });
-  it('staff CANNOT touch the drill library', async () => {
-    await assertFails(staff().doc('orgs/a/drills/d1').get());
-    await assertFails(staff().doc('orgs/a/drills/d1/data/main').get());
-    await assertFails(staff().doc('orgs/a/drills/d1').set({ name: 'x' }, { merge: true }));
+  it('staff can READ the drill library and payload (to view the chart)', async () => {
+    await assertSucceeds(staff().doc('orgs/a/drills/d1').get());
+    await assertSucceeds(staff().collection('orgs/a/drills').get());
+    await assertSucceeds(staff().doc('orgs/a/drills/d1/data/main').get());
+  });
+  it('staff CANNOT add, delete, rename, or reassign drill spots (write drills)', async () => {
+    await assertFails(staff().doc('orgs/a/drills/d2').set({ name: 'New show' }));      // add
+    await assertFails(staff().doc('orgs/a/drills/d1').set({ name: 'x' }, { merge: true })); // rename
+    await assertFails(staff().doc('orgs/a/drills/d1').set({ mapping: { A1: '42' } }, { merge: true })); // reassign
+    await assertFails(staff().doc('orgs/a/drills/d1').delete());                        // delete
+    await assertFails(staff().doc('orgs/a/drills/d1/data/main').set({ pages: [] }));    // payload
+  });
+  it('staff can switch the active drill (settings/drill activeId) but not other drill settings', async () => {
+    await assertSucceeds(staff().doc('orgs/a/settings/drill').set({ activeId: 'd1' }, { merge: true }));
+    await assertFails(staff().doc('orgs/a/settings/drill').set({ pywareMapping: {} }, { merge: true }));
   });
   it('staff CANNOT mint invite or student codes', async () => {
     await assertFails(staff().doc('inviteCodes/EVIL').set({ orgId: 'a', role: 'staff' }));
@@ -283,7 +295,8 @@ describe('staff role (recording access, no admin control)', () => {
     await assertSucceeds(s().doc('orgs/a/settings/presets').get());
     await assertFails(s().doc('orgs/a').get());
     await assertFails(s().doc('orgs/a/settings/presets').set({ bandName: 'x' }, { merge: true }));
-    await assertFails(s().doc('orgs/a/drills/d1').get());
+    await assertSucceeds(s().doc('orgs/a/drills/d1').get());                 // staff read drills
+    await assertFails(s().doc('orgs/a/drills/d1').set({ name: 'x' }, { merge: true })); // but not write
     await assertFails(s().doc('orgs/b/students/1').get());
   });
 });

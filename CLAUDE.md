@@ -20,9 +20,10 @@ app doesn't show it" is never a justification. Full model:
    `entries` (queries must filter `studentNumber == <own>`), `rehearsals`
    metadata, and `settings/public`. Everything else — the org doc, the
    roster, other students' entries, `songs`, `settings/presets` — is
-   director/staff-only (and the org doc plus `drills` are director-only even
-   from staff; staff writes are limited to recording — see the staff section
-   in `docs/DATA_MODEL.md`).
+   director/staff-only (the org doc stays director-only even from staff; staff
+   can READ `drills` to view the field chart but only directors WRITE them, and
+   staff writes elsewhere are limited to recording — see the staff section in
+   `docs/DATA_MODEL.md`).
 2. **Never store emails or other director PII in entries or student docs.**
    Stamp `STATE.user.uid` in `updatedBy`/`by` fields. For display, resolve
    uids with `dirLabel()` via `STATE.dirNames` (director clients build this
