@@ -3549,6 +3549,14 @@ html, body {
    overflow hidden, touch-action:none, position:relative). */
 .drill-view-stage { background:var(--surface); } /* white in light mode, dark in dark mode */
 
+/* Per-set instruction text (the drill's Pyware page text box). */
+.drill-view-note {
+  flex-shrink:0; max-height:32%; overflow-y:auto;
+  padding:8px 12px; border-top:1px solid var(--border);
+  background:var(--surface-alt, var(--surface));
+  font-size:0.82rem; line-height:1.45; color:var(--text);
+}
+
 .drill-view-foot {
   display:flex; align-items:center; justify-content:space-between; gap:10px;
   padding:6px 10px; flex-shrink:0; border-top:1px solid var(--border);
