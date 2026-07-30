@@ -681,7 +681,9 @@ function _drillRenderFsAxis(wrap) {
 let _drillTouchIgnore = false; // touch started on the info panel — let it click through
 
 function _drillOnTouchStart(e) {
-  if (e.target.closest && e.target.closest('.drill-info-pop')) { _drillTouchIgnore = true; return; }
+  // Let the info panel and the instructions overlay handle their own touches
+  // (buttons, scrolling) instead of panning/zooming the field underneath.
+  if (e.target.closest && e.target.closest('.drill-info-pop, .drill-view-note')) { _drillTouchIgnore = true; return; }
   _drillTouchIgnore = false;
   e.preventDefault();
   const wrap = e.currentTarget;
@@ -1088,8 +1090,6 @@ function _drillViewInner() {
 
     <div class="drill-fs-svg-wrap drill-view-stage" id="drill-stage">${_drillStageInner()}</div>
 
-    ${_drillNotePanelHtml()}
-
     <div class="drill-view-foot">
       <span class="drill-foot-main" id="drill-foot-main">${esc(_drillFootText())}</span>
     </div>`;
@@ -1117,6 +1117,7 @@ function _drillStageInner() {
     { fs: true, labelMode: _drillLabelMode, traceLabel: _drillTraceLabel, focusLabel: _drillSelLabel,
       selectMode: false, traceIdx: _drillActiveIdx() })
     + `<div class="drill-fs-axis"></div>`
+    + _drillNotePanelHtml()               // instructions overlay pinned to the field's bottom
     + (_drillPlaying ? '' : _drillInfoPanelHtml());
 }
 
@@ -1439,8 +1440,7 @@ function _drillViewFsHtml() {
       ${_drillHasNotes() ? `<button class="btn btn-sm ${_drillShowNotes ? 'btn-primary' : 'btn-secondary'}" onclick="drillToggleNotes()" title="Show set instructions">📝</button>` : ''}
       <button class="btn btn-sm btn-secondary" onclick="drillChartCollapse()" title="Exit fullscreen" style="margin-left:4px">&#x2715;</button>
     </div>
-    <div class="drill-fs-svg-wrap">${svgField}<div class="drill-fs-axis"></div></div>
-    ${_drillNotePanelHtml()}
+    <div class="drill-fs-svg-wrap">${svgField}<div class="drill-fs-axis"></div>${_drillNotePanelHtml()}</div>
     <div class="drill-fs-bottom">
       ${readout || (legend ? `<div class="drill-chart-legend" style="flex:1">${legend}</div>` : '<div></div>')}
     </div>`;
