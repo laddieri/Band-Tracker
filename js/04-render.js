@@ -123,7 +123,7 @@ function render() {
     if (match === 'songs')          t.style.display = featureOn('songs') ? '' : 'none';
     if (match === 'leaderboard')    t.style.display = (canRecord() && featureOn('stats')) ? '' : 'none';
     if (match === 'dashboard')      t.style.display = (canRecord() && featureOn('marks')) ? '' : 'none';
-    if (match === 'drill')          t.style.display = (STATE.isAdmin && featureOn('drill')) ? '' : 'none';
+    if (match === 'drill')          t.style.display = (canRecord() && featureOn('drill')) ? '' : 'none';
   });
 
   // If the current view belongs to a disabled feature, bounce to a safe view.
@@ -226,7 +226,7 @@ function render() {
 
     case 'drill':
       title.textContent = 'Field Chart';
-      actions.innerHTML = (STATE.isAdmin ? optBtn('showDrillOptionsModal()') : '') + userBtn();
+      actions.innerHTML = (canRecord() ? optBtn('showDrillOptionsModal()') : '') + userBtn();
       main.innerHTML = viewDrill();
       if (typeof _drillViewSetup === 'function') _drillViewSetup();
       break;

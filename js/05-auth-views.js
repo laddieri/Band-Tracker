@@ -630,7 +630,7 @@ function showBrandSettingsModal() {
         ['marks',      'Marks / Student Feedback', 'Log positive and mistake marks during rehearsals'],
         ['songs',      'Songs', 'Music memorization with pass/fail tracking'],
         ['stats',      'Stats / Leaderboard', 'Rankings built from marks (needs Marks on)'],
-        ['drill',      'Drill / Field Chart', 'View Pyware .3dj field charts (directors only)', true],
+        ['drill',      'Drill / Field Chart', 'View Pyware field charts (directors & staff; students never see them)', true],
       ].map(([key, label, desc, adminOnly]) => {
         const featOn   = STATE.features?.[key] !== false;
         const portalOn = STATE.portalVisible?.[key] !== false;

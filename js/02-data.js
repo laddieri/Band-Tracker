@@ -265,9 +265,10 @@ async function startListeners() {
 
     // Drill library — one small metadata doc per drill (the heavy position
     // payload lives in each drill's data/main subdoc, loaded on demand for the
-    // active drill only). See _drillSyncActive() in js/12-drill.js.
-    // Director-only: the rules keep drills off-limits to staff.
-    ...(STATE.isAdmin ? [
+    // active drill only). See _drillSyncActive() in js/12-drill.js. Directors AND
+    // staff read drills (staff view the chart to record marks); only directors
+    // write — the legacy migration below is director-only.
+    ...(canRecord() ? [
       orgCol('drills').onSnapshot(snap => {
         STATE.drills = {};
         snap.docs.forEach(d => { STATE.drills[d.id] = { id: d.id, ...d.data() }; });
@@ -276,10 +277,10 @@ async function startListeners() {
       }, err => console.error('drills listener error:', err)),
 
       // School-wide active-drill pointer. Also performs the one-time migration of
-      // the legacy single-drill doc into the library.
+      // the legacy single-drill doc into the library (directors only — it writes).
       orgCol('settings').doc('drill').onSnapshot(doc => {
         const d = doc.exists ? doc.data() : {};
-        if (d.drillSections?.length && d.drillPages?.length) { _migrateLegacyDrill(d); return; }
+        if (STATE.isAdmin && d.drillSections?.length && d.drillPages?.length) { _migrateLegacyDrill(d); return; }
         STATE.activeDrillId = d.activeId || null;
         _drillSyncActive();
         if (!STATE.loading) render();
