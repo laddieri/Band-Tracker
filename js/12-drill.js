@@ -1026,19 +1026,22 @@ function _drillHasNotes() {
 }
 
 // The instruction panel for the current set (its Pyware text box). Hidden while
-// playing, when the toggle is off, or when this set has no text. Shown when the
-// toggle is on so directors can read what happens at each set.
+// playing, when the toggle is off, or when this set has no text. Shared by the
+// Drill tab and the fullscreen viewer, so the toggle behaves the same in both.
 function _drillNotePanelHtml() {
   if (!_drillShowNotes || _drillPlaying || !_drillHasNotes()) return '';
   const note = _drillPages[_drillCurrentSet]?.note;
   if (!note) return '';
-  return `<div class="drill-view-note" id="drill-view-note">${esc(note).replace(/\n/g, '<br>')}</div>`;
+  return `<div class="drill-view-note">${esc(note).replace(/\n/g, '<br>')}</div>`;
 }
 
 function drillToggleNotes() {
   _drillShowNotes = !_drillShowNotes;
   try { localStorage.setItem('drillShowNotes', _drillShowNotes ? '1' : '0'); } catch {}
-  _drillViewRerender();
+  // Refresh whichever surface is showing — the fullscreen overlay or the tab.
+  const fs = document.getElementById('drill-chart-fs');
+  if (fs && !fs.classList.contains('hidden')) _drillChartRefresh();
+  else _drillViewRerender();
 }
 
 function _drillSetStripHtml() {
@@ -1213,9 +1216,11 @@ function _drillViewFsHtml() {
       <button class="btn btn-sm btn-secondary" onclick="drillChartNav(1)"${idx>=total-1?' disabled':''}>&#8594;</button>
       <button class="btn btn-sm btn-secondary" onclick="drillChartCycleLabels()" title="Toggle labels">🏷</button>
       <button class="btn btn-sm btn-secondary" onclick="drillChartFlip()" title="Flip facing">⇅</button>
+      ${_drillHasNotes() ? `<button class="btn btn-sm ${_drillShowNotes ? 'btn-primary' : 'btn-secondary'}" onclick="drillToggleNotes()" title="Show set instructions">📝</button>` : ''}
       <button class="btn btn-sm btn-secondary" onclick="drillChartCollapse()" title="Exit fullscreen" style="margin-left:4px">&#x2715;</button>
     </div>
     <div class="drill-fs-svg-wrap">${svgField}<div class="drill-fs-axis"></div></div>
+    ${_drillNotePanelHtml()}
     <div class="drill-fs-bottom">
       ${readout || (legend ? `<div class="drill-chart-legend" style="flex:1">${legend}</div>` : '<div></div>')}
     </div>`;
