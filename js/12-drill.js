@@ -188,14 +188,27 @@ function _drillPosIndex() {
   return idx;
 }
 
-// Effective label → student-number map (position match + explicit overrides).
+// The active drill's own label → student map (its per-show spot assignments,
+// stored on the drill doc). Each show maps independently, so a student can be
+// "M1" pregame and "X5" at halftime without collisions.
+function _activeDrillMapping() {
+  const d = (STATE.drills && STATE.activeDrillId) ? STATE.drills[STATE.activeDrillId] : null;
+  return (d && d.mapping) || {};
+}
+
+// Effective label → student-number map for the active drill. Resolution per
+// label: the drill's own assignment wins, then the legacy band-wide
+// pywareMapping, then the column/row block-spot match. So a drill with its own
+// spot map is self-contained, while older drills keep the auto/block behavior.
 function drillLabelMap() {
-  return { ..._drillPosIndex(), ...(STATE.pywareMapping || {}) };
+  return { ..._drillPosIndex(), ...(STATE.pywareMapping || {}), ..._activeDrillMapping() };
 }
 
 function drillStudentByLabel(label) {
-  const m = STATE.pywareMapping || {};
-  if (m[label]) return m[label];
+  const perDrill = _activeDrillMapping();
+  if (perDrill[label]) return perDrill[label];
+  const g = STATE.pywareMapping || {};
+  if (g[label]) return g[label];
   return _drillPosIndex()[(label || '').toUpperCase()] || null;
 }
 
@@ -781,7 +794,8 @@ function showDrillMappingModal() {
 function _renderDrillMappingModal() {
   if (!STATE.isAdmin) return;
   const sections = _drillData;
-  const mapping  = STATE.pywareMapping || {};
+  const mapping  = _activeDrillMapping();
+  const drillName = STATE.drills[STATE.activeDrillId]?.name || _drillFileName || 'this drill';
   const students = Object.values(STATE.students).sort((a, b) =>
     (a.name || '').localeCompare(b.name || ''));
 
@@ -810,12 +824,13 @@ function _renderDrillMappingModal() {
 
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">Drill Position Mapping</div>
-    <p class="modal-sub" style="margin:0 0 10px">Positions are matched to students by their block spot (column&nbsp;+&nbsp;row) automatically — "auto" rows need no setup. Override any that differ. Saved automatically.</p>
+    <div class="modal-title">Spots for ${esc(drillName)}</div>
+    <p class="modal-sub" style="margin:0 0 10px">Assign this show's spots to students — each drill has its own map, so students can have different spots per show. Unset "auto" rows fall back to a student's block spot (column&nbsp;+&nbsp;row). Saved automatically.</p>
+    <button class="btn btn-secondary btn-full" style="margin-bottom:10px" onclick="showDrillSpotImportModal()">⬆︎ Import / export spots (CSV)</button>
     <div class="drill-tabs">${renderSectionTabs()}</div>
     <div class="drill-map-list" id="drill-map-list">${rows}</div>
     <div class="modal-actions" style="margin-top:12px">
-      <button class="btn btn-secondary btn-full" onclick="showDrillPickModal()">← Back to Selection</button>
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Done</button>
     </div>
   `);
 }
@@ -825,12 +840,138 @@ function drillMappingSetSection(idx) {
   _renderDrillMappingModal();
 }
 
+// Assign (or clear) one drill spot for the ACTIVE drill. Stored on the drill
+// doc so each show maps independently — a small, merge write that never touches
+// the roster or other drills.
 function drillMappingChange(label, studentNum) {
-  const mapping = { ...STATE.pywareMapping };
-  if (studentNum) mapping[label] = studentNum;
+  const id = STATE.activeDrillId;
+  const drill = id ? STATE.drills[id] : null;
+  if (!drill) return;
+  const mapping = { ...(drill.mapping || {}) };
+  if (studentNum) mapping[label] = String(studentNum);
   else delete mapping[label];
-  STATE.pywareMapping = mapping;
-  orgCol('settings').doc('presets').set({ pywareMapping: mapping }, { merge: true });
+  drill.mapping = mapping; // optimistic; the drills listener will confirm
+  orgCol('drills').doc(id).set({ mapping }, { merge: true })
+    .catch(e => _toastSaveError(e, 'The spot assignment'));
+}
+
+// ── Per-drill spot import / export (CSV) ──────────────────────────────────────
+
+// A CSV cell, quoted if it contains a comma, quote or newline.
+function _csvCell(v) {
+  const s = String(v ?? '');
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+// A template/export of this drill's spots: every performer label with its
+// current assignment (number + name for reference), in section order.
+function _drillSpotTemplateCsv() {
+  const map = _activeDrillMapping();
+  const lines = ['Label,Student Number,Name'];
+  (_drillData || []).forEach(sec => sec.performers.forEach(lbl => {
+    const num = map[lbl] || '';
+    const st  = num ? STATE.students[num] : null;
+    lines.push([lbl, num, _csvCell(st ? (st.name || '') : '')].join(','));
+  }));
+  return lines.join('\n');
+}
+
+function _downloadCsv(filename, text) {
+  try {
+    const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (e) { console.error('CSV download failed:', e); showToast('Could not download the file.'); }
+}
+
+function downloadDrillSpotTemplate() {
+  if (!_drillData) return;
+  const name = (STATE.drills[STATE.activeDrillId]?.name || 'drill').replace(/[^\w-]+/g, '_');
+  _downloadCsv(`${name}-spots.csv`, _drillSpotTemplateCsv());
+}
+
+function showDrillSpotImportModal() {
+  if (!STATE.isAdmin || !_drillData) return;
+  const drillName = STATE.drills[STATE.activeDrillId]?.name || _drillFileName || 'this drill';
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Import spots — ${esc(drillName)}</div>
+    <p class="modal-sub" style="margin:0 0 12px">
+      Upload a CSV with a <strong>Label</strong> column (the drill spot, e.g. A1, M3) and a
+      <strong>Student Number</strong> column. Each row assigns that spot to that student for
+      <em>this show only</em>. A blank number un-assigns the spot; spots not listed are left as-is.
+      Nothing else on the roster is touched.
+    </p>
+    <button class="btn btn-secondary btn-full" onclick="downloadDrillSpotTemplate()">⬇︎ Download template (all spots for this show)</button>
+    <label class="btn btn-primary btn-full" style="cursor:pointer;margin-top:10px">
+      ⬆︎ Choose CSV to import
+      <input type="file" accept=".csv,text/csv" style="display:none" onchange="drillSpotImportFile(event)">
+    </label>
+    <div id="drill-spot-import-msg" style="margin-top:12px"></div>
+  `);
+}
+
+let _drillSpotPendingDelta = null;
+
+function drillSpotImportFile(event) {
+  const file = event.target.files[0];
+  event.target.value = '';
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const validNums = new Set(Object.keys(STATE.students));
+    let delta;
+    try { delta = buildDrillSpotAssignments(String(e.target.result || ''), validNums); }
+    catch (err) { console.error('spot CSV parse failed:', err); _drillSpotMsg(`<div class="auth-error">Could not read that CSV.</div>`); return; }
+    if (delta.error === 'columns') {
+      _drillSpotMsg(`<div class="auth-error">Couldn't find both a <strong>Label</strong> and a <strong>Student Number</strong> column. Check the header row.</div>`);
+      return;
+    }
+    const nAssign = Object.keys(delta.assign).length;
+    if (!nAssign && !delta.unset.length) {
+      _drillSpotMsg(`<div class="auth-error">No spot rows found in that file.</div>`);
+      return;
+    }
+    _drillSpotPendingDelta = delta;
+    const unknownNote = delta.unknown.length
+      ? `<div style="color:var(--danger);font-size:.8rem;margin-top:6px">${delta.unknown.length} row${delta.unknown.length!==1?'s':''} reference a student number not on your roster and will be skipped (e.g. ${esc(delta.unknown.slice(0,3).map(u=>`${u.label}→#${u.number}`).join(', '))}).</div>`
+      : '';
+    _drillSpotMsg(`
+      <div class="card" style="padding:12px">
+        <div style="font-weight:600;margin-bottom:4px">Ready to apply</div>
+        <div style="font-size:.85rem;color:var(--text-muted)">
+          Assign <strong>${nAssign}</strong> spot${nAssign!==1?'s':''}${delta.unset.length?`, clear <strong>${delta.unset.length}</strong>`:''}.
+        </div>
+        ${unknownNote}
+        <button class="btn btn-primary btn-full" style="margin-top:10px" onclick="drillSpotApplyImport()">Apply to ${esc(drillName)}</button>
+      </div>`);
+  };
+  reader.readAsText(file);
+}
+
+function _drillSpotMsg(html) {
+  const el = document.getElementById('drill-spot-import-msg');
+  if (el) el.innerHTML = html;
+}
+
+function drillSpotApplyImport() {
+  const delta = _drillSpotPendingDelta;
+  const id = STATE.activeDrillId, drill = id ? STATE.drills[id] : null;
+  if (!delta || !drill) return;
+  const mapping = { ...(drill.mapping || {}) };
+  for (const [lbl, num] of Object.entries(delta.assign)) mapping[lbl] = String(num);
+  for (const lbl of delta.unset) delete mapping[lbl];
+  drill.mapping = mapping; // optimistic; the drills listener will confirm
+  orgCol('drills').doc(id).set({ mapping }, { merge: true })
+    .catch(e => _toastSaveError(e, 'The spot import'));
+  _drillSpotPendingDelta = null;
+  closeModal();
+  const n = Object.keys(delta.assign).length;
+  showToast(`Spots updated — ${n} assigned${delta.unset.length ? `, ${delta.unset.length} cleared` : ''}.`);
+  if (_view === 'drill') _drillViewRerender();
 }
 
 // ── Standalone Field Chart viewer (Drill tab) ─────────────────────────────────
@@ -997,11 +1138,29 @@ function _drillInfoPanelHtml() {
       <div class="drill-info-pop-meta">${meta}</div>
       <div class="drill-info-pop-coord">${esc(co.lr)}<br>${esc(co.fb)}</div>
       ${marks}
+      ${STATE.isAdmin ? `
+      <div class="drill-info-pop-assign">
+        <label class="drill-info-assign-lbl">Assign ${esc(label)} to</label>
+        <select class="form-input drill-info-assign-sel" onchange="drillAssignSpot('${esc(label)}', this.value)">
+          <option value="">— Not mapped —</option>
+          ${Object.values(STATE.students).sort((a,b)=>(a.name||'').localeCompare(b.name||''))
+            .map(s => `<option value="${esc(s.number)}"${String(num)===String(s.number)?' selected':''}>${esc(s.name || `#${s.number}`)}</option>`).join('')}
+        </select>
+      </div>` : ''}
       <div class="drill-info-pop-actions">
         <button class="btn btn-sm ${_drillTraceLabel === label ? 'btn-secondary' : 'btn-primary'}" onclick="drillTracePerformer('${esc(label)}')">${_drillTraceLabel === label ? 'Tracing ✓' : 'Trace path'}</button>
         ${st ? `<button class="btn btn-sm btn-secondary" onclick="navigate('student',{num:'${esc(num)}'})">Profile</button>` : ''}
       </div>
     </div>`;
+}
+
+// Assign a spot to a student straight from the tapped-dot panel, then refresh
+// so the dot's name and the panel update immediately.
+function drillAssignSpot(label, num) {
+  drillMappingChange(label, num);
+  const fs = document.getElementById('drill-chart-fs');
+  if (fs && !fs.classList.contains('hidden')) _drillChartRefresh();
+  else _drillViewRenderSvg();
 }
 
 // Add a quick mark to the selected performer's student in the open rehearsal.
@@ -1326,7 +1485,7 @@ function showDrillOptionsModal() {
       ${has ? `
       <button class="options-menu-item" onclick="closeModal();showDrillMappingModal()">
         <div class="options-menu-icon">🔗</div>
-        <div><div class="options-menu-label">Position Mapping</div><div class="options-menu-sub">Link drill spots to students</div></div>
+        <div><div class="options-menu-label">Assign Spots</div><div class="options-menu-sub">This show's spots → students · tap or CSV</div></div>
       </button>` : ''}
     </div>
     ${has ? `

@@ -3607,6 +3607,9 @@ html, body {
 .drill-info-pop-name { font-weight:700; font-size:.92rem; }
 .drill-info-pop-meta { font-size:.72rem; color:#c8d4c8; margin-top:1px; }
 .drill-info-pop-coord { font-size:.78rem; color:#ffd23f; font-weight:600; margin-top:5px; line-height:1.4; }
+.drill-info-pop-assign { margin-top:9px; }
+.drill-info-assign-lbl { display:block; font-size:.72rem; color:#c8d4c8; margin-bottom:3px; }
+.drill-info-assign-sel { width:100%; font-size:.82rem; padding:6px 8px; }
 .drill-info-pop-actions { display:flex; gap:6px; margin-top:9px; }
 .drill-info-marks-label { font-size:0.72rem; color:#c8d4c8; margin-top:9px; }
 .drill-info-marks { display:flex; gap:6px; margin-top:5px; }
