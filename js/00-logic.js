@@ -274,34 +274,80 @@ function detectCols(headers, customFields = []) {
 
 const DRILL_LABEL_ALIASES = ['label','spot','position','pos','drill label','drill spot','dot','performer'];
 
-// Build a spot-map delta from CSV text. Returns:
-//   { assign:{LABEL:number}, unset:[LABEL], unknown:[{label,number}], rows, error? }
-// A row with a label + known number assigns; a label with a blank number unsets
-// that spot; a label with a number not on the roster is reported (not applied).
-// Labels are upper-cased to match the parser's labels. `validNumbers` is a Set
-// (or array) of roster student numbers as strings; pass an empty set to skip the
-// roster check.
-function buildDrillSpotAssignments(text, validNumbers) {
+// Normalize a stored spot value (string, array, or empty) to an array of
+// student-number strings. A spot can hold more than one student (shared spots).
+function drillSpotNums(v) {
+  if (Array.isArray(v)) return v.map(x => String(x)).filter(Boolean);
+  return (v === 0 || v) ? [String(v)].filter(Boolean) : [];
+}
+
+// Apply a spot CSV to a drill's current mapping, merging by STUDENT so partial
+// sheets are safe: every student listed in the sheet is re-placed at the spot in
+// their row (a blank spot ⇒ unassigned); students not in the sheet are left
+// alone; two rows that name the same spot share it. Column detection accepts
+// either orientation — a Label/Spot column plus a Student Number column — so the
+// roster-style template (one row per student) and a spot-style sheet both work.
+// A label row with no number clears that spot. Returns the new mapping (single
+// student ⇒ string, multiple ⇒ array) plus stats. `validNumbers` is a Set/array
+// of roster numbers as strings; an empty set skips the roster check.
+function applyDrillSpotCsv(currentMapping, text, validNumbers) {
   const rows = parseCSV(text);
-  const empty = { assign: {}, unset: [], unknown: [], rows: 0 };
-  if (!rows.length) return empty;
+  const base = { mapping: { ...(currentMapping || {}) }, assigned: 0, cleared: 0, shared: 0, unknown: [], rows: 0 };
+  if (!rows.length) return base;
   const headers  = rows[0].map(h => (h || '').toLowerCase().trim());
   const labelIdx = headers.findIndex(h => DRILL_LABEL_ALIASES.includes(h));
   const numIdx   = headers.findIndex(h => COL_ALIASES.number.includes(h));
-  if (labelIdx === -1 || numIdx === -1) return { ...empty, error: 'columns' };
+  if (labelIdx === -1 || numIdx === -1) return { ...base, error: 'columns' };
   const valid = validNumbers instanceof Set ? validNumbers : new Set(validNumbers || []);
-  const assign = {}, unset = [], unknown = [];
+
+  // Working label → Set(numbers) from the current mapping.
+  const next = {};
+  for (const [lbl, v] of Object.entries(currentMapping || {})) {
+    const arr = drillSpotNums(v);
+    if (arr.length) next[lbl] = new Set(arr);
+  }
+
+  const mentioned = new Set();   // valid students in the sheet (to re-place)
+  const assign = [];             // [{label, num}] valid spot rows
+  const clearLabels = new Set(); // labels emptied by a number-less row
+  const unknown = [];
   let seen = 0;
   for (let i = 1; i < rows.length; i++) {
+    const num   = (rows[i][numIdx]   || '').trim();
     const label = (rows[i][labelIdx] || '').trim().toUpperCase();
-    if (!label) continue;
+    if (!num && !label) continue;
+    const known = !valid.size || valid.has(num);
+    if (num && !known) { if (label) unknown.push({ label, number: num }); continue; }
+    if (num) mentioned.add(num);           // known number: re-place it
+    if (!label) continue;                  // student with no spot ⇒ just unassign
     seen++;
-    const num = (rows[i][numIdx] || '').trim();
-    if (!num)                              { unset.push(label); continue; }
-    if (valid.size && !valid.has(num))     { unknown.push({ label, number: num }); continue; }
-    assign[label] = num;
+    if (!num) { clearLabels.add(label); continue; } // spot with no number ⇒ clear it
+    assign.push({ label, num });
   }
-  return { assign, unset, unknown, rows: seen };
+
+  // Re-place: pull every mentioned student out of their current spot(s)…
+  for (const set of Object.values(next)) for (const n of mentioned) set.delete(n);
+  // …then drop them at the spot named in their row.
+  let assigned = 0;
+  for (const { label, num } of assign) { (next[label] = next[label] || new Set()).add(num); assigned++; }
+  for (const lbl of clearLabels) delete next[lbl];
+
+  // Materialize: single ⇒ string, multiple ⇒ array; drop empties.
+  const mapping = {};
+  let shared = 0;
+  for (const [lbl, set] of Object.entries(next)) {
+    const arr = [...set];
+    if (!arr.length) continue;
+    mapping[lbl] = arr.length === 1 ? arr[0] : arr;
+    if (arr.length > 1) shared++;
+  }
+  let cleared = 0;
+  for (const n of mentioned) {
+    let placed = false;
+    for (const set of Object.values(next)) if (set.has(n)) { placed = true; break; }
+    if (!placed) cleared++;
+  }
+  return { mapping, assigned, cleared, shared, unknown, rows: seen };
 }
 
 // ── Instruments, grades, and the list filter/sort engine ─────────────────────
@@ -724,7 +770,7 @@ if (typeof module !== 'undefined' && module.exports) {
     lbWeights, scoreStudentsCore, buildPublicStats,
     checkAutoMarkCondition, computeAutoMarkEvents,
     parseCSVLine, parseCSV, COL_ALIASES, normalizeGrade, detectCols,
-    DRILL_LABEL_ALIASES, buildDrillSpotAssignments,
+    DRILL_LABEL_ALIASES, drillSpotNums, applyDrillSpotCsv,
     suggestSeasonLabel,
     normInstrument, instrOrder, GRADE_LEVELS, filterAndSortStudents,
     _hasMarker, _indexOfMarker, _parsePywareFile, _pywareAssembleDrill, _pyware3daPageNote,
