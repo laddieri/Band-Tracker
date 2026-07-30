@@ -94,11 +94,11 @@ function _rhCardHtml(r) {
         const menuBtn = canRecord() ? `
           <div class="rh-card-menu-wrap">
             <button class="rh-card-menu-btn" onclick="event.stopPropagation();toggleRhMenu('${esc(r.id)}')" aria-label="More options">⋯</button>
-            <div class="rh-card-menu-list hidden" id="rh-menu-${esc(r.id)}">
-              <button class="rh-card-menu-item" onclick="showRehearsalEditModal('${esc(r.id)}')">Edit Rehearsal</button>
-              <button class="rh-card-menu-item" onclick="showRehearsalPlanModal('${esc(r.id)}')">Rehearsal Plan</button>
-              ${ended ? `<button class="rh-card-menu-item" onclick="reopenRehearsal('${esc(r.id)}')">Reopen Rehearsal</button>` : ''}
-              ${STATE.isAdmin ? `<button class="rh-card-menu-item rh-menu-danger" onclick="confirmDeleteRehearsal('${esc(r.id)}')">Delete Rehearsal</button>` : ''}
+            <div class="rh-card-menu-list hidden" id="rh-menu-${esc(r.id)}" onclick="event.stopPropagation()">
+              <button class="rh-card-menu-item" onclick="event.stopPropagation();toggleRhMenu('${esc(r.id)}');showRehearsalEditModal('${esc(r.id)}')">Edit Rehearsal</button>
+              <button class="rh-card-menu-item" onclick="event.stopPropagation();toggleRhMenu('${esc(r.id)}');showRehearsalPlanModal('${esc(r.id)}')">Rehearsal Plan</button>
+              ${ended ? `<button class="rh-card-menu-item" onclick="event.stopPropagation();toggleRhMenu('${esc(r.id)}');reopenRehearsal('${esc(r.id)}')">Reopen Rehearsal</button>` : ''}
+              ${STATE.isAdmin ? `<button class="rh-card-menu-item rh-menu-danger" onclick="event.stopPropagation();toggleRhMenu('${esc(r.id)}');confirmDeleteRehearsal('${esc(r.id)}')">Delete Rehearsal</button>` : ''}
             </div>
           </div>` : '';
         if (!ended) {
