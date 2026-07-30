@@ -95,6 +95,7 @@ let _drillZoomScale  = 1.0;  // current pinch-zoom scale for the fullscreen char
 let _drillLabelMode   = 0;    // dot labels: 0 = none, 1 = drill labels, 2 = student names
 let _drillTraceLabel  = null; // performer label currently traced/highlighted in the viewer
 let _drillSelLabel    = null; // performer tapped for the info panel (gets a bold callout)
+let _drillInfoEdit    = false; // info panel: false = marking (default), true = edit who's on the spot
 let _drillFieldWhite  = (typeof localStorage !== 'undefined' && localStorage.getItem('drillFieldWhite') === '1'); // field fill: white vs green
 let _drillShowNotes   = (typeof localStorage === 'undefined' || localStorage.getItem('drillShowNotes') !== '0'); // show a set's Pyware instruction text (default on)
 let _drillSearchQuery = '';   // text in the Drill-tab performer search box

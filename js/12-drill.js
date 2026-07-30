@@ -1164,8 +1164,13 @@ function _drillInfoPanelHtml() {
   const reh  = (typeof getActiveRehearsal === 'function') ? getActiveRehearsal() : null;
   const rehName = reh ? (reh.label || (typeof fmtDate === 'function' ? fmtDate(reh.date) : '') || 'rehearsal') : '';
 
+  // Assigning is a one-time setup, marking is frequent — so the assign/remove
+  // controls stay tucked behind the ⋯ (edit) toggle, and the default view is
+  // just names + quick marks. (Admins only; edit is a no-op otherwise.)
+  const editing = STATE.isAdmin && _drillInfoEdit;
+
   // One row per assigned student: name, quick marks (if a rehearsal is open),
-  // and remove. Shared spots list everyone here.
+  // plus a remove ✕ while editing. Shared spots list everyone here.
   const studentRows = nums.map(num => {
     const st = STATE.students[num];
     const name = st ? (st.name || `#${num}`) : `#${num}`;
@@ -1180,19 +1185,22 @@ function _drillInfoPanelHtml() {
     return `
       <div class="drill-info-stu">
         <span class="drill-info-stu-name" onclick="navigate('student',{num:'${esc(num)}'})">${esc(name)}</span>
-        <span class="drill-info-stu-actions">${marks}${STATE.isAdmin ? `<button class="drill-info-stu-x" onclick="drillSpotRemoveStudent('${esc(label)}','${esc(num)}')" title="Remove from spot" aria-label="Remove from spot">✕</button>` : ''}</span>
+        <span class="drill-info-stu-actions">${marks}${editing ? `<button class="drill-info-stu-x" onclick="drillSpotRemoveStudent('${esc(label)}','${esc(num)}')" title="Remove from spot" aria-label="Remove from spot">✕</button>` : ''}</span>
       </div>`;
   }).join('');
 
   return `
     <div class="drill-info-pop">
-      <button class="drill-info-pop-x" onclick="drillCloseInfo()" aria-label="Close">✕</button>
+      <div class="drill-info-pop-top">
+        ${STATE.isAdmin ? `<button class="drill-info-pop-edit${editing ? ' is-on' : ''}" onclick="drillInfoToggleEdit()" title="Edit who's on this spot" aria-label="Edit spot assignment">⋯</button>` : ''}
+        <button class="drill-info-pop-x" onclick="drillCloseInfo()" aria-label="Close">✕</button>
+      </div>
       <div class="drill-info-pop-name">${esc(label)}${nums.length > 1 ? ` · <span class="drill-info-shared">shared</span>` : ''}</div>
       <div class="drill-info-pop-meta">${meta}</div>
       <div class="drill-info-pop-coord">${esc(co.lr)}<br>${esc(co.fb)}</div>
       ${reh ? `<div class="drill-info-marks-label">Add to ${esc(rehName)}:</div>` : ''}
       ${studentRows}
-      ${STATE.isAdmin ? `
+      ${editing ? `
       <div class="drill-info-pop-assign">
         <select class="form-input drill-info-assign-sel" onchange="drillSpotAddStudent('${esc(label)}', this.value); this.value=''">
           <option value="">＋ ${nums.length ? 'Add another student…' : 'Assign a student…'}</option>
@@ -1205,6 +1213,13 @@ function _drillInfoPanelHtml() {
         <button class="btn btn-sm ${_drillTraceLabel === label ? 'btn-secondary' : 'btn-primary'}" onclick="drillTracePerformer('${esc(label)}')">${_drillTraceLabel === label ? 'Tracing ✓' : 'Trace path'}</button>
       </div>
     </div>`;
+}
+
+// Toggle the tapped-dot panel between marking (default) and editing who's on
+// the spot (the assign/remove controls).
+function drillInfoToggleEdit() {
+  _drillInfoEdit = !_drillInfoEdit;
+  _drillRefreshCurrent();
 }
 
 // Add a quick mark to the selected performer's student in the open rehearsal.
@@ -1441,11 +1456,13 @@ function drillShowPerfInfo(label) {
   if (!_drillPages) return;
   if (!_drillPages[_drillCurrentSet].performers.some(x => x.label === label)) return;
   _drillSelLabel = (_drillSelLabel === label) ? null : label; // tap again to dismiss
+  _drillInfoEdit = false; // each new tap opens in marking mode
   _drillViewRenderSvg();
 }
 
 function drillCloseInfo() {
   _drillSelLabel = null;
+  _drillInfoEdit = false;
   _drillViewRenderSvg();
 }
 
