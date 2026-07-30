@@ -37,7 +37,8 @@ orgs/{orgId}                          # org metadata
   ├─ entries/{rehearsalId}_{number}   # was: /entries/{...}
   ├─ songs/{songId}                   # was: /songs/{songId}
   └─ drills/{drillId}                 # drill library (director-only): metadata + per-show spot map
-       │  (fields) name, fileName, setCount, …, mapping:{label→studentNumber}
+       │  (fields) name, fileName, setCount, …,
+       │  mapping:{label→studentNumber | [studentNumbers]}  # a spot may be shared by >1 student
        └─ data/main                   #   heavy Pyware position payload (loaded on demand)
 
 members/{uid}                         # who belongs to which org, and as what

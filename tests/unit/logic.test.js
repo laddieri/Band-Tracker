@@ -505,42 +505,56 @@ describe('Pyware .3da parser', () => {
   });
 });
 
-describe('buildDrillSpotAssignments (per-drill spot CSV)', () => {
-  const roster = new Set(['1', '42', '7']);
+describe('drillSpotNums', () => {
+  it('normalizes string / array / empty to an array of number strings', () => {
+    assert.deepStrictEqual(L.drillSpotNums('42'), ['42']);
+    assert.deepStrictEqual(L.drillSpotNums(['42', 7]), ['42', '7']);
+    assert.deepStrictEqual(L.drillSpotNums(''), []);
+    assert.deepStrictEqual(L.drillSpotNums(undefined), []);
+  });
+});
 
-  it('assigns labels to known student numbers (labels upper-cased)', () => {
-    const csv = 'Label,Student Number\nA1,42\nm3,7\n';
-    const r = L.buildDrillSpotAssignments(csv, roster);
-    assert.deepStrictEqual(r.assign, { A1: '42', M3: '7' });
-    assert.deepStrictEqual(r.unset, []);
-    assert.deepStrictEqual(r.unknown, []);
+describe('applyDrillSpotCsv (per-drill spot CSV, merge by student)', () => {
+  const roster = new Set(['1', '42', '7', '9']);
+
+  it('assigns from a roster-style sheet (Student Number + Spot), labels upper-cased', () => {
+    const csv = 'Student Number,Name,Spot\n42,Sam,a1\n7,Riley,m3\n';
+    const r = L.applyDrillSpotCsv({}, csv, roster);
+    assert.deepStrictEqual(r.mapping, { A1: '42', M3: '7' });
+    assert.strictEqual(r.assigned, 2);
   });
 
-  it('treats a blank number as un-assigning that spot', () => {
-    const r = L.buildDrillSpotAssignments('Label,Student Number\nA1,42\nB2,\n', roster);
-    assert.deepStrictEqual(r.assign, { A1: '42' });
-    assert.deepStrictEqual(r.unset, ['B2']);
+  it('shares a spot when two students name the same label', () => {
+    const r = L.applyDrillSpotCsv({}, 'Student Number,Spot\n42,A1\n7,A1\n', roster);
+    assert.deepStrictEqual(r.mapping, { A1: ['42', '7'] });
+    assert.strictEqual(r.shared, 1);
   });
 
-  it('reports numbers not on the roster instead of applying them', () => {
-    const r = L.buildDrillSpotAssignments('Label,Student Number\nA1,999\n', roster);
-    assert.deepStrictEqual(r.assign, {});
-    assert.deepStrictEqual(r.unknown, [{ label: 'A1', number: '999' }]);
+  it('merges by student: only listed students change, others untouched', () => {
+    // 42 already at A1, 9 already at Z9; sheet moves 42 to B2, leaves 9 alone.
+    const r = L.applyDrillSpotCsv({ A1: '42', Z9: '9' }, 'Student Number,Spot\n42,B2\n', roster);
+    assert.deepStrictEqual(r.mapping, { B2: '42', Z9: '9' });
   });
 
-  it('accepts header aliases (spot / #) and ignores extra columns', () => {
-    const r = L.buildDrillSpotAssignments('Name,Spot,#\nJane,A1,42\n', roster);
-    assert.deepStrictEqual(r.assign, { A1: '42' });
+  it('a blank spot un-assigns that student', () => {
+    const r = L.applyDrillSpotCsv({ A1: '42' }, 'Student Number,Spot\n42,\n', roster);
+    assert.deepStrictEqual(r.mapping, {});
+    assert.strictEqual(r.cleared, 1);
   });
 
-  it('flags a missing label or number column', () => {
-    assert.strictEqual(L.buildDrillSpotAssignments('Name,Instrument\nJane,Trumpet\n', roster).error, 'columns');
+  it('removing one student from a shared spot leaves the other', () => {
+    const r = L.applyDrillSpotCsv({ A1: ['42', '7'] }, 'Student Number,Spot\n7,\n', roster);
+    assert.deepStrictEqual(r.mapping, { A1: '42' });
   });
 
-  it('skips the roster check when no valid set is given', () => {
-    const r = L.buildDrillSpotAssignments('Label,Student Number\nA1,999\n', new Set());
-    assert.deepStrictEqual(r.assign, { A1: '999' });
-    assert.deepStrictEqual(r.unknown, []);
+  it('reports roster-unknown numbers without touching the map', () => {
+    const r = L.applyDrillSpotCsv({ A1: '42' }, 'Student Number,Spot\n999,B2\n', roster);
+    assert.deepStrictEqual(r.mapping, { A1: '42' });
+    assert.deepStrictEqual(r.unknown, [{ label: 'B2', number: '999' }]);
+  });
+
+  it('flags a missing spot or number column', () => {
+    assert.strictEqual(L.applyDrillSpotCsv({}, 'Name,Instrument\nJane,Trumpet\n', roster).error, 'columns');
   });
 });
 
