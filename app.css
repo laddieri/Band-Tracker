@@ -3549,12 +3549,17 @@ html, body {
    overflow hidden, touch-action:none, position:relative). */
 .drill-view-stage { background:var(--surface); } /* white in light mode, dark in dark mode */
 
-/* Per-set instruction text (the drill's Pyware page text box). */
+/* Per-set instruction text (the drill's Pyware page text box). Pinned as an
+   overlay to the bottom of the field so it never resizes the chart as you flip
+   between sets with different amounts of text, and stays on-screen on mobile. */
 .drill-view-note {
-  flex-shrink:0; max-height:32%; overflow-y:auto;
-  padding:8px 12px; border-top:1px solid var(--border);
-  background:var(--surface-alt, var(--surface));
-  font-size:0.82rem; line-height:1.45; color:var(--text);
+  position:absolute; left:0; right:0; bottom:0; z-index:5;
+  max-height:45%; overflow-y:auto; -webkit-overflow-scrolling:touch; touch-action:pan-y;
+  padding:8px 12px;
+  background:rgba(16,24,16,.9); color:#fff;
+  border-top:1px solid rgba(255,255,255,.16);
+  font-size:0.82rem; line-height:1.45;
+  pointer-events:auto;
 }
 
 .drill-view-foot {
