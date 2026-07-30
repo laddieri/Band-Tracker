@@ -1007,7 +1007,7 @@ function viewStudentPortal(previewMode = false) {
         </div>
       ` : ''}
 
-      ${hist.length > 0 ? `
+      ${(portalFeatureOn('marks') && hist.length > 0) ? `
         <div class="sec-card">
         <div id="portal-sec-history-hdr" class="sec-hdr" onclick="toggleCollapse('portal-sec-history')">
           <span class="section-title" style="margin:0">Rehearsal History</span>
@@ -1015,14 +1015,11 @@ function viewStudentPortal(previewMode = false) {
         </div>
         <div id="portal-sec-history" class="sec-collapsed">
         ${hist.map(({rehearsal: r, entry: e}) => {
-          // Mark feedback (events + the entry note) is only shown when Marks is
-          // visible to students; otherwise the history shows just dates and any
-          // attendance badges.
-          const showMarks = portalFeatureOn('marks');
-          const noteEvts  = showMarks
-            ? (e.events || []).filter(ev => ev.note?.trim() && (!STATE.hideNegativeFromPortal || ev.type !== 'mistake'))
-            : [];
-          const entryNote = showMarks ? (e.notes || '') : '';
+          // The whole section is gated on Marks being visible to students (its
+          // point is mark feedback — attendance has its own section above). The
+          // mistake events/badges still respect hideNegativeFromPortal.
+          const noteEvts  = (e.events || []).filter(ev => ev.note?.trim() && (!STATE.hideNegativeFromPortal || ev.type !== 'mistake'));
+          const entryNote = e.notes || '';
           const hasDetail = entryNote || noteEvts.length > 0;
           return `
           <div class="portal-rehearsal-card" id="prc-${esc(r.id)}">
@@ -1054,7 +1051,7 @@ function viewStudentPortal(previewMode = false) {
         }).join('')}
         </div>
         </div>
-      ` : `<p class="empty-state" style="padding:24px 0">No rehearsal history yet.</p>`}
+      ` : (portalFeatureOn('marks') ? `<p class="empty-state" style="padding:24px 0">No rehearsal history yet.</p>` : '')}
 
       ${portalFeatureOn('stats') ? `
       <button class="leaderboard-link-btn" onclick="${previewMode ? `previewLeaderboard('${esc(num)}')` : "navigate('leaderboard')"}">
