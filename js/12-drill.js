@@ -883,6 +883,7 @@ function _drillViewInner() {
       <button class="btn btn-sm ${_drillPlaying ? 'btn-primary' : 'btn-secondary'}" onclick="drillPlayToggle()" title="Play / pause">${_drillPlaying ? '⏸' : '▶'}</button>
       <button class="btn btn-sm ${_drillSelectMode ? 'btn-primary' : 'btn-secondary'}" onclick="drillToggleSelectMode()" title="Select sets to trace/play">⛶</button>
       <button class="btn btn-sm btn-secondary" onclick="drillViewFlip()" title="Flip facing">⇅</button>
+      ${_drillHasNotes() ? `<button class="btn btn-sm ${_drillShowNotes ? 'btn-primary' : 'btn-secondary'}" onclick="drillToggleNotes()" title="Show set instructions">📝</button>` : ''}
       <button class="btn btn-sm btn-secondary" onclick="drillViewExpand()" title="Hide header &amp; tabs">⤢</button>
     </div>
 
@@ -895,6 +896,8 @@ function _drillViewInner() {
     </div>
 
     <div class="drill-fs-svg-wrap drill-view-stage" id="drill-stage">${_drillStageInner()}</div>
+
+    ${_drillNotePanelHtml()}
 
     <div class="drill-view-foot">
       <span class="drill-foot-main" id="drill-foot-main">${esc(_drillFootText())}</span>
@@ -1015,6 +1018,27 @@ function _drillFootText() {
   return _drillTraceLabel
     ? `${base} · tracing ${_drillTraceDisplay(_drillTraceLabel)}`
     : `${base} · tap a performer for details`;
+}
+
+// True if any set carries the drill writer's Pyware instruction text.
+function _drillHasNotes() {
+  return !!(_drillPages && _drillPages.some(p => p.note));
+}
+
+// The instruction panel for the current set (its Pyware text box). Hidden while
+// playing, when the toggle is off, or when this set has no text. Shown when the
+// toggle is on so directors can read what happens at each set.
+function _drillNotePanelHtml() {
+  if (!_drillShowNotes || _drillPlaying || !_drillHasNotes()) return '';
+  const note = _drillPages[_drillCurrentSet]?.note;
+  if (!note) return '';
+  return `<div class="drill-view-note" id="drill-view-note">${esc(note).replace(/\n/g, '<br>')}</div>`;
+}
+
+function drillToggleNotes() {
+  _drillShowNotes = !_drillShowNotes;
+  try { localStorage.setItem('drillShowNotes', _drillShowNotes ? '1' : '0'); } catch {}
+  _drillViewRerender();
 }
 
 function _drillSetStripHtml() {

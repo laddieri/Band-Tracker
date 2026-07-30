@@ -395,10 +395,17 @@ describe('suggestSeasonLabel', () => {
 // block whose header is [u16][u16][u16 frameCount][u16 N], then each frame is
 // N 14-byte records (u16 index, i32 X, i32 Y, i32 whose low byte is the symbol)
 // separated by a 4-byte inter-frame header.
-function build3da(frames, N) {
+// `notes` (optional) is parallel to frames: notes[k] is the page text for
+// frame k, written into the inter-frame header that precedes frame k+1 as
+// [u16 blockLen][text] just before the next frame's [u16 N] — exactly how real
+// .3da files carry each page's Pyware text box.
+function build3da(frames, N, notes = []) {
   const REC = 14;
+  const hdrSize = fi => (fi > 0 && notes[fi - 1]) ? (2 + notes[fi - 1].length + 2) : (fi > 0 ? 4 : 0);
+  let interTotal = 0;
+  for (let fi = 1; fi < frames.length; fi++) interTotal += hdrSize(fi);
   const size = 6 /*3DAP+2*/ + 4 /*PAGE*/ + 8 /*hdr*/ +
-    frames.length * N * REC + (frames.length - 1) * 4 /*inter-frame hdrs*/ + 4 /*END */;
+    frames.length * N * REC + interTotal + 4 /*END */;
   const ab = new ArrayBuffer(size);
   const dv = new DataView(ab);
   const u8 = new Uint8Array(ab);
@@ -411,7 +418,12 @@ function build3da(frames, N) {
   dv.setUint16(o, frames.length, false); o += 2;
   dv.setUint16(o, N, false); o += 2;
   frames.forEach((frame, fi) => {
-    if (fi > 0) { dv.setUint16(o, 0, false); o += 2; dv.setUint16(o, N, false); o += 2; }
+    if (fi > 0) {
+      const nt = notes[fi - 1];
+      if (nt) { dv.setUint16(o, 2 + nt.length, false); o += 2; putStr(nt); }
+      else    { dv.setUint16(o, 0, false); o += 2; }
+      dv.setUint16(o, N, false); o += 2; // performer count precedes the records
+    }
     frame.forEach((p, e) => {
       dv.setUint16(o, e + 1, false); o += 2;
       dv.setInt32(o, p.x, false); o += 4;
@@ -453,6 +465,28 @@ describe('Pyware .3da parser', () => {
       { letter: 'A', performers: ['A1', 'A2'] },
       { letter: 'B', performers: ['B1'] },
     ]);
+  });
+
+  it("reads a set's Pyware instruction text (page note), preserving line breaks", () => {
+    const F = [{ x: 0, y: 0, sym: 'A' }, { x: 1250, y: 0, sym: 'A' }];
+    // note for frame 0 lives in the header before frame 1; frame 1 has none.
+    const { pages } = L._parsePywareFile(build3da([F, F], 2, ['Fight Song:\nMT 16\n']));
+    const noted = pages.filter(p => p.note);
+    assert.strictEqual(noted.length, 1);
+    assert.strictEqual(noted[0].count, 0);
+    assert.strictEqual(noted[0].note, 'Fight Song:\nMT 16'); // trailing whitespace trimmed, internal \n kept
+    // a page without text carries no note field at all
+    assert.ok(pages.every(p => p.note === undefined || typeof p.note === 'string'));
+  });
+
+  it('promotes an annotated frame to its own set even without a geometric bend', () => {
+    // Three identical frames (no motion ⇒ no geometric sets past 0), but frame 1
+    // carries page text, so it must appear as a set with that note.
+    const F = [{ x: 0, y: 0, sym: 'A' }, { x: 1250, y: 0, sym: 'A' }];
+    const { pages } = L._parsePywareFile(build3da([F, F, F], 2, ['', 'Halt 8']));
+    const noted = pages.find(p => p.note === 'Halt 8');
+    assert.ok(noted, 'the annotated frame became a set');
+    assert.strictEqual(noted.count, 1);
   });
 
   it('detects marked sets geometrically where trajectories bend', () => {

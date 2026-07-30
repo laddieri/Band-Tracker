@@ -432,8 +432,11 @@ function _hasMarker(u8, str) { return _indexOfMarker(u8, str) >= 0; }
 // { pid, section, stepsX, stepsY } in a stable per-performer order (pid
 // identifies a performer across every frame). setCountsHint: marked-set indices
 // from a file's own set table when it has one; otherwise sets are detected
-// geometrically. Shared by both the .3dj and .3da parsers.
-function _pywareAssembleDrill(rawFrames, N, setCountsHint) {
+// geometrically. frameNotes (optional): per-frame instruction text (the page's
+// Pyware text box) keyed by frame index; a frame that carries text is always
+// treated as a marked set and its text rides along on that page. Shared by both
+// the .3dj and .3da parsers.
+function _pywareAssembleDrill(rawFrames, N, setCountsHint, frameNotes) {
   if (!rawFrames.length) throw new Error('No performer position data found in this file.');
 
   // Assign each performer a fixed drill label from the FIRST frame — section
@@ -477,8 +480,21 @@ function _pywareAssembleDrill(rawFrames, N, setCountsHint) {
     }
   }
 
-  // Each page = a marked set (its count + the formation at that count).
-  const pages = setCounts.filter(c => allFrames[c]).map(c => ({ count: c, performers: allFrames[c] }));
+  // Any frame the drill writer annotated is a named page — make sure it shows
+  // up as a set even if the geometry didn't flag it.
+  if (Array.isArray(frameNotes)) {
+    const seen = new Set(setCounts);
+    frameNotes.forEach((nt, i) => { if (nt && allFrames[i] && !seen.has(i)) { setCounts.push(i); seen.add(i); } });
+    setCounts.sort((a, b) => a - b);
+  }
+
+  // Each page = a marked set (its count + the formation at that count), plus
+  // the set's instruction text when the file carried one.
+  const pages = setCounts.filter(c => allFrames[c]).map(c => {
+    const pg = { count: c, performers: allFrames[c] };
+    if (frameNotes && frameNotes[c]) pg.note = frameNotes[c];
+    return pg;
+  });
   if (!pages.length) pages.push({ count: 0, performers: allFrames[0] });
 
   // Sections (A,B,…) with their performer labels (A1,A2,…A10 in order).
@@ -609,7 +625,7 @@ function _parsePyware3da(u8, view) {
     return r;
   };
 
-  const rawFrames = [];
+  const rawFrames = [], frameNotes = [];
   let o = start, guard = 0;
   while (o <= u8.length - REC && rawFrames.length < 5000 && guard++ <= u8.length) {
     if (frameLenAt(o) < N) { o++; continue; }
@@ -625,14 +641,40 @@ function _parsePyware3da(u8, view) {
       });
     }
     rawFrames.push(frame);
-    o += N * REC;
-    // Skip the inter-frame header to the next frame's first record. Bounded so
-    // a truncated end-of-file tail can't spin.
+    const recEnd = o + N * REC;
+    // Advance to the next real frame (a full 1..N run). The bytes in between are
+    // this frame's inter-frame header, which may carry the page's instruction
+    // text. Bounded so a truncated end-of-file tail can't spin.
+    o = recEnd;
     let hop = 0;
-    while (o + 2 <= u8.length && idxAt(o) !== 1 && hop < 4096) { o++; hop++; }
+    while (o + 2 <= u8.length && frameLenAt(o) < N && hop < 8192) { o++; hop++; }
+    frameNotes.push(_pyware3daPageNote(u8, recEnd, o, N));
   }
 
-  return _pywareAssembleDrill(rawFrames, N);
+  return _pywareAssembleDrill(rawFrames, N, undefined, frameNotes);
+}
+
+// The page's instruction text (its Pyware text box) from a .3da inter-frame
+// header. The header ends with the next frame's [u16 performerCount]; an
+// annotated page stores [u16 blockLen][ASCII text] immediately before it, where
+// blockLen counts the 2-byte length field plus the text. Returns '' when absent.
+function _pyware3daPageNote(u8, gapStart, gapEnd, N) {
+  const textEnd = gapEnd - 2; // the 2 trailing bytes are the next frame's perfcount
+  if (textEnd - gapStart < 3) return '';
+  const u16 = q => (u8[q] << 8) | u8[q + 1];
+  if (u16(textEnd) !== N) return ''; // confirm the trailing perfcount (no next frame ⇒ no note)
+  const printable = b => (b >= 32 && b <= 126) || b === 10 || b === 13 || b === 9;
+  for (let q = gapStart; q < textEnd - 1; q++) {
+    const blockLen = u16(q);
+    if (blockLen < 3 || q + blockLen !== textEnd) continue;
+    let ok = true;
+    for (let i = q + 2; i < textEnd; i++) if (!printable(u8[i])) { ok = false; break; }
+    if (!ok) continue;
+    let s = '';
+    for (let i = q + 2; i < textEnd; i++) s += String.fromCharCode(u8[i]);
+    return s.replace(/\r\n?/g, '\n').replace(/^\s+|\s+$/g, '');
+  }
+  return '';
 }
 
 // ── Node export (browser ignores this) ────────────────────────────────────────
@@ -647,6 +689,6 @@ if (typeof module !== 'undefined' && module.exports) {
     parseCSVLine, parseCSV, COL_ALIASES, normalizeGrade, detectCols,
     suggestSeasonLabel,
     normInstrument, instrOrder, GRADE_LEVELS, filterAndSortStudents,
-    _hasMarker, _indexOfMarker, _parsePywareFile, _pywareAssembleDrill,
+    _hasMarker, _indexOfMarker, _parsePywareFile, _pywareAssembleDrill, _pyware3daPageNote,
   };
 }
