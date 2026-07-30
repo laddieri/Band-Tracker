@@ -267,6 +267,43 @@ function detectCols(headers, customFields = []) {
   return map;
 }
 
+// ── Per-drill spot assignments (CSV) ─────────────────────────────────────────
+// A drill's spot map links each performer label ("A1", "M1") to a student
+// number, per show. Bulk-assigned from a two-column CSV (label + student
+// number); the viewer UI (js/12-drill.js) applies the returned delta.
+
+const DRILL_LABEL_ALIASES = ['label','spot','position','pos','drill label','drill spot','dot','performer'];
+
+// Build a spot-map delta from CSV text. Returns:
+//   { assign:{LABEL:number}, unset:[LABEL], unknown:[{label,number}], rows, error? }
+// A row with a label + known number assigns; a label with a blank number unsets
+// that spot; a label with a number not on the roster is reported (not applied).
+// Labels are upper-cased to match the parser's labels. `validNumbers` is a Set
+// (or array) of roster student numbers as strings; pass an empty set to skip the
+// roster check.
+function buildDrillSpotAssignments(text, validNumbers) {
+  const rows = parseCSV(text);
+  const empty = { assign: {}, unset: [], unknown: [], rows: 0 };
+  if (!rows.length) return empty;
+  const headers  = rows[0].map(h => (h || '').toLowerCase().trim());
+  const labelIdx = headers.findIndex(h => DRILL_LABEL_ALIASES.includes(h));
+  const numIdx   = headers.findIndex(h => COL_ALIASES.number.includes(h));
+  if (labelIdx === -1 || numIdx === -1) return { ...empty, error: 'columns' };
+  const valid = validNumbers instanceof Set ? validNumbers : new Set(validNumbers || []);
+  const assign = {}, unset = [], unknown = [];
+  let seen = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const label = (rows[i][labelIdx] || '').trim().toUpperCase();
+    if (!label) continue;
+    seen++;
+    const num = (rows[i][numIdx] || '').trim();
+    if (!num)                              { unset.push(label); continue; }
+    if (valid.size && !valid.has(num))     { unknown.push({ label, number: num }); continue; }
+    assign[label] = num;
+  }
+  return { assign, unset, unknown, rows: seen };
+}
+
 // ── Instruments, grades, and the list filter/sort engine ─────────────────────
 
 // Strip the numeric prefix some imports carry ("12 Trumpet" → "Trumpet").
@@ -687,6 +724,7 @@ if (typeof module !== 'undefined' && module.exports) {
     lbWeights, scoreStudentsCore, buildPublicStats,
     checkAutoMarkCondition, computeAutoMarkEvents,
     parseCSVLine, parseCSV, COL_ALIASES, normalizeGrade, detectCols,
+    DRILL_LABEL_ALIASES, buildDrillSpotAssignments,
     suggestSeasonLabel,
     normInstrument, instrOrder, GRADE_LEVELS, filterAndSortStudents,
     _hasMarker, _indexOfMarker, _parsePywareFile, _pywareAssembleDrill, _pyware3daPageNote,

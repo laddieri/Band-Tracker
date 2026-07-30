@@ -505,6 +505,45 @@ describe('Pyware .3da parser', () => {
   });
 });
 
+describe('buildDrillSpotAssignments (per-drill spot CSV)', () => {
+  const roster = new Set(['1', '42', '7']);
+
+  it('assigns labels to known student numbers (labels upper-cased)', () => {
+    const csv = 'Label,Student Number\nA1,42\nm3,7\n';
+    const r = L.buildDrillSpotAssignments(csv, roster);
+    assert.deepStrictEqual(r.assign, { A1: '42', M3: '7' });
+    assert.deepStrictEqual(r.unset, []);
+    assert.deepStrictEqual(r.unknown, []);
+  });
+
+  it('treats a blank number as un-assigning that spot', () => {
+    const r = L.buildDrillSpotAssignments('Label,Student Number\nA1,42\nB2,\n', roster);
+    assert.deepStrictEqual(r.assign, { A1: '42' });
+    assert.deepStrictEqual(r.unset, ['B2']);
+  });
+
+  it('reports numbers not on the roster instead of applying them', () => {
+    const r = L.buildDrillSpotAssignments('Label,Student Number\nA1,999\n', roster);
+    assert.deepStrictEqual(r.assign, {});
+    assert.deepStrictEqual(r.unknown, [{ label: 'A1', number: '999' }]);
+  });
+
+  it('accepts header aliases (spot / #) and ignores extra columns', () => {
+    const r = L.buildDrillSpotAssignments('Name,Spot,#\nJane,A1,42\n', roster);
+    assert.deepStrictEqual(r.assign, { A1: '42' });
+  });
+
+  it('flags a missing label or number column', () => {
+    assert.strictEqual(L.buildDrillSpotAssignments('Name,Instrument\nJane,Trumpet\n', roster).error, 'columns');
+  });
+
+  it('skips the roster check when no valid set is given', () => {
+    const r = L.buildDrillSpotAssignments('Label,Student Number\nA1,999\n', new Set());
+    assert.deepStrictEqual(r.assign, { A1: '999' });
+    assert.deepStrictEqual(r.unknown, []);
+  });
+});
+
 describe('Pyware file format dispatch', () => {
   const buf = bytes => new Uint8Array(bytes).buffer;
   const strBytes = s => [...s].map(c => c.charCodeAt(0));
