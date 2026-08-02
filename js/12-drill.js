@@ -197,13 +197,15 @@ function _activeDrillMapping() {
 }
 
 // All students at a spot (a spot may be shared by more than one student).
-// Resolution: the drill's own assignment, then the legacy band-wide mapping,
-// then the column/row block-spot match.
+// Resolution per label: an explicit per-drill entry wins — even an empty one,
+// which means the spot was deliberately cleared, so it does NOT fall back to a
+// block-spot match (that's what let a removed student reappear). Then the legacy
+// band-wide mapping, then the column/row block-spot match.
 function drillStudentNumsByLabel(label) {
-  const perDrill = drillSpotNums(_activeDrillMapping()[label]);
-  if (perDrill.length) return perDrill;
-  const g = drillSpotNums((STATE.pywareMapping || {})[label]);
-  if (g.length) return g;
+  const m = _activeDrillMapping();
+  if (Object.prototype.hasOwnProperty.call(m, label)) return drillSpotNums(m[label]);
+  const g = STATE.pywareMapping || {};
+  if (Object.prototype.hasOwnProperty.call(g, label)) return drillSpotNums(g[label]);
   const pos = _drillPosIndex()[(label || '').toUpperCase()];
   return pos ? [String(pos)] : [];
 }
@@ -815,6 +817,7 @@ function _renderDrillMappingModal() {
   const posIdx = _drillPosIndex();
   const sec = sections[_drillMappingSection];
   const rows = sec.performers.map(label => {
+    const hasExplicit = Object.prototype.hasOwnProperty.call(mapping, label);
     const explicit = drillSpotNums(mapping[label]);
     // A shared spot (2+ students) is shown read-only here — edit it by tapping
     // the dot on the chart or via CSV, so the dropdown can't silently drop a
@@ -827,9 +830,10 @@ function _renderDrillMappingModal() {
           <div class="drill-map-shared">${esc(names)} <span style="color:var(--text-muted)">· tap the dot to edit</span></div>
         </div>`;
     }
-    // Pre-select the effective student: explicit override, else block-spot match.
-    const currentNum = explicit[0] || posIdx[label.toUpperCase()] || '';
-    const auto = !explicit.length && posIdx[label.toUpperCase()];
+    // Pre-select the effective student: an explicit entry (incl. a cleared one)
+    // wins; only an untouched spot pre-fills from the block-spot match.
+    const currentNum = hasExplicit ? (explicit[0] || '') : (posIdx[label.toUpperCase()] || '');
+    const auto = !hasExplicit && posIdx[label.toUpperCase()];
     return `
       <div class="drill-map-row">
         <div class="drill-map-pos">${esc(label)}${auto ? `<span class="drill-map-auto" title="Matched to block spot ${esc(label)}">auto</span>` : ''}</div>
@@ -879,27 +883,29 @@ function drillMappingChange(label, studentNum) {
   _saveDrillMapping(id, mapping);
 }
 
-// Add a student to a spot (making it a shared spot if it already has one).
+// Add/remove operate on what the panel actually SHOWS (the effective list,
+// which may include a block-spot auto-match), then write it back explicitly.
+// This makes the panel WYSIWYG: ✕ always removes the person you see, and an
+// emptied spot is stored as an explicit [] ("cleared") so the auto-match can't
+// re-fill it.
 function drillSpotAddStudent(label, num) {
   if (!num) return;
   const id = STATE.activeDrillId, drill = id ? STATE.drills[id] : null;
   if (!drill) return;
   const mapping = { ...(drill.mapping || {}) };
-  const cur = drillSpotNums(mapping[label]);
+  const cur = drillStudentNumsByLabel(label);
   if (!cur.includes(String(num))) cur.push(String(num));
   mapping[label] = cur.length === 1 ? cur[0] : cur;
   _saveDrillMapping(id, mapping);
   _drillRefreshCurrent();
 }
 
-// Remove one student from a spot.
 function drillSpotRemoveStudent(label, num) {
   const id = STATE.activeDrillId, drill = id ? STATE.drills[id] : null;
   if (!drill) return;
   const mapping = { ...(drill.mapping || {}) };
-  const cur = drillSpotNums(mapping[label]).filter(n => n !== String(num));
-  if (cur.length) mapping[label] = cur.length === 1 ? cur[0] : cur;
-  else delete mapping[label];
+  const cur = drillStudentNumsByLabel(label).filter(n => n !== String(num));
+  mapping[label] = cur.length === 1 ? cur[0] : cur; // [] ⇒ explicitly cleared
   _saveDrillMapping(id, mapping);
   _drillRefreshCurrent();
 }
