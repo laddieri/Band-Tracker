@@ -13,6 +13,10 @@
 // Tracks which drill's heavy position payload is currently in _drillData/_drillPages.
 let _activeDrillLoadedId = null;
 
+// A parsed drill file waiting for the user to pick which show it belongs to
+// (set by _onDrillFileLoaded, consumed by _drillCommitImport).
+let _drillPendingImport = null;
+
 function _drillFileInput() {
   let inp = document.getElementById('drill-file-input');
   if (!inp) {
@@ -84,37 +88,138 @@ function _onDrillFileLoaded(file) {
   reader.onload = e => {
     try {
       const parsed = _parsePywareFile(e.target.result);
-      const ref    = orgCol('drills').doc();
-      const meta   = {
-        name:           file.name.replace(/\.3d[ja]$/i, ''),
-        fileName:       file.name,
-        setCount:       parsed.pages.length,
-        performerCount: parsed.pages[0]?.performers?.length || 0,
-        flipV:          false,
-        createdAt:      firebase.firestore.FieldValue.serverTimestamp(),
-        by:             STATE.user?.uid || null,
-      };
-      ref.set(meta)
-        .then(() => ref.collection('data').doc('main').set({ sections: parsed.sections, pages: parsed.pages }))
-        .then(() => orgCol('settings').doc('drill').set({ activeId: ref.id }, { merge: true }))
-        .catch(err => { console.error(err); showToast('Could not save the drill.'); });
-
-      // Optimistic local update so the new drill is active immediately.
-      STATE.drills[ref.id] = { id: ref.id, ...meta };
-      STATE.activeDrillId  = ref.id;
-      _activeDrillLoadedId = ref.id;
-      _drillData = parsed.sections; _drillPages = parsed.pages;
-      _drillFileName = meta.name; _drillFlipV = false;
-      _drillTraceLabel = null; _drillSelLabel = null; _drillSearchQuery = ''; _drillTraceSets = []; _drillSelectMode = false; if (typeof _drillPlayStop === "function") _drillPlayStop(); _drillCurrentSet = 0;
-
-      if (_view === 'drill')                                  render();
-      else if (document.getElementById('drill-library-modal')) showDrillLibraryModal();
-      else                                                     showDrillPickModal();
+      // Remember where import began so we can return there after the chooser
+      // (which replaces whatever modal was open).
+      const origin = document.getElementById('drill-library-modal') ? 'library'
+                   : (_view === 'drill' ? 'tab' : 'picker');
+      _drillPendingImport = { file, parsed, origin };
+      _showDrillShowChooser(); // ask which show this drill belongs to, then commit
     } catch (err) {
       _showDrillImportError(err);
     }
   };
   reader.readAsArrayBuffer(file);
+}
+
+// Step 2 of import: pick the show. Adding the drill to an existing show makes it
+// inherit that show's spot map (letters & numbers) with no re-entry; "New show"
+// starts a fresh map. Defaults to the show you're already viewing.
+function _showDrillShowChooser() {
+  const pend = _drillPendingImport;
+  if (!pend) return;
+  const base = pend.file.name.replace(/\.3d[ja]$/i, '');
+  const sel  = _activeShow()?.id || 'new';
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Add “${esc(base)}” to a show</div>
+    <p class="modal-sub" style="margin:0 0 12px">A <strong>show</strong> groups drills that share one set of spot assignments. Add this drill to the show it belongs to and it takes on that show's letters &amp; numbers automatically — no re-entry. Or start a new show.</p>
+    <div class="drill-show-choices">${_showChooserHtml(sel, base)}</div>
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn btn-secondary" onclick="_drillCancelImport()">Cancel</button>
+      <button class="btn btn-primary" onclick="_drillCommitImport()">Add drill</button>
+    </div>
+  `);
+}
+
+function _drillCancelImport() {
+  _drillPendingImport = null;
+  closeModal();
+}
+
+// Radio list of existing shows (+ a "New show" row with a name field), shared by
+// the import and "move to show" flows. `selectedId` is a show id or 'new'.
+function _showChooserHtml(selectedId, defaultName) {
+  const shows = _drillShowsSorted();
+  const rows = shows.map(s => {
+    const n = Object.values(STATE.drills || {}).filter(d => d.showId === s.id).length;
+    return `
+      <label class="drill-show-choice">
+        <input type="radio" name="drill-show-choice" value="${esc(s.id)}"${selectedId === s.id ? ' checked' : ''}>
+        <span class="drill-show-choice-name">${esc(s.name || 'Show')}</span>
+        <span class="drill-show-choice-meta">${n} drill${n !== 1 ? 's' : ''}</span>
+      </label>`;
+  }).join('');
+  const newChecked = selectedId === 'new' || !shows.length;
+  return `
+    ${rows}
+    <label class="drill-show-choice drill-show-choice--new">
+      <input type="radio" name="drill-show-choice" value="new"${newChecked ? ' checked' : ''}
+        onchange="if(this.checked){var i=document.getElementById('drill-new-show-name');if(i)i.focus();}">
+      <span class="drill-show-choice-name">＋ New show</span>
+    </label>
+    <input class="form-input" id="drill-new-show-name" type="text" maxlength="80"
+      placeholder="Show name" value="${esc(defaultName || '')}" style="margin-top:8px"
+      onfocus="_drillPickNewShow()">`;
+}
+
+function _drillPickNewShow() {
+  const r = document.querySelector('input[name="drill-show-choice"][value="new"]');
+  if (r) r.checked = true;
+}
+
+// Shows sorted oldest-first for a stable listing.
+function _drillShowsSorted() {
+  return Object.values(STATE.shows || {}).sort((a, b) => {
+    const ta = a.createdAt?.seconds || 0, tb = b.createdAt?.seconds || 0;
+    if (ta !== tb) return ta - tb;
+    return (a.name || '').localeCompare(b.name || '');
+  });
+}
+
+// Resolve the show-chooser's current selection to a show id, creating a new show
+// (with an empty map) when "New show" is picked. Returns null on nothing chosen.
+function _resolveChosenShowId(defaultName) {
+  const sel    = document.querySelector('input[name="drill-show-choice"]:checked');
+  const choice = sel ? sel.value : 'new';
+  if (choice !== 'new') return choice;
+  const nameEl = document.getElementById('drill-new-show-name');
+  const name   = (nameEl?.value || '').trim() || defaultName || 'Show';
+  const sref   = orgCol('shows').doc();
+  const meta   = { name, mapping: {}, createdAt: firebase.firestore.FieldValue.serverTimestamp(), by: STATE.user?.uid || null };
+  sref.set(meta).catch(e => _toastSaveError(e, 'The show'));
+  STATE.shows[sref.id] = { id: sref.id, ...meta }; // optimistic
+  return sref.id;
+}
+
+// Step 3 of import: create the drill doc (tagged with its show), store the heavy
+// payload, and make it the active chart.
+function _drillCommitImport() {
+  const pend = _drillPendingImport;
+  if (!pend) return;
+  const { file, parsed, origin } = pend;
+  const base   = file.name.replace(/\.3d[ja]$/i, '');
+  const showId = _resolveChosenShowId(base);
+  if (!showId) return;
+  _drillPendingImport = null;
+
+  const ref  = orgCol('drills').doc();
+  const meta = {
+    name:           base,
+    fileName:       file.name,
+    setCount:       parsed.pages.length,
+    performerCount: parsed.pages[0]?.performers?.length || 0,
+    flipV:          false,
+    showId,
+    createdAt:      firebase.firestore.FieldValue.serverTimestamp(),
+    by:             STATE.user?.uid || null,
+  };
+  ref.set(meta)
+    .then(() => ref.collection('data').doc('main').set({ sections: parsed.sections, pages: parsed.pages }))
+    .then(() => orgCol('settings').doc('drill').set({ activeId: ref.id }, { merge: true }))
+    .catch(err => { console.error(err); showToast('Could not save the drill.'); });
+
+  // Optimistic local update so the new drill is active immediately.
+  STATE.drills[ref.id] = { id: ref.id, ...meta };
+  STATE.activeDrillId  = ref.id;
+  _activeDrillLoadedId = ref.id;
+  _drillData = parsed.sections; _drillPages = parsed.pages;
+  _drillFileName = meta.name; _drillFlipV = false;
+  _drillTraceLabel = null; _drillSelLabel = null; _drillSearchQuery = ''; _drillTraceSets = []; _drillSelectMode = false; if (typeof _drillPlayStop === "function") _drillPlayStop(); _drillCurrentSet = 0;
+
+  closeModal();
+  if (_view === 'drill')          render();
+  else if (origin === 'library')  showDrillLibraryModal();
+  else                            showDrillPickModal();
 }
 
 // Drill import failed. Known, self-inflicted cases (a .3dz package, or the
@@ -171,6 +276,31 @@ function _migrateLegacyDrill(d) {
     .catch(e => console.error('legacy drill migration failed:', e));
 }
 
+// One-time, idempotent migration (director-only): give every ungrouped drill its
+// own show carrying its current spot map, so the app has a single home for the
+// shared mapping. Existing drills keep working via the drill-doc fallback until
+// this runs; afterward the user can regroup drills (move them into one show, or
+// pick a show when uploading the next file) so they share one map. A deterministic
+// show id keeps racing directors from creating duplicates.
+const _drillShowMigrating = new Set();
+function _migrateDrillShows() {
+  if (!STATE.isAdmin) return; // directors only (staff can't write shows/drills)
+  Object.values(STATE.drills || {}).forEach(d => {
+    if (!d || d.showId || _drillShowMigrating.has(d.id)) return;
+    const showId = 'show_' + d.id; // deterministic ⇒ idempotent across clients
+    _drillShowMigrating.add(d.id);
+    orgCol('shows').doc(showId).set({
+      name:      d.name || d.fileName || 'Show',
+      mapping:   d.mapping || {},
+      createdAt: d.createdAt || firebase.firestore.FieldValue.serverTimestamp(),
+      by:        d.by || STATE.user?.uid || null,
+    }, { merge: true })
+      .then(() => orgCol('drills').doc(d.id).update({ showId }))
+      .catch(e => console.error('drill→show migration failed:', e))
+      .finally(() => _drillShowMigrating.delete(d.id));
+  });
+}
+
 let _drillActiveSection = 0;
 let _drillChecked = new Set(); // selected performer indices
 
@@ -188,10 +318,23 @@ function _drillPosIndex() {
   return idx;
 }
 
-// The active drill's own label → student map (its per-show spot assignments,
-// stored on the drill doc). Each show maps independently, so a student can be
+// The show the active drill belongs to (null if it isn't grouped into one).
+// A show owns the shared label → student spot map for all its drills, so an
+// assignment made on one drill carries over to every other drill in the show —
+// including files uploaded later — with no re-entry.
+function _activeShow() {
+  const d = (STATE.drills && STATE.activeDrillId) ? STATE.drills[STATE.activeDrillId] : null;
+  const sid = d && d.showId;
+  return (sid && STATE.shows) ? (STATE.shows[sid] || null) : null;
+}
+
+// The active drill's effective label → student map. When the drill is grouped
+// into a show, that's the show's shared map; otherwise it's the drill's own
+// (legacy/ungrouped) map. Each show maps independently, so a student can be
 // "M1" pregame and "X5" at halftime without collisions.
 function _activeDrillMapping() {
+  const show = _activeShow();
+  if (show) return show.mapping || {};
   const d = (STATE.drills && STATE.activeDrillId) ? STATE.drills[STATE.activeDrillId] : null;
   return (d && d.mapping) || {};
 }
@@ -879,7 +1022,9 @@ function _renderDrillMappingModal() {
   if (!STATE.isAdmin) return;
   const sections = _drillData;
   const mapping  = _activeDrillMapping();
-  const drillName = STATE.drills[STATE.activeDrillId]?.name || _drillFileName || 'this drill';
+  const show      = _activeShow();
+  const drillName = show ? (show.name || 'this show')
+                         : (STATE.drills[STATE.activeDrillId]?.name || _drillFileName || 'this drill');
   const students = Object.values(STATE.students).sort((a, b) =>
     (a.name || '').localeCompare(b.name || ''));
 
@@ -923,7 +1068,7 @@ function _renderDrillMappingModal() {
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Spots for ${esc(drillName)}</div>
-    <p class="modal-sub" style="margin:0 0 10px">Assign this show's spots to students — each drill has its own map, so students can have different spots per show. Unset "auto" rows fall back to a student's block spot (column&nbsp;+&nbsp;row). Saved automatically.</p>
+    <p class="modal-sub" style="margin:0 0 10px">Assign this show's spots to students. ${show ? `Every drill in <strong>${esc(show.name || 'this show')}</strong> shares these assignments, so a new drill file for the show inherits them.` : `Each show maps independently, so a student can have different spots per show.`} Unset "auto" rows fall back to a student's block spot (column&nbsp;+&nbsp;row). Saved automatically.</p>
     <button class="btn btn-secondary btn-full" style="margin-bottom:10px" onclick="showDrillSpotImportModal()">⬆︎ Import / export spots (CSV)</button>
     <div class="drill-tabs">${renderSectionTabs()}</div>
     <div class="drill-map-list" id="drill-map-list">${rows}</div>
@@ -938,11 +1083,20 @@ function drillMappingSetSection(idx) {
   _renderDrillMappingModal();
 }
 
-// Persist the active drill's spot map. Uses update() (not set-merge) so
-// clearing a spot actually removes it — set with merge deep-merges maps and
-// would keep cleared keys. A small write that never touches the roster.
-function _saveDrillMapping(id, mapping) {
-  const drill = id ? STATE.drills[id] : null;
+// Persist the active drill's effective spot map. Writes to the SHOW doc when
+// the drill is grouped into one (so the change carries across every drill in the
+// show), otherwise to the drill doc (ungrouped/legacy). Uses update() (not
+// set-merge) so clearing a spot actually removes it — set with merge deep-merges
+// maps and would keep cleared keys. A small write that never touches the roster.
+function _saveActiveMapping(mapping) {
+  const show = _activeShow();
+  if (show) {
+    show.mapping = mapping; // optimistic; the shows listener will confirm
+    orgCol('shows').doc(show.id).update({ mapping })
+      .catch(e => _toastSaveError(e, 'The spot assignment'));
+    return;
+  }
+  const id = STATE.activeDrillId, drill = id ? STATE.drills[id] : null;
   if (!drill) return;
   drill.mapping = mapping; // optimistic; the drills listener will confirm
   orgCol('drills').doc(id).update({ mapping })
@@ -951,12 +1105,11 @@ function _saveDrillMapping(id, mapping) {
 
 // Set a spot to a single student (or clear it) — the mapping modal's dropdown.
 function drillMappingChange(label, studentNum) {
-  const id = STATE.activeDrillId, drill = id ? STATE.drills[id] : null;
-  if (!drill) return;
-  const mapping = { ...(drill.mapping || {}) };
+  if (!STATE.activeDrillId) return;
+  const mapping = { ..._activeDrillMapping() };
   if (studentNum) mapping[label] = String(studentNum);
   else delete mapping[label];
-  _saveDrillMapping(id, mapping);
+  _saveActiveMapping(mapping);
 }
 
 // Add/remove operate on what the panel actually SHOWS (the effective list,
@@ -965,24 +1118,21 @@ function drillMappingChange(label, studentNum) {
 // emptied spot is stored as an explicit [] ("cleared") so the auto-match can't
 // re-fill it.
 function drillSpotAddStudent(label, num) {
-  if (!num) return;
-  const id = STATE.activeDrillId, drill = id ? STATE.drills[id] : null;
-  if (!drill) return;
-  const mapping = { ...(drill.mapping || {}) };
+  if (!num || !STATE.activeDrillId) return;
+  const mapping = { ..._activeDrillMapping() };
   const cur = drillStudentNumsByLabel(label);
   if (!cur.includes(String(num))) cur.push(String(num));
   mapping[label] = cur.length === 1 ? cur[0] : cur;
-  _saveDrillMapping(id, mapping);
+  _saveActiveMapping(mapping);
   _drillRefreshCurrent();
 }
 
 function drillSpotRemoveStudent(label, num) {
-  const id = STATE.activeDrillId, drill = id ? STATE.drills[id] : null;
-  if (!drill) return;
-  const mapping = { ...(drill.mapping || {}) };
+  if (!STATE.activeDrillId) return;
+  const mapping = { ..._activeDrillMapping() };
   const cur = drillStudentNumsByLabel(label).filter(n => n !== String(num));
   mapping[label] = cur.length === 1 ? cur[0] : cur; // [] ⇒ explicitly cleared
-  _saveDrillMapping(id, mapping);
+  _saveActiveMapping(mapping);
   _drillRefreshCurrent();
 }
 
@@ -1035,7 +1185,7 @@ function downloadDrillSpotTemplate() {
 
 function showDrillSpotImportModal() {
   if (!STATE.isAdmin || !_drillData) return;
-  const drillName = STATE.drills[STATE.activeDrillId]?.name || _drillFileName || 'this drill';
+  const drillName = _activeShow()?.name || STATE.drills[STATE.activeDrillId]?.name || _drillFileName || 'this drill';
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Import spots — ${esc(drillName)}</div>
@@ -1060,7 +1210,7 @@ function drillSpotImportFile(event) {
   const file = event.target.files[0];
   event.target.value = '';
   if (!file) return;
-  const drillName = STATE.drills[STATE.activeDrillId]?.name || _drillFileName || 'this drill';
+  const drillName = _activeShow()?.name || STATE.drills[STATE.activeDrillId]?.name || _drillFileName || 'this drill';
   const reader = new FileReader();
   reader.onload = e => {
     const validNums = new Set(Object.keys(STATE.students));
@@ -1097,9 +1247,8 @@ function _drillSpotMsg(html) {
 
 function drillSpotApplyImport() {
   const res = _drillSpotPendingResult;
-  const id = STATE.activeDrillId, drill = id ? STATE.drills[id] : null;
-  if (!res || !drill) return;
-  _saveDrillMapping(id, res.mapping);
+  if (!res || !STATE.activeDrillId) return;
+  _saveActiveMapping(res.mapping);
   _drillSpotPendingResult = null;
   closeModal();
   showToast(`Spots updated — ${res.assigned} assigned${res.cleared ? `, ${res.cleared} unassigned` : ''}.`);
@@ -1137,13 +1286,18 @@ function _drillViewInner() {
   const total = _drillPages.length;
   const count = Object.keys(STATE.drills || {}).length;
   const name  = STATE.drills[STATE.activeDrillId]?.name || _drillFileName || 'Drill';
+  const show  = _activeShow();
+  const inShow = show ? Object.values(STATE.drills || {}).filter(d => d.showId === show.id).length : 0;
+  const meta  = show
+    ? `${esc(show.name || 'Show')} · ${inShow} drill${inShow !== 1 ? 's' : ''} · tap to switch`
+    : (count > 1 ? `${count} drills · tap to switch` : 'Tap to manage library');
 
   return `
     <button class="drill-switcher" onclick="showDrillLibraryModal()">
       <span class="drill-switcher-ico">📚</span>
       <span class="drill-switcher-text">
         <span class="drill-switcher-name">${esc(name)}</span>
-        <span class="drill-switcher-meta">${count > 1 ? `${count} drills · tap to switch` : 'Tap to manage library'}</span>
+        <span class="drill-switcher-meta">${meta}</span>
       </span>
       <span class="drill-switcher-caret">▾</span>
     </button>
@@ -1685,37 +1839,128 @@ function _drillSortedIds() {
   });
 }
 
+// One drill row in the library list.
+function _drillLibRowHtml(id) {
+  const d = STATE.drills[id];
+  const active = id === STATE.activeDrillId;
+  const sets = d.setCount || 0;
+  const sub  = `${sets} set${sets !== 1 ? 's' : ''}${d.performerCount ? ` · ${d.performerCount} performers` : ''}`;
+  return `
+    <div class="drill-lib-row${active ? ' drill-lib-row--active' : ''}">
+      <button class="drill-lib-main" onclick="drillActivate('${esc(id)}')">
+        <div class="drill-lib-name">${esc(d.name || d.fileName || 'Drill')}${active ? '<span class="drill-lib-badge">active</span>' : ''}</div>
+        <div class="drill-lib-sub">${esc(sub)}</div>
+      </button>
+      ${STATE.isAdmin ? `
+      <button class="drill-lib-act" onclick="drillMoveToShowPrompt('${esc(id)}')" title="Move to another show" aria-label="Move to another show">⇄</button>
+      <button class="drill-lib-act" onclick="drillRenamePrompt('${esc(id)}')" title="Rename" aria-label="Rename">✎</button>
+      <button class="drill-lib-act drill-lib-act--danger" onclick="drillDeletePrompt('${esc(id)}')" title="Delete" aria-label="Delete">🗑</button>` : ''}
+    </div>`;
+}
+
 function showDrillLibraryModal() {
   if (!canRecord()) return;
   const ids = _drillSortedIds();
-  const rows = ids.map(id => {
-    const d = STATE.drills[id];
-    const active = id === STATE.activeDrillId;
-    const sets = d.setCount || 0;
-    const sub  = `${sets} set${sets !== 1 ? 's' : ''}${d.performerCount ? ` · ${d.performerCount} performers` : ''}`;
-    return `
-      <div class="drill-lib-row${active ? ' drill-lib-row--active' : ''}">
-        <button class="drill-lib-main" onclick="drillActivate('${esc(id)}')">
-          <div class="drill-lib-name">${esc(d.name || d.fileName || 'Drill')}${active ? '<span class="drill-lib-badge">active</span>' : ''}</div>
-          <div class="drill-lib-sub">${esc(sub)}</div>
-        </button>
-        ${STATE.isAdmin ? `
-        <button class="drill-lib-act" onclick="drillRenamePrompt('${esc(id)}')" title="Rename" aria-label="Rename">✎</button>
-        <button class="drill-lib-act drill-lib-act--danger" onclick="drillDeletePrompt('${esc(id)}')" title="Delete" aria-label="Delete">🗑</button>` : ''}
+  // Group drills by show. `ids` is newest-first, so first-seen order puts the
+  // most recently used show on top; each group lists its drills newest-first.
+  const groups = new Map(); // showId ('' = ungrouped) → [drillId]
+  ids.forEach(id => {
+    const sid = STATE.drills[id].showId || '';
+    if (!groups.has(sid)) groups.set(sid, []);
+    groups.get(sid).push(id);
+  });
+
+  const groupsHtml = [...groups.entries()].map(([sid, gids]) => {
+    const show     = sid && STATE.shows[sid];
+    const showName = show ? (show.name || 'Show') : 'Ungrouped';
+    const head = `
+      <div class="drill-lib-group-head">
+        <span class="drill-lib-group-name">📁 ${esc(showName)}</span>
+        ${(show && STATE.isAdmin) ? `<button class="drill-lib-act" onclick="drillShowRenamePrompt('${esc(sid)}')" title="Rename show" aria-label="Rename show">✎</button>` : ''}
       </div>`;
+    return `<div class="drill-lib-group">${head}<div class="drill-lib-list">${gids.map(_drillLibRowHtml).join('')}</div></div>`;
   }).join('');
+
   openModal(`
     <div id="drill-library-modal">
       <div class="modal-handle"></div>
       <div class="modal-title">Drill Library</div>
-      <p class="modal-sub" style="margin:0 0 10px">Tap a drill to make it the active field chart for everyone.</p>
-      ${ids.length ? `<div class="drill-lib-list">${rows}</div>` : `<p style="color:var(--text-muted);text-align:center;padding:20px 0">No drills saved yet.</p>`}
+      <p class="modal-sub" style="margin:0 0 10px">Drills are grouped by <strong>show</strong> — all drills in a show share one set of spot assignments. Tap a drill to make it the active field chart for everyone.</p>
+      ${ids.length ? groupsHtml : `<p style="color:var(--text-muted);text-align:center;padding:20px 0">No drills saved yet.</p>`}
       ${STATE.isAdmin ? `<button class="btn btn-secondary btn-full" style="margin-top:12px" onclick="drillAddFile()">＋ Add drill file</button>` : ''}
       <div class="modal-actions" style="margin-top:8px">
         <button class="btn btn-secondary btn-full" onclick="closeModal()">Done</button>
       </div>
     </div>
   `);
+}
+
+// Rename a show (its shared-map group). Director-only.
+function drillShowRenamePrompt(showId) {
+  const s = STATE.shows[showId];
+  if (!s || !STATE.isAdmin) return;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Rename Show</div>
+    <input class="form-input" id="drill-show-rename-input" type="text" maxlength="80"
+           value="${esc(s.name || '')}" placeholder="Show name" autocomplete="off">
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn btn-secondary" onclick="showDrillLibraryModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="drillShowRenameSave('${esc(showId)}')">Save</button>
+    </div>
+  `);
+  setTimeout(() => { const el = document.getElementById('drill-show-rename-input'); if (el) { el.focus(); el.select(); } }, 50);
+}
+
+function drillShowRenameSave(showId) {
+  const el = document.getElementById('drill-show-rename-input');
+  const name = (el?.value || '').trim();
+  if (!name) { showToast('Enter a name.'); return; }
+  if (STATE.shows[showId]) STATE.shows[showId].name = name;
+  orgCol('shows').doc(showId).set({ name }, { merge: true }).catch(e => console.error(e));
+  showDrillLibraryModal();
+  if (_view === 'drill' && _activeShow()?.id === showId) { const r = document.getElementById('drill-view-root'); if (r) _drillViewRerender(); }
+}
+
+// Move a drill into a different show (or a new one): it takes on that show's
+// spot assignments. Director-only.
+function drillMoveToShowPrompt(id) {
+  const d = STATE.drills[id];
+  if (!d || !STATE.isAdmin) return;
+  const base = d.name || d.fileName || 'Show';
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Move “${esc(base)}” to a show</div>
+    <p class="modal-sub" style="margin:0 0 12px">Pick the show this drill belongs to — it takes on that show's spot assignments. Or start a new show.</p>
+    <div class="drill-show-choices">${_showChooserHtml(d.showId || 'new', base)}</div>
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn btn-secondary" onclick="showDrillLibraryModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="drillMoveToShowCommit('${esc(id)}')">Move</button>
+    </div>
+  `);
+}
+
+function drillMoveToShowCommit(id) {
+  const d = STATE.drills[id];
+  if (!d) return;
+  const base   = d.name || d.fileName || 'Show';
+  const showId = _resolveChosenShowId(base);
+  if (!showId || showId === d.showId) { showDrillLibraryModal(); return; }
+  const oldShowId = d.showId;
+  d.showId = showId; // optimistic
+  orgCol('drills').doc(id).set({ showId }, { merge: true })
+    .then(() => _cleanupEmptyShow(oldShowId))
+    .catch(e => _toastSaveError(e, 'Moving the drill'));
+  showDrillLibraryModal();
+  if (_view === 'drill' && id === STATE.activeDrillId) render();
+}
+
+// Delete a show doc once its last drill has left it, so empty groups don't linger.
+function _cleanupEmptyShow(showId) {
+  if (!showId || !STATE.shows[showId]) return;
+  if (Object.values(STATE.drills || {}).some(d => d.showId === showId)) return; // still in use
+  delete STATE.shows[showId];
+  orgCol('shows').doc(showId).delete().catch(() => {});
 }
 
 function drillActivate(id) {
@@ -1759,7 +2004,7 @@ function drillDeletePrompt(id) {
   if (!d) return;
   showConfirmModal(
     'Delete drill?',
-    `Remove “${esc(d.name || d.fileName || 'this drill')}” from the library? This can’t be undone. Position mapping is kept.`,
+    `Remove “${esc(d.name || d.fileName || 'this drill')}” from the library? This can’t be undone. Its show's spot assignments stay for the show's other drills.`,
     () => drillDelete(id),
     'Delete', 'btn-danger'
   );
@@ -1767,9 +2012,11 @@ function drillDeletePrompt(id) {
 
 function drillDelete(id) {
   const wasActive = STATE.activeDrillId === id;
+  const showId    = STATE.drills[id]?.showId;
   orgCol('drills').doc(id).collection('data').doc('main').delete().catch(() => {});
   orgCol('drills').doc(id).delete().catch(() => {});
   delete STATE.drills[id];
+  _cleanupEmptyShow(showId); // drop the show if that was its last drill
   if (wasActive) {
     const next = _drillSortedIds()[0] || null;
     STATE.activeDrillId = next;

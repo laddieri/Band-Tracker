@@ -68,7 +68,7 @@ async function startListeners() {
   _restartSeasonScoped = null;
   _scopedReady = null;
   // Drop any drill state from a previous session/org; listeners repopulate it.
-  STATE.drills = {}; STATE.activeDrillId = null; _activeDrillLoadedId = null;
+  STATE.drills = {}; STATE.shows = {}; STATE.activeDrillId = null; _activeDrillLoadedId = null;
   _drillData = null; _drillPages = null; _drillFileName = null; _drillFlipV = false;
 
   // Resolve the user's org before reading any data; bail if redirected.
@@ -272,9 +272,19 @@ async function startListeners() {
       orgCol('drills').onSnapshot(snap => {
         STATE.drills = {};
         snap.docs.forEach(d => { STATE.drills[d.id] = { id: d.id, ...d.data() }; });
+        _migrateDrillShows(); // director-only: group ungrouped drills into shows
         _drillSyncActive();
         if (!STATE.loading) render();
       }, err => console.error('drills listener error:', err)),
+
+      // Shows group drills that share one spot map (see js/12-drill.js). Directors
+      // and staff read them; only directors write. Kept in STATE.shows so the
+      // resolver can look up the active drill's shared mapping.
+      orgCol('shows').onSnapshot(snap => {
+        STATE.shows = {};
+        snap.docs.forEach(d => { STATE.shows[d.id] = { id: d.id, ...d.data() }; });
+        if (!STATE.loading) render();
+      }, err => console.error('shows listener error:', err)),
 
       // School-wide active-drill pointer. Also performs the one-time migration of
       // the legacy single-drill doc into the library (directors only — it writes).

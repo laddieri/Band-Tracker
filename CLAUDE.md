@@ -21,9 +21,9 @@ app doesn't show it" is never a justification. Full model:
    metadata, and `settings/public`. Everything else — the org doc, the
    roster, other students' entries, `songs`, `settings/presets` — is
    director/staff-only (the org doc stays director-only even from staff; staff
-   can READ `drills` to view the field chart but only directors WRITE them, and
-   staff writes elsewhere are limited to recording — see the staff section in
-   `docs/DATA_MODEL.md`).
+   can READ `drills` and `shows` to view the field chart and its spot map but
+   only directors WRITE them, and staff writes elsewhere are limited to
+   recording — see the staff section in `docs/DATA_MODEL.md`).
 2. **Never store emails or other director PII in entries or student docs.**
    Stamp `STATE.user.uid` in `updatedBy`/`by` fields. For display, resolve
    uids with `dirLabel()` via `STATE.dirNames` (director clients build this
@@ -78,6 +78,13 @@ app doesn't show it" is never a justification. Full model:
   rehearsal's season via `..._seasonStampFor(rid)` (listeners filter
   `season == activeSeason`; an unstamped doc drops out of view — see
   "Seasons" in `docs/DATA_MODEL.md`).
+- Drill files are grouped into **shows** so all drills of one production share
+  one `label→student` spot map (`orgs/{orgId}/shows/{showId}.mapping`; each
+  drill doc carries a `showId`). Assign a spot once and every drill in the show
+  — including files uploaded later — inherits it. Spot edits go through
+  `_saveActiveMapping()` (writes the show doc when grouped, the drill doc when
+  not); the resolver is `drillStudentNumsByLabel()`. See "Drill shows and spot
+  maps" in `docs/DATA_MODEL.md`. Don't reintroduce per-drill spot re-entry.
 - One-off admin scripts live in `scripts/` (run locally with a service
   account, never in CI). `service-account.json` and `backup-*.json` are
   gitignored — keep it that way.

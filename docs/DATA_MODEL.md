@@ -36,10 +36,13 @@ orgs/{orgId}                          # org metadata
   ├─ rehearsals/{rehearsalId}         # was: /rehearsals/{rehearsalId}
   ├─ entries/{rehearsalId}_{number}   # was: /entries/{...}
   ├─ songs/{songId}                   # was: /songs/{songId}
-  └─ drills/{drillId}                 # drill library (director-write, director+staff read): metadata + per-show spot map
-       │  (fields) name, fileName, setCount, …,
-       │  mapping:{label→studentNumber | [studentNumbers]}  # a spot may be shared by >1 student
-       └─ data/main                   #   heavy Pyware position payload (loaded on demand)
+  ├─ drills/{drillId}                 # drill library (director-write, director+staff read): metadata
+  │    │  (fields) name, fileName, setCount, …, showId,   # showId groups drills that share a spot map
+  │    │  mapping:{label→…}            #   legacy per-drill map, used only for ungrouped drills
+  │    └─ data/main                   #   heavy Pyware position payload (loaded on demand)
+  └─ shows/{showId}                   # a show groups drills that share ONE spot map (director-write, +staff read)
+       (fields) name,
+       mapping:{label→studentNumber | [studentNumbers]}   # a spot may be shared by >1 student
 
 members/{uid}                         # who belongs to which org, and as what
   └─ (fields) orgId, role, email?, studentNumber?, joinCode?
@@ -83,6 +86,38 @@ boundary every cold start re-reads all of history. Seasons are that boundary:
   local state isn't the live season.
 - Songs and their pass/fail statuses are NOT season-scoped — memorization
   carries across years and is reset explicitly from the new-season modal.
+
+## Drill shows and spot maps
+
+A halftime (or pregame) production is usually several Pyware drill *files*, one
+per movement — but the performers keep the same label (letter + number, e.g.
+`M1`) across every file. A **show** groups those drills so a spot is assigned to
+a student **once** and every drill in the show resolves that label to them,
+including files uploaded later. This is what lets a director assign 169 students
+to the first drill and have the next file inherit the whole map with no
+re-entry.
+
+- `orgs/{orgId}/shows/{showId}` = `{ name, mapping }`, where `mapping` is the
+  shared `label → studentNumber | [studentNumbers]` map (an array is a spot two+
+  students share). Each drill doc carries a `showId` pointing at its show.
+- **Resolution order** (`drillStudentNumsByLabel` in js/12-drill.js): the active
+  drill's *show* mapping (or, for an ungrouped drill, the drill's own legacy
+  `mapping`) → the band-wide `settings/presets.pywareMapping` → the column/row
+  block-spot match (`_drillPosIndex`). An explicit entry — even an empty `[]`
+  ("cleared") — wins over the fallbacks, so a removed student can't reappear via
+  the block-spot match.
+- **All spot edits write to the show** when the drill is grouped
+  (`_saveActiveMapping`): the dot panel, the mapping modal, and the CSV import
+  all update `shows/{id}.mapping` with `update()` (not set-merge, so clearing a
+  spot removes the key). Directors write; staff read (they need the map to
+  record marks on any drill in the show) — so spot assignments stay
+  director-controlled even though staff can view the chart.
+- **Migration** is director-only and idempotent (`_migrateDrillShows`): every
+  drill without a `showId` is promoted to its own show (id `show_<drillId>`)
+  carrying its old per-drill `mapping`. Ungrouped drills keep working via the
+  drill-doc fallback until this runs. Uploading a new file, or the library's
+  "move to show" action, then regroups drills so they share one map; a show is
+  deleted once its last drill leaves it.
 
 ## Controlled rollout: gating new-band creation
 
@@ -158,9 +193,9 @@ guard tech — who should record data but not administer the band.
   the code on the onboarding screen; the client writes `members/{uid}` =
   `{ orgId, role: 'staff', inviteCode: CODE }`. The rules pair code and role
   strictly: a staff code can never mint a director membership and vice versa.
-- **Can read:** the roster, entries, songs, rehearsals, drills (to view the
-  field chart), all `settings/*` docs and the org's director/staff memberships
-  (to resolve mark authors).
+- **Can read:** the roster, entries, songs, rehearsals, drills and shows (to
+  view the field chart and its spot map), all `settings/*` docs and the org's
+  director/staff memberships (to resolve mark authors).
 - **Can write:** entries (attendance + marks), rehearsal create/update (start,
   edit, end — **not** delete), song `statuses` (field-restricted), the
   `students/{num}.songStatuses` mirror (field-restricted), `settings/public`
@@ -169,10 +204,10 @@ guard tech — who should record data but not administer the band.
   (switch the school-wide active drill to view any show while recording).
 - **Cannot touch:** the org doc (it holds both invite codes — reading it would
   let staff escalate to director), `settings/presets` writes, roster
-  management, song/rehearsal deletion, **drill writes** (add/delete/rename or
-  change spot assignments — the label→student map lives on the drill doc, which
-  only directors write), student/invite codes, member management. Directors
-  remove staff from Band Settings like co-directors.
+  management, song/rehearsal deletion, **drill and show writes** (add/delete/
+  rename or change spot assignments — the label→student map lives on the show
+  doc, which only directors write), student/invite codes, member management.
+  Directors remove staff from Band Settings like co-directors.
 
 ### How students get an org (code + PIN)
 
@@ -239,6 +274,7 @@ What a **student** can read (everything else is director-only):
 | `rehearsals/*`                | ✅ — schedule metadata (dates/labels, incl. `hiddenFromStudents`) |
 | `songs/*`                     | ❌ — embeds every student's pass/fail + fail notes |
 | `drills/*` (+ `drills/*/data/*`) | ❌ — Pyware field-chart library (director-write; directors + staff read) |
+| `shows/*`                     | ❌ — per-show shared spot map (director-write; directors + staff read) |
 
 **Hiding a rehearsal from students.** A director can flag a rehearsal
 `hiddenFromStudents: true` (Edit Rehearsal → "Hide from students") — e.g. an
