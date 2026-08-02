@@ -112,6 +112,16 @@ re-entry.
   spot removes the key). Directors write; staff read (they need the map to
   record marks on any drill in the show) — so spot assignments stay
   director-controlled even though staff can view the chart.
+- **One spot per student per show.** Assigning a student to a spot pulls them
+  out of any other spot in the same show (`drillSpotStripOthers` in
+  js/00-logic.js, applied by the dot panel and the mapping dropdown; the CSV
+  importer already re-places each mentioned student at a single spot). Shared
+  spots (2+ students at ONE label) are still allowed — the rule only forbids one
+  student holding two different labels.
+- **Unassigned view.** The Drill tab shows the director a pill of how many
+  roster students have no spot in the active show, opening a full list
+  (`_drillUnassignedNums` / `showDrillUnassignedModal`), computed from the
+  explicit show map (not the block-spot fallback).
 - **Migration** is director-only and idempotent (`_migrateDrillShows`): every
   drill without a `showId` is promoted to its own show (id `show_<drillId>`)
   carrying its old per-drill `mapping`. Ungrouped drills keep working via the
