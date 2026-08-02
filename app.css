@@ -1818,6 +1818,7 @@ html, body {
   color: var(--text-muted);
   margin-top: 3px;
 }
+.portal-spots { display:flex; flex-wrap:wrap; gap:5px; margin-top:6px; }
 .portal-rehearsal-card {
   background: var(--card-bg);
   border: 1.5px solid var(--border);

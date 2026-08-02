@@ -247,6 +247,7 @@ async function startListeners() {
         else STATE.students[ch.doc.id] = { ...ch.doc.data(), _id: ch.doc.id };
       });
       tick('students');
+      _syncStudentSpotsMirror(); // director-only: keep each student's spot mirror current
       schedulePublishPublicStats();
     }),
 
@@ -283,6 +284,7 @@ async function startListeners() {
       orgCol('shows').onSnapshot(snap => {
         STATE.shows = {};
         snap.docs.forEach(d => { STATE.shows[d.id] = { id: d.id, ...d.data() }; });
+        _syncStudentSpotsMirror(); // director-only: publish spots onto student docs
         if (!STATE.loading) render();
       }, err => console.error('shows listener error:', err)),
 
@@ -313,6 +315,51 @@ async function startListeners() {
   // push, not assign: subscribeScoped adds the season-scoped unsubs to
   // STATE._unsubs as they (re)bind — don't replace the array out from under it.
   STATE._unsubs.push(...listeners);
+}
+
+// Students can't read the director-only `shows` collection, so a director client
+// MIRRORS each student's field-spot assignments onto that student's own doc
+// (students/{num}.spots = { showId: {show, label, shared} }) — the same pattern
+// as the songStatuses mirror. Directors and staff render spots live from
+// STATE.shows; students read this mirror. Diff-based and idempotent: it writes
+// only students whose spots actually changed, so steady state is a no-op and it
+// self-heals after any spot edit (the shows/students listeners re-run it).
+function _syncStudentSpotsMirror() {
+  if (!STATE.isAdmin || !STATE.students) return; // only directors write student docs
+  const desired = {}; // studentNumber → { showId: {show, label, shared} }
+  Object.values(STATE.shows || {}).forEach(show => {
+    const mapping = show.mapping || {};
+    Object.keys(mapping).forEach(label => {
+      const nums = drillSpotNums(mapping[label]);
+      const shared = nums.length > 1;
+      nums.forEach(num => {
+        (desired[num] = desired[num] || {})[show.id] = { show: show.name || 'Show', label, shared };
+      });
+    });
+  });
+
+  const del = firebase.firestore.FieldValue.delete();
+  const pending = [];
+  Object.values(STATE.students).forEach(s => {
+    const num  = String(s.number);
+    const want = desired[num] || {};
+    if (_studentSpotsKey(want) === _studentSpotsKey(s.spots || {})) return;
+    if (Object.keys(want).length) { s.spots = want; pending.push([num, { spots: want }]); }
+    else { delete s.spots; pending.push([num, { spots: del }]); }
+  });
+  if (!pending.length) return;
+
+  for (let i = 0; i < pending.length; i += 400) {
+    const batch = db.batch();
+    pending.slice(i, i + 400).forEach(([num, data]) => batch.update(orgCol('students').doc(num), data));
+    batch.commit().catch(e => console.error('student spot mirror sync failed:', e));
+  }
+}
+
+// Order-independent signature of a spots map, for change detection.
+function _studentSpotsKey(obj) {
+  return Object.keys(obj || {}).sort()
+    .map(k => `${k}=${obj[k].label}|${obj[k].show}|${obj[k].shared ? 1 : 0}`).join(';');
 }
 
 // Listeners for student accounts — limited to exactly what the rules allow.

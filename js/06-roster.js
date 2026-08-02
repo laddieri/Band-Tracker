@@ -198,6 +198,42 @@ function viewRosterOnboarding() {
   `;
 }
 
+// A student's field-spot assignments across shows, as [{ show, label, shared }]
+// sorted by show name. Director/staff clients read them live from the loaded
+// show maps (STATE.shows); students — who can't read the shows collection — read
+// the mirror the director publishes onto their own student doc (s.spots).
+function studentSpots(s) {
+  if (!s) return [];
+  const num = String(s.number);
+  if (STATE.shows && Object.keys(STATE.shows).length) {
+    const out = [];
+    Object.values(STATE.shows).forEach(show => {
+      const mapping = show.mapping || {};
+      for (const label of Object.keys(mapping)) {
+        const nums = drillSpotNums(mapping[label]);
+        if (nums.includes(num)) { out.push({ show: show.name || 'Show', label, shared: nums.length > 1 }); break; }
+      }
+    });
+    return out.sort((a, b) => (a.show || '').localeCompare(b.show || ''));
+  }
+  const m = s.spots || {};
+  return Object.keys(m)
+    .map(sid => ({ show: m[sid].show || 'Show', label: m[sid].label, shared: !!m[sid].shared }))
+    .sort((a, b) => (a.show || '').localeCompare(b.show || ''));
+}
+
+// Compact "M1 · X5" (labels only) for tight rows.
+function _studentSpotText(s) {
+  return studentSpots(s).map(sp => sp.label).join(' · ');
+}
+
+// Badges (label · show) for the profile card.
+function _studentSpotBadges(s) {
+  return studentSpots(s).map(sp =>
+    `<span class="badge badge-primary" style="font-weight:800" title="${esc(sp.show)}${sp.shared ? ' · shared spot' : ''}">${esc(sp.label)}<span style="font-weight:600;opacity:.82"> · ${esc(sp.show)}</span>${sp.shared ? ' 👥' : ''}</span>`
+  ).join('');
+}
+
 function rosterRows(list) {
   if (!list.length) {
     return `<div class="empty-state" style="padding:24px"><p>No students match the current filter.</p></div>`;
@@ -213,7 +249,7 @@ function rosterRows(list) {
         <div class="student-info">
           ${s.name ? `<div class="student-name">${esc(s.name)}</div>` : `<div class="student-name text-muted">#${esc(s.number)}</div>`}
           <div class="student-detail">${esc([
-            (hasField('column')||hasField('row')) ? fmtPos(hasField('column')?s.column:'',hasField('row')?s.row:'') : '',
+            _studentSpotText(s),
             hasField('instrument') ? normInstrument(s.instrument) : '',
             hasField('section')    ? s.section : '',
             ...(STATE.customStudentFields||[]).map(cf => s[cf.key] ? `${cf.label}: ${s[cf.key]}` : '')

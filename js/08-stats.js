@@ -645,7 +645,7 @@ function viewStudent(num) {
     <div class="card mb-12 clickable" onclick="showEditStudentModal('${esc(num)}')" style="text-align:center">
       <div style="font-size:1.4rem;font-weight:800;color:var(--primary);line-height:1;margin-bottom:8px">${esc(s.name || `#${s.number}`)}</div>
       <div class="flex gap-6" style="justify-content:center;flex-wrap:wrap">
-        ${fmtPos(s.column,s.row) ? `<span class="badge badge-primary" style="font-size:0.85rem;font-weight:800">${esc(fmtPos(s.column,s.row))}</span>` : ''}
+        ${_studentSpotBadges(s)}
         ${s.instrument ? `<span class="badge badge-primary">${esc(normInstrument(s.instrument))}</span>` : ''}
         ${s.section    ? `<span class="badge badge-neutral">${esc(s.section)}</span>` : ''}
         ${(STATE.customStudentFields||[]).filter(cf => s[cf.key]).map(cf =>
