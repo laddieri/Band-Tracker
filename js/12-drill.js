@@ -602,9 +602,19 @@ function _drillFieldSvg(positions, opts = {}) {
     const tap     = selectMode ? `drillChartToggle('${esc(p.label)}')`
                   : fsView     ? `drillFsTapPerf('${esc(p.label)}')`
                   :              `drillShowPerfInfo('${esc(p.label)}')`;
+    // Zoomed in, dots grow so the spot letter+number can be printed inside them.
+    const baseR = _drillDotLabelsOn ? 5.4 : 3;
+    const dotR  = (sel || isTrace || isFocus) ? (_drillDotLabelsOn ? 6.4 : 4.5) : baseR;
     dots += `<circle cx="${sx}" cy="${sy}" r="7" fill="transparent" onclick="${tap}" style="cursor:pointer"/>`;
-    if (sel || isTrace) dots += `<circle cx="${sx}" cy="${sy}" r="6.5" fill="none" stroke="${isTrace ? '#ffd23f' : '#fff'}" stroke-width="1.8"/>`;
-    dots += `<circle cx="${sx}" cy="${sy}" r="${(sel||isTrace||isFocus)?'4.5':'3'}" fill="${isFocus ? '#ffd23f' : col}" pointer-events="none"/>`;
+    if (sel || isTrace) dots += `<circle cx="${sx}" cy="${sy}" r="${_drillDotLabelsOn ? '7.6' : '6.5'}" fill="none" stroke="${isTrace ? '#ffd23f' : '#fff'}" stroke-width="1.8"/>`;
+    dots += `<circle cx="${sx}" cy="${sy}" r="${dotR}" fill="${isFocus ? '#ffd23f' : col}" pointer-events="none"/>`;
+    if (_drillDotLabelsOn && !isFocus) {
+      // The spot label (letter + number) centered inside the dot. Shrinks a
+      // touch for 3+ character labels (e.g. "A12") so it stays within the dot.
+      const lt  = esc(p.label);
+      const fsz = (p.label || '').length >= 3 ? 3.1 : 3.8;
+      labels += `<text x="${sx}" y="${sy}" dy="0.34em" text-anchor="middle" font-size="${fsz}" font-weight="700" font-family="sans-serif" fill="#fff" pointer-events="none" style="paint-order:stroke;stroke:#000;stroke-width:0.7px;stroke-linejoin:round">${lt}</text>`;
+    }
     if (isFocus) {
       // A tall, unmistakable callout drawn on top so you can always tell which
       // dot was tapped — even when an info panel overlaps the field.
@@ -615,11 +625,15 @@ function _drillFieldSvg(positions, opts = {}) {
             +  `<circle cx="${sx}" cy="${sy}" r="8.5" fill="none" stroke="#000" stroke-width="0.7"/>`
             +  `<text x="${sx}" y="${ty}" text-anchor="middle" fill="#111" font-size="6.5" font-weight="700" font-family="sans-serif" pointer-events="none" style="paint-order:stroke;stroke:#ffd23f;stroke-width:6px;stroke-linejoin:round">${esc(p.label)}</text>`;
     }
-    if (labelMode) {
+    // Above-dot label (manual toggle). The in-dot label already prints the drill
+    // number when zoomed, so suppress the redundant above-dot "drill #" then;
+    // names (labelMode 2) still ride above the dot.
+    if (labelMode && !(labelMode === 1 && _drillDotLabelsOn)) {
       let txt = p.label;
       if (labelMode === 2) txt = _drillSpotNames(p.label) || p.label; // one or more names
 
-      labels += `<text x="${sx}" y="${(parseFloat(sy)-5).toFixed(1)}" text-anchor="middle" fill="${P.lblFill}" font-size="4.6" font-family="sans-serif" pointer-events="none" style="paint-order:stroke;stroke:${P.lblStroke};stroke-width:0.7px;stroke-linejoin:round">${esc(txt)}</text>`;
+      const ly = _drillDotLabelsOn ? (parseFloat(sy) - 7).toFixed(1) : (parseFloat(sy) - 5).toFixed(1);
+      labels += `<text x="${sx}" y="${ly}" text-anchor="middle" fill="${P.lblFill}" font-size="4.6" font-family="sans-serif" pointer-events="none" style="paint-order:stroke;stroke:${P.lblStroke};stroke-width:0.7px;stroke-linejoin:round">${esc(txt)}</text>`;
     }
   }
 
@@ -757,6 +771,23 @@ function _drillZoomReset() {
   _drillZoomScale = 1.0;
   _drillPanX = 0;
   _drillPanY = 0;
+  _drillDotLabelsOn = false; // back to plain dots at 1×
+}
+
+// Past this zoom the dots grow and print their spot letter+number inside — no
+// need to reach for the labels toggle, the numbers just appear as you zoom in.
+const _DRILL_DOTLABEL_ZOOM = 1.8;
+
+// Called after every zoom change: when the scale crosses the threshold, flip the
+// in-dot labels on/off and re-render the active chart surface (preserving the
+// current pan/zoom). Only fires on an actual crossing, so panning stays cheap.
+function _drillMaybeToggleDotLabels() {
+  const want = _drillZoomScale >= _DRILL_DOTLABEL_ZOOM;
+  if (want === _drillDotLabelsOn) return;
+  _drillDotLabelsOn = want;
+  const fs = document.getElementById('drill-chart-fs');
+  if (fs && !fs.classList.contains('hidden')) _drillChartRefresh();
+  else if (document.getElementById('drill-stage')) _drillViewRenderSvg();
 }
 
 // The chart container (overlay or inline Drill-tab stage) currently being
@@ -791,6 +822,7 @@ function _drillApplyZoom(wrap) {
   svg.style.transform = `translate(${_drillPanX}px,${_drillPanY}px) scale(${_drillZoomScale})`;
   wrap.style.cursor = _drillZoomScale > 1.01 ? 'grab' : ''; // hint that you can drag to pan
   _drillRenderFsAxis(wrap);
+  _drillMaybeToggleDotLabels(); // print spot labels inside the dots once zoomed in
 }
 
 // Sticky yard-number ruler for the zoomed chart: pins a row to both the top and
