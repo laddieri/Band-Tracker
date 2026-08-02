@@ -281,6 +281,23 @@ function drillSpotNums(v) {
   return (v === 0 || v) ? [String(v)].filter(Boolean) : [];
 }
 
+// Enforce "one spot per student per show": pull `num` out of every spot except
+// `keepLabel`, so a student never holds two spots in the same show. Shared spots
+// (2+ students at ONE label) are preserved — only the student's OTHER labels are
+// touched. An emptied spot becomes an explicit `[]` ("cleared"). Mutates and
+// returns `mapping`.
+function drillSpotStripOthers(mapping, keepLabel, num) {
+  const s = String(num);
+  Object.keys(mapping || {}).forEach(lbl => {
+    if (lbl === keepLabel) return;
+    const arr = drillSpotNums(mapping[lbl]);
+    if (!arr.includes(s)) return;
+    const rest = arr.filter(n => n !== s);
+    mapping[lbl] = rest.length === 1 ? rest[0] : rest; // [] ⇒ explicitly cleared
+  });
+  return mapping;
+}
+
 // Apply a spot CSV to a drill's current mapping, merging by STUDENT so partial
 // sheets are safe: every student listed in the sheet is re-placed at the spot in
 // their row (a blank spot ⇒ unassigned); students not in the sheet are left
@@ -770,7 +787,7 @@ if (typeof module !== 'undefined' && module.exports) {
     lbWeights, scoreStudentsCore, buildPublicStats,
     checkAutoMarkCondition, computeAutoMarkEvents,
     parseCSVLine, parseCSV, COL_ALIASES, normalizeGrade, detectCols,
-    DRILL_LABEL_ALIASES, drillSpotNums, applyDrillSpotCsv,
+    DRILL_LABEL_ALIASES, drillSpotNums, drillSpotStripOthers, applyDrillSpotCsv,
     suggestSeasonLabel,
     normInstrument, instrOrder, GRADE_LEVELS, filterAndSortStudents,
     _hasMarker, _indexOfMarker, _parsePywareFile, _pywareAssembleDrill, _pyware3daPageNote,

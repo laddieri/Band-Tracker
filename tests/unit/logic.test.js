@@ -514,6 +514,29 @@ describe('drillSpotNums', () => {
   });
 });
 
+describe('drillSpotStripOthers (one spot per student per show)', () => {
+  it('removes the student from other spots, keeping the target label', () => {
+    const m = { A1: '42', B2: '42' };
+    L.drillSpotStripOthers(m, 'B2', '42');
+    assert.deepStrictEqual(m, { A1: [], B2: '42' }); // A1 emptied to a cleared []
+  });
+  it('accepts a numeric argument (coerced to string)', () => {
+    const m = { A1: '42' };
+    L.drillSpotStripOthers(m, 'B2', 42);
+    assert.deepStrictEqual(m, { A1: [] });
+  });
+  it('preserves a shared spot, dropping only the moved student from it', () => {
+    const m = { A1: ['42', '7'], C3: '9' };
+    L.drillSpotStripOthers(m, 'C3', '42'); // 42 moves to C3 (caller sets C3 after)
+    assert.deepStrictEqual(m, { A1: '7', C3: '9' }); // A1 collapses to the single partner
+  });
+  it('leaves the mapping untouched when the student holds no other spot', () => {
+    const m = { A1: '7', B2: '9' };
+    L.drillSpotStripOthers(m, 'A1', '7');
+    assert.deepStrictEqual(m, { A1: '7', B2: '9' });
+  });
+});
+
 describe('applyDrillSpotCsv (per-drill spot CSV, merge by student)', () => {
   const roster = new Set(['1', '42', '7', '9']);
 

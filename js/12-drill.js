@@ -1018,26 +1018,18 @@ function showDrillMappingModal() {
   _renderDrillMappingModal();
 }
 
-function _renderDrillMappingModal() {
-  if (!STATE.isAdmin) return;
-  const sections = _drillData;
+// The mapping modal's per-label rows for the active section — extracted so a
+// single assignment can refresh the list in place (keeping one-spot-per-show
+// consistent: assigning a student here removes them from any other row).
+function _drillMapRowsHtml() {
   const mapping  = _activeDrillMapping();
-  const show      = _activeShow();
-  const drillName = show ? (show.name || 'this show')
-                         : (STATE.drills[STATE.activeDrillId]?.name || _drillFileName || 'this drill');
   const students = Object.values(STATE.students).sort((a, b) =>
     (a.name || '').localeCompare(b.name || ''));
-
   const studentOptions = `<option value="">— Not mapped —</option>` +
     students.map(s => `<option value="${esc(s.number)}">${esc(s.name || `#${s.number}`)}${s.instrument ? ` (${esc(normInstrument(s.instrument))})` : ''}</option>`).join('');
-
-  const renderSectionTabs = () => sections.map((s, i) =>
-    `<button class="drill-tab${i === _drillMappingSection ? ' drill-tab--active' : ''}"
-       onclick="drillMappingSetSection(${i})">${esc(s.letter)}</button>`).join('');
-
   const posIdx = _drillPosIndex();
-  const sec = sections[_drillMappingSection];
-  const rows = sec.performers.map(label => {
+  const sec = _drillData[_drillMappingSection];
+  return sec.performers.map(label => {
     const hasExplicit = Object.prototype.hasOwnProperty.call(mapping, label);
     const explicit = drillSpotNums(mapping[label]);
     // A shared spot (2+ students) is shown read-only here — edit it by tapping
@@ -1064,6 +1056,25 @@ function _renderDrillMappingModal() {
         </select>
       </div>`;
   }).join('');
+}
+
+// Refresh just the mapping list (after an assignment) so a student removed from
+// another spot by the one-per-show rule updates without reopening the modal.
+function _drillMapListRefresh() {
+  const el = document.getElementById('drill-map-list');
+  if (el) el.innerHTML = _drillMapRowsHtml();
+}
+
+function _renderDrillMappingModal() {
+  if (!STATE.isAdmin) return;
+  const sections = _drillData;
+  const show      = _activeShow();
+  const drillName = show ? (show.name || 'this show')
+                         : (STATE.drills[STATE.activeDrillId]?.name || _drillFileName || 'this drill');
+
+  const renderSectionTabs = () => sections.map((s, i) =>
+    `<button class="drill-tab${i === _drillMappingSection ? ' drill-tab--active' : ''}"
+       onclick="drillMappingSetSection(${i})">${esc(s.letter)}</button>`).join('');
 
   openModal(`
     <div class="modal-handle"></div>
@@ -1071,7 +1082,7 @@ function _renderDrillMappingModal() {
     <p class="modal-sub" style="margin:0 0 10px">Assign this show's spots to students. ${show ? `Every drill in <strong>${esc(show.name || 'this show')}</strong> shares these assignments, so a new drill file for the show inherits them.` : `Each show maps independently, so a student can have different spots per show.`} Unset "auto" rows fall back to a student's block spot (column&nbsp;+&nbsp;row). Saved automatically.</p>
     <button class="btn btn-secondary btn-full" style="margin-bottom:10px" onclick="showDrillSpotImportModal()">⬆︎ Import / export spots (CSV)</button>
     <div class="drill-tabs">${renderSectionTabs()}</div>
-    <div class="drill-map-list" id="drill-map-list">${rows}</div>
+    <div class="drill-map-list" id="drill-map-list">${_drillMapRowsHtml()}</div>
     <div class="modal-actions" style="margin-top:12px">
       <button class="btn btn-secondary btn-full" onclick="closeModal()">Done</button>
     </div>
@@ -1107,9 +1118,15 @@ function _saveActiveMapping(mapping) {
 function drillMappingChange(label, studentNum) {
   if (!STATE.activeDrillId) return;
   const mapping = { ..._activeDrillMapping() };
-  if (studentNum) mapping[label] = String(studentNum);
-  else delete mapping[label];
+  if (studentNum) {
+    drillSpotStripOthers(mapping, label, studentNum); // one spot per student per show
+    mapping[label] = String(studentNum);
+  } else {
+    delete mapping[label];
+  }
   _saveActiveMapping(mapping);
+  _drillMapListRefresh();  // reflect any spot the student was pulled out of
+  _drillUnassignedRefresh(); // keep the Drill-tab pill accurate under the modal
 }
 
 // Add/remove operate on what the panel actually SHOWS (the effective list,
@@ -1120,6 +1137,7 @@ function drillMappingChange(label, studentNum) {
 function drillSpotAddStudent(label, num) {
   if (!num || !STATE.activeDrillId) return;
   const mapping = { ..._activeDrillMapping() };
+  drillSpotStripOthers(mapping, label, num); // one spot per student per show
   const cur = drillStudentNumsByLabel(label);
   if (!cur.includes(String(num))) cur.push(String(num));
   mapping[label] = cur.length === 1 ? cur[0] : cur;
@@ -1139,7 +1157,7 @@ function drillSpotRemoveStudent(label, num) {
 function _drillRefreshCurrent() {
   const fs = document.getElementById('drill-chart-fs');
   if (fs && !fs.classList.contains('hidden')) _drillChartRefresh();
-  else if (document.getElementById('drill-view-root')) _drillViewRenderSvg();
+  else if (document.getElementById('drill-view-root')) { _drillViewRenderSvg(); _drillUnassignedRefresh(); }
 }
 
 // ── Per-drill spot import / export (CSV) ──────────────────────────────────────
@@ -1281,6 +1299,71 @@ function viewDrill() {
   return `<div id="drill-view-root" class="drill-view">${_drillViewInner()}</div>`;
 }
 
+// Roster numbers with no spot in the active show's map, sorted by name — the
+// students the director still needs to place. Based on explicit assignments
+// (the show/drill mapping), not the block-spot auto-match.
+function _drillUnassignedNums() {
+  const assigned = new Set();
+  const m = _activeDrillMapping();
+  Object.values(m).forEach(v => drillSpotNums(v).forEach(n => assigned.add(String(n))));
+  return Object.keys(STATE.students || {})
+    .filter(n => !assigned.has(String(n)))
+    .sort((a, b) => (STATE.students[a]?.name || '').localeCompare(STATE.students[b]?.name || '')
+                 || String(a).localeCompare(String(b)));
+}
+
+// A pill under the drill switcher summarising how many students still need a
+// spot in this show, opening the full list. Director-only (they do the placing).
+function _drillUnassignedBarHtml() {
+  if (!STATE.isAdmin || !_drillData) return '';
+  const total = Object.keys(STATE.students || {}).length;
+  if (!total) return '';
+  const n = _drillUnassignedNums().length;
+  if (!n) return `<div class="drill-unassigned drill-unassigned--ok">✓ All ${total} students are assigned to a spot</div>`;
+  return `
+    <button class="drill-unassigned" onclick="showDrillUnassignedModal()">
+      <span class="drill-unassigned-badge">${n}</span>
+      <span>student${n !== 1 ? 's' : ''} not assigned to a spot in this show</span>
+      <span class="drill-unassigned-cta">View →</span>
+    </button>`;
+}
+
+// Refresh just the unassigned pill (after assigning/removing from the field) so
+// the count stays live without rebuilding the whole Drill tab.
+function _drillUnassignedRefresh() {
+  const el = document.getElementById('drill-unassigned-bar');
+  if (el) el.innerHTML = _drillUnassignedBarHtml();
+}
+
+// The full list of students with no spot in this show, so the director can see
+// at a glance who's left to place. Informational — assigning happens by tapping
+// a dot on the field.
+function showDrillUnassignedModal() {
+  if (!STATE.isAdmin) return;
+  const nums  = _drillUnassignedNums();
+  const show  = _activeShow();
+  const where = show ? esc(show.name || 'this show') : 'this drill';
+  const rows = nums.map(n => {
+    const s     = STATE.students[n];
+    const name  = s ? (s.name || `#${n}`) : `#${n}`;
+    const instr = s && s.instrument ? normInstrument(s.instrument) : '';
+    return `
+      <div class="drill-unassigned-row">
+        <span class="drill-unassigned-name" onclick="closeModal();navigate('student',{num:'${esc(n)}'})">${esc(name)}</span>
+        ${instr ? `<span class="drill-unassigned-instr">${esc(instr)}</span>` : ''}
+      </div>`;
+  }).join('');
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Not assigned — ${where}</div>
+    <p class="modal-sub" style="margin:0 0 10px">${nums.length ? `${nums.length} student${nums.length !== 1 ? 's' : ''} not yet placed at a spot in this show. Tap a dot on the field to assign one — each student holds a single spot per show.` : 'Everyone is assigned to a spot. 🎉'}</p>
+    ${nums.length ? `<div class="drill-unassigned-list">${rows}</div>` : ''}
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Done</button>
+    </div>
+  `);
+}
+
 function _drillViewInner() {
   const idx   = _drillCurrentSet;
   const total = _drillPages.length;
@@ -1301,6 +1384,8 @@ function _drillViewInner() {
       </span>
       <span class="drill-switcher-caret">▾</span>
     </button>
+
+    <div id="drill-unassigned-bar">${_drillUnassignedBarHtml()}</div>
 
     <div class="drill-view-bar">
       <div class="drill-search-wrap${_drillSearchQuery.trim() ? ' has-q' : ''}" id="drill-search-wrap">
