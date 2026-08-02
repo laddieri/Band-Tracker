@@ -122,6 +122,13 @@ re-entry.
   roster students have no spot in the active show, opening a full list
   (`_drillUnassignedNums` / `showDrillUnassignedModal`), computed from the
   explicit show map (not the block-spot fallback).
+- **Attendance by block** (js/09b-attendance.js) can group by a show's spots
+  instead of roster columns: "Take Attendance by Block" offers each show, and
+  `_blockAttShowGroups` builds one screen per section letter from the show map
+  (`drillSpotLabelParts` splits `M1` → section `M`, rank `1`). A spot shared by
+  two students lists both (each toggled independently); in-scope students with
+  no spot in the show fall into a trailing "No spot" screen so attendance still
+  covers everyone.
 - **Migration** is director-only and idempotent (`_migrateDrillShows`): every
   drill without a `showId` is promoted to its own show (id `show_<drillId>`)
   carrying its old per-drill `mapping`. Ungrouped drills keep working via the
