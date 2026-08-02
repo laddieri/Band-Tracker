@@ -30,7 +30,7 @@ function _buildRecentListHtml() {
   const present = students.filter(s => latestEntries[s.number]?.attendance !== 'absent' && latestEntries[s.number]?.attendance !== 'late');
   const hasF = _attTabFilter.search || _attTabFilter.instruments.length || _attTabFilter.grades.length || _attTabFilter.sections.length;
   const stuMiniRow = s => {
-    const meta = [fmtPos(s.column, s.row), normInstrument(s.instrument)].filter(Boolean).join(' · ');
+    const meta = [_studentSpotText(s), normInstrument(s.instrument)].filter(Boolean).join(' · ');
     return `<div class="att-summary-stu-row" onclick="navigate('student',{num:'${esc(s.number)}'})" style="cursor:pointer">
       <span class="att-stu-name att-stu-link">${esc(s.name || `#${s.number}`)}</span>
       ${meta ? `<div class="att-stu-meta">${esc(meta)}</div>` : ''}
@@ -90,7 +90,7 @@ function _buildSeasonListHtml() {
   }
   return filtered.map(s => {
     const { absences, lates } = seasonMap[s.number];
-    const meta = [fmtPos(s.column, s.row), normInstrument(s.instrument)].filter(Boolean).join(' · ');
+    const meta = [_studentSpotText(s), normInstrument(s.instrument)].filter(Boolean).join(' · ');
     return `<div class="att-season-row" onclick="navigate('student',{num:'${esc(s.number)}'})" style="cursor:pointer">
       <div class="att-stu-info">
         <span class="att-stu-name att-stu-link">${esc(s.name || `#${s.number}`)}</span>
@@ -341,7 +341,7 @@ function viewAttendanceSummary(rid) {
 
   const stuRow = s => {
     const att  = entries[s.number]?.attendance;
-    const meta = [fmtPos(s.column, s.row), normInstrument(s.instrument)].filter(Boolean).join(' · ');
+    const meta = [_studentSpotText(s), normInstrument(s.instrument)].filter(Boolean).join(' · ');
     const chip = att === 'absent'
       ? `<span class="att-summary-chip att-chip-absent" style="flex-shrink:0;font-size:0.7rem;padding:2px 8px">Absent</span>`
       : att === 'late'
@@ -452,9 +452,10 @@ function viewAttendance(rid) {
       ${unmarked > 0 ? `<span class="att-summary-chip att-chip-unmarked">${unmarked} Remaining</span>` : ''}
     </div>
 
+    ${Object.keys(STATE.shows || {}).length ? `
     <button class="btn btn-secondary btn-full" style="margin-bottom:12px" onclick="startBlockAttendance('${esc(rid)}')">
       ▦ Take Attendance by Block
-    </button>
+    </button>` : ''}
 
     ${renderFilterBar('att', _attFilter, [
       {value:'name',      label:'Name'},
@@ -547,7 +548,7 @@ function toggleAttPresentSection(rid) {
 
 function attStudentRow(rid, s, entries) {
   const att  = entries[s.number]?.attendance || null;
-  const meta = [fmtPos(s.column, s.row), normInstrument(s.instrument)].filter(Boolean).join(' · ');
+  const meta = [_studentSpotText(s), normInstrument(s.instrument)].filter(Boolean).join(' · ');
   const rowClass = att === 'absent' ? 'att-stu-absent' : att === 'late' ? 'att-stu-late' : att === 'present' ? 'att-stu-present' : '';
   return `
     <div class="att-stu-row ${rowClass}">
@@ -703,51 +704,24 @@ function submitAttendance(rid) {
 }
 
 // ── Take Attendance by Block ──────────────────────────────────────────────────
-// Column-by-column attendance: one column on screen at a time, each student a
-// big tappable name that toggles absent (red). Marking only records absences —
-// everyone else is present by default on submit, like the standard flow.
+// Section-by-section attendance driven by a show's field spots: one section on
+// screen at a time, each student a big tappable name that toggles absent (red).
+// Marking only records absences — everyone else is present by default on submit,
+// like the standard flow.
 
-// Attendance-by-block groups. Each group is one "block" to step through, and
-// each entry is { s, pos, shared }: the student, the position label to show
-// (roster spot A1, or a show's field-spot label M1), and whether that spot is
-// shared by more than one student. Grouping is by roster column by default, or
-// by a show's field-spot letters when a show was chosen (_blockAttShowId).
+// Attendance-by-block groups: one group per show section (see _blockAttShowGroups).
+// Each entry is { s, pos, shared }: the student, their field-spot label (M1), and
+// whether that spot is shared by more than one student.
 function _blockAttGroups(rid) {
-  return _blockAttShowId ? _blockAttShowGroups(rid, _blockAttShowId)
-                         : _blockAttColumnGroups(rid);
-}
-
-// Ordered column groups for the rehearsal's in-scope roster. Columns follow the
-// A–L order; students with no column fall into a trailing "No Column" group.
-function _blockAttColumnGroups(rid) {
-  const byCol = {};
-  for (const s of rehearsalStudents(rid)) {
-    const col = String(s.column || '').toUpperCase().trim();
-    (byCol[col] = byCol[col] || []).push(s);
-  }
-  // Rows are ordered high → low so row 1 sits at the BOTTOM of the screen; the
-  // column screen opens scrolled to the bottom and the director scrolls up to
-  // reach higher row numbers (mirrors looking down a file from the front).
-  const byRow = list => list.slice().sort((a, b) =>
-    (+b.row || 0) - (+a.row || 0) || (a.name || '').localeCompare(b.name || ''));
-  const wrap = list => byRow(list).map(s => ({ s, pos: fmtPos(s.column, s.row), shared: false }));
-  const groups = [];
-  for (const c of COLUMNS) if (byCol[c]?.length) groups.push({ key: c, label: `Column ${c}`, students: wrap(byCol[c]) });
-  // Any non-standard column letters, then the unassigned group.
-  Object.keys(byCol).filter(c => c && !COLUMNS.includes(c)).sort()
-    .forEach(c => groups.push({ key: c, label: `Column ${c}`, students: wrap(byCol[c]) }));
-  if (byCol['']?.length)
-    groups.push({ key: '', label: 'No Column',
-      students: byCol[''].slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-        .map(s => ({ s, pos: '', shared: false })) });
-  return groups;
+  return _blockAttShowGroups(rid, _blockAttShowId);
 }
 
 // Groups by a show's field-spot assignments: one group per section letter, each
-// listing that section's spots (rank high → low, like the column flow). A spot
-// shared by two students yields one entry per student (each toggled on its own).
-// In-scope students with no spot in the show fall into a trailing group so
-// attendance still covers everyone.
+// listing that section's spots (rank high → low, so spot 1 sits at the bottom of
+// the screen). A spot shared by two students yields one entry per student (each
+// toggled on its own). In-scope students with no spot in the show fall into a
+// trailing group so attendance still covers everyone. If the show is missing
+// (edge case), everyone lands in a single "All Students" group.
 function _blockAttShowGroups(rid, showId) {
   const show    = STATE.shows && STATE.shows[showId];
   const mapping = (show && show.mapping) || {};
@@ -783,19 +757,21 @@ function _blockAttShowGroups(rid, showId) {
     .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   if (leftovers.length) {
     groups.push({
-      key: 'NOSPOT', label: 'No spot in this show',
-      students: leftovers.map(s => ({ s, pos: fmtPos(s.column, s.row), shared: false })),
+      key: 'NOSPOT', label: show ? 'No spot in this show' : 'All Students',
+      students: leftovers.map(s => ({ s, pos: '', shared: false })),
     });
   }
   return groups;
 }
 
-// Entry point: if any shows exist, let the director group the flow by roster
-// column OR by a show's field spots; with no shows, go straight to columns.
+// Entry point: attendance by block steps through a show's field spots. With one
+// show, jump straight in; with several, pick which show; with none, nothing to
+// do (the button that calls this is hidden unless a show exists).
 function startBlockAttendance(rid) {
   const shows = Object.values(STATE.shows || {}).sort((a, b) =>
     (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0) || (a.name || '').localeCompare(b.name || ''));
-  if (!shows.length) { _beginBlockAttendance(rid, null); return; }
+  if (!shows.length) { showToast('Add a show with spot assignments first.'); return; }
+  if (shows.length === 1) { _beginBlockAttendance(rid, shows[0].id); return; }
   const showRows = shows.map(s => `
     <button class="options-menu-item" onclick="closeModal();_beginBlockAttendance('${esc(rid)}','${esc(s.id)}')">
       <div class="options-menu-icon">🎬</div>
@@ -804,14 +780,8 @@ function startBlockAttendance(rid) {
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Take Attendance by Block</div>
-    <p class="modal-sub" style="margin:0 0 10px">Step through students a block at a time. Group by roster column, or by a show's field-spot assignments.</p>
-    <div class="options-menu">
-      <button class="options-menu-item" onclick="closeModal();_beginBlockAttendance('${esc(rid)}','')">
-        <div class="options-menu-icon">▦</div>
-        <div><div class="options-menu-label">By roster column</div><div class="options-menu-sub">Block columns A–L</div></div>
-      </button>
-      ${showRows}
-    </div>
+    <p class="modal-sub" style="margin:0 0 10px">Step through students a section at a time, by a show's field-spot assignments. Pick a show:</p>
+    <div class="options-menu">${showRows}</div>
     <div class="modal-actions" style="margin-top:8px">
       <button class="btn btn-secondary btn-full" onclick="closeModal()">Cancel</button>
     </div>
@@ -879,7 +849,7 @@ function viewAttendanceBlock(rid) {
   const group   = groups[idx];
   const isLast  = idx >= groups.length - 1;
   const colAbsent = group.students.filter(isAbsent).length;
-  const unit    = _blockAttShowId ? 'section' : 'column';
+  const unit    = 'section';
 
   const nextLabel = isLast
     ? (colAbsent ? `${colAbsent} absent. Review` : `Everybody's here. Review`)

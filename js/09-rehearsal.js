@@ -313,7 +313,7 @@ function viewRehearsal(rid) {
         <div class="active-card-name">
           ${activeStu ? esc(activeStu.name || `#${_activeNum}`) : `#${esc(_activeNum)}`}
           ${activeStu
-            ? `<span class="sub">${esc([fmtPos(activeStu.column,activeStu.row),normInstrument(activeStu.instrument)].filter(Boolean).join(' · '))}</span>`
+            ? `<span class="sub">${esc([_studentSpotText(activeStu),normInstrument(activeStu.instrument)].filter(Boolean).join(' · '))}</span>`
             : '<span class="sub" style="color:var(--warning)"> Not in roster</span>'}
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
@@ -392,24 +392,12 @@ function viewRehearsal(rid) {
         </button>` : ''}
 
       <button class="next-btn" onclick="clearActive()">
-        ${_blockMode ? '← Back to Block Grid' : 'Submit Feedback'}
+        Submit Feedback
       </button>
     </div>` : '';
 
-  // Tracker section — changes based on block mode
   let trackerSection;
-  if (_blockMode && !_activeNum) {
-    trackerSection = renderBlockNav(rid);
-  } else if (_blockMode && _activeNum) {
-    trackerSection = `
-      <div class="tracker-card">
-        <div class="block-active-hdr">
-          <span class="block-active-label">Selected from Block Grid</span>
-          <button class="block-ctrl-btn" onclick="clearActive()">← Grid</button>
-        </div>
-        ${activeCard}
-      </div>`;
-  } else {
+  {
     const searchVal    = _trackerFilter.search;
     const isNameSearch = searchVal.trim() && !/^\d+$/.test(searchVal.trim());
     // Tracker candidates are limited to the students this rehearsal applies to.
@@ -436,13 +424,7 @@ function viewRehearsal(rid) {
             {value:'instrument', label:'Instrument'},
             {value:'section',    label:'Section'},
             {value:'grade',      label:'Grade'}
-          ], { extra: `<button class="inst-chip tracker-grid-btn" title="Open Block Grid" onclick="toggleBlockMode('${esc(rid)}')">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;display:block">
-                <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
-                <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
-              </svg>
-            </button>
-            ${featureOn('drill') ? `<button class="inst-chip tracker-drill-btn${_drillSelectedNums.length ? ' tracker-drill-btn--active' : ''}" title="Load Pyware Drill" onclick="openDrillPicker()">
+          ], { extra: `${featureOn('drill') ? `<button class="inst-chip tracker-drill-btn${_drillSelectedNums.length ? ' tracker-drill-btn--active' : ''}" title="Load Pyware Drill" onclick="openDrillPicker()">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;display:block">
                 <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
               </svg>
@@ -463,18 +445,18 @@ function viewRehearsal(rid) {
               const s = students[num];
               return `<div class="suggestion-row" onclick="pickStudent('${esc(num)}','${esc(rid)}')">
                 <span class="suggestion-name">${esc(s?.name || `#${num}`)}</span>
-                <span class="suggestion-detail">${esc([fmtPos(s?.column,s?.row),normInstrument(s?.instrument)].filter(Boolean).join(' · '))}</span>
+                <span class="suggestion-detail">${esc([_studentSpotText(s),normInstrument(s?.instrument)].filter(Boolean).join(' · '))}</span>
               </div>`;
             }).join('') : ''}
             ${!_drillSelectedNums.length && isNameSearch ? suggestions.map(s => `
               <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
                 <span class="suggestion-name">${esc(s.name || `#${s.number}`)}</span>
-                <span class="suggestion-detail">${esc([fmtPos(s.column,s.row),normInstrument(s.instrument)].filter(Boolean).join(' · '))}</span>
+                <span class="suggestion-detail">${esc([_studentSpotText(s),normInstrument(s.instrument)].filter(Boolean).join(' · '))}</span>
               </div>`).join('') : ''}
             ${!_drillSelectedNums.length && showAllForFilter ? allFiltered.map(s => `
               <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
                 <span class="suggestion-name">${esc(s.name || `#${s.number}`)}</span>
-                <span class="suggestion-detail">${esc(fmtPos(s.column,s.row))}</span>
+                <span class="suggestion-detail">${esc(_studentSpotText(s))}</span>
               </div>`).join('') : ''}
           </div>
         ` : ''}
@@ -521,7 +503,7 @@ function viewRehearsal(rid) {
             <div class="entry-header">
               <div class="entry-student">
                 ${stu ? esc(stu.name || `#${num}`) : `#${esc(num)}`}
-                ${stu ? `<span class="sub">${esc([fmtPos(stu.column,stu.row),normInstrument(stu.instrument)].filter(Boolean).join(' · '))}</span>` : '<span class="sub" style="color:var(--warning)">Not in roster</span>'}
+                ${stu ? `<span class="sub">${esc([_studentSpotText(stu),normInstrument(stu.instrument)].filter(Boolean).join(' · '))}</span>` : '<span class="sub" style="color:var(--warning)">Not in roster</span>'}
               </div>
               <div class="entry-badges">
                 ${entry.attendance==='absent' ? `<span class="badge att-badge-absent">Absent</span>` : ''}
@@ -899,157 +881,6 @@ function deleteEvent(rid, num, idx) {
   reRender(rid);
 }
 
-// ── Block Navigator ───────────────────────────────────────────────────────────
-
-function findStudentAtPos(col, row, students) {
-  for (const [num, s] of Object.entries(students)) {
-    if (s.column === col && String(s.row) === String(row)) return num;
-  }
-  return null;
-}
-
-function toggleBlockMode(rid) {
-  _blockMode = !_blockMode;
-  _blockPath = [];
-  if (_blockMode) { _activeNum = null; _trackerFilter.search = ''; }
-  reRender(rid);
-}
-
-function blockDrillIn(rid, c0, c1, r0, r1) {
-  _blockPath.push({ c0, c1, r0, r1 });
-  reRender(rid);
-}
-
-function blockZoomOut(rid) {
-  if (_blockPath.length > 0) { _blockPath.pop(); reRender(rid); }
-}
-
-function blockSelect(num, rid) {
-  pickStudent(String(num), rid);
-}
-
-function blockSelectEmpty(pos) {
-  showToast(`No student assigned to ${pos}`);
-}
-
-function initBlockPinch(rid) {
-  const el = document.getElementById('block-nav');
-  if (!el || _blockPath.length === 0) return;
-  let startDist = 0, armed = false;
-  el.addEventListener('touchstart', e => {
-    if (e.touches.length >= 2) {
-      armed = true;
-      startDist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-    }
-  }, { passive: true });
-  el.addEventListener('touchmove', e => {
-    if (!armed || e.touches.length < 2) return;
-    const d = Math.hypot(
-      e.touches[0].clientX - e.touches[1].clientX,
-      e.touches[0].clientY - e.touches[1].clientY
-    );
-    if (d < startDist * 0.65) { armed = false; blockZoomOut(rid); }
-  }, { passive: true });
-  el.addEventListener('touchend', () => { armed = false; }, { passive: true });
-}
-
-function blockMiniGrid(rid, c0, c1, r0, r1) {
-  const entries  = DB.getRehearsalEntries(rid);
-  const students = DB.getStudents();
-  const cols = c1 - c0 + 1;
-  let dots = '';
-  for (let r = r1; r >= r0; r--) {
-    for (let c = c1; c >= c0; c--) {
-      const num   = findStudentAtPos(COLUMNS[c], String(r), students);
-      const entry = num ? entries[num] : null;
-      const cls   = !num ? 'bd-empty'
-        : (entry?.mistakes  > 0 ? 'bd-mistake'
-        : (entry?.positives > 0 ? 'bd-positive' : 'bd-filled'));
-      dots += `<span class="bd-dot ${cls}"></span>`;
-    }
-  }
-  return `<div class="bd-mini" style="--bd-cols:${cols}">${dots}</div>`;
-}
-
-function renderBlockNav(rid) {
-  const level = _blockPath.length;
-  let c0 = 0, c1 = 11, r0 = 1, r1 = 12;
-  if (level > 0) ({ c0, c1, r0, r1 } = _blockPath[level - 1]);
-  const colCount = c1 - c0 + 1;
-  const rowCount = r1 - r0 + 1;
-
-  const crumb = level === 0 ? 'Full Block'
-    : `${COLUMNS[c0]}–${COLUMNS[c1]} · Rows ${r0}–${r1}`;
-
-  let gridHtml = '', gridCols = 2;
-
-  if (level < 2) {
-    const midC = c0 + Math.floor(colCount / 2) - 1;
-    const midR = r0 + Math.floor(rowCount / 2) - 1;
-    const regions = [
-      [midC+1, c1,  midR+1, r1  ],
-      [c0,    midC, midR+1, r1  ],
-      [midC+1, c1,  r0,     midR],
-      [c0,    midC, r0,     midR],
-    ];
-    gridHtml = regions.map(([rc0,rc1,rr0,rr1]) => `
-      <div class="block-region" onclick="blockDrillIn('${esc(rid)}',${rc0},${rc1},${rr0},${rr1})">
-        ${blockMiniGrid(rid, rc0, rc1, rr0, rr1)}
-        <div class="block-region-label">${COLUMNS[rc0]}–${COLUMNS[rc1]}<br><span>Rows ${rr0}–${rr1}</span></div>
-      </div>`).join('');
-  } else {
-    const entries  = DB.getRehearsalEntries(rid);
-    const students = DB.getStudents();
-    gridCols = colCount;
-    for (let r = r1; r >= r0; r--) {
-      for (let c = c1; c >= c0; c--) {
-        const col  = COLUMNS[c];
-        const pos  = `${col}${r}`;
-        const num  = findStudentAtPos(col, String(r), students);
-        const entry = num ? (entries[num] || null) : null;
-        const cls  = !num ? 'bc-empty'
-          : (entry?.mistakes  > 0 ? 'bc-mistake'
-          : (entry?.positives > 0 ? 'bc-positive' : 'bc-assigned'));
-        const fn   = num
-          ? `blockSelect('${esc(num)}','${esc(rid)}')`
-          : `blockSelectEmpty('${esc(pos)}')`;
-        const bcName = num ? (students[num]?.name || `#${num}`) : '';
-        gridHtml += `
-          <div class="block-cell ${cls}" onclick="${fn}">
-            <div class="bc-pos">${esc(pos)}</div>
-            ${bcName ? `<div class="bc-num">${esc(bcName)}</div>` : ''}
-            ${(entry?.mistakes||0)+(entry?.positives||0) > 0 ? `
-              <div class="bc-marks">
-                ${entry.mistakes  > 0 ? `<span class="bc-m">${entry.mistakes}✗</span>`  : ''}
-                ${entry.positives > 0 ? `<span class="bc-p">${entry.positives}✓</span>` : ''}
-              </div>` : ''}
-          </div>`;
-      }
-    }
-  }
-
-  return `
-    <div class="block-nav" id="block-nav">
-      <div class="block-nav-hdr">
-        <div class="block-crumb">${esc(crumb)}</div>
-        <div style="display:flex;gap:6px;align-items:center">
-          ${level > 0 ? `<button class="block-ctrl-btn" onclick="blockZoomOut('${esc(rid)}')">← Back</button>` : ''}
-          <button class="block-ctrl-btn" onclick="toggleBlockMode('${esc(rid)}')">✕ Close</button>
-        </div>
-      </div>
-      <div class="block-grid" style="grid-template-columns:repeat(${gridCols},1fr)">
-        ${gridHtml}
-      </div>
-      <div class="block-footer">
-        <span>Col ${COLUMNS[c1 > 11 ? 11 : c1]}</span>
-        <span>↑ Back &nbsp;·&nbsp; Front ↓</span>
-        <span>Col ${COLUMNS[c0]}</span>
-      </div>
-    </div>`;
-}
 
 function reRender(rid) {
   const mc = document.getElementById('main-content');
@@ -1060,7 +891,6 @@ function reRender(rid) {
     mc.innerHTML = viewAttendance(rid);
   } else if (_view === 'rehearsal') {
     mc.innerHTML = viewRehearsal(rid);
-    if (_blockMode && !_activeNum) initBlockPinch(rid);
   } else if (_view === 'drill' && typeof _drillViewRenderSvg === 'function') {
     // Quick-marks added from the drill viewer: refresh its info panel tally.
     _drillViewRenderSvg();

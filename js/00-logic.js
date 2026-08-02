@@ -239,8 +239,6 @@ function parseCSV(text) {
 const COL_ALIASES = {
   number:     ['number','student number','student #','student no','student id','id','#','num','no.','no'],
   name:       ['name','student name','full name','first name','last name','student'],
-  column:     ['column','col','letter','column letter','file'],
-  row:        ['row','rank','row number','set'],
   instrument: ['instrument','instruments','inst'],
   section:    ['section','part','group','ensemble'],
   grade:      ['grade','grade level','year','class year'],
@@ -441,8 +439,6 @@ function filterAndSortStudents(students, f, scoreMap) {
       case 'instrument': va = instrOrder(a.instrument); vb = instrOrder(b.instrument); break;
       case 'section':    va = (a.section||'').toLowerCase();       vb = (b.section||'').toLowerCase(); break;
       case 'grade':      va = GRADE_LEVELS.indexOf(a.grade||'');   vb = GRADE_LEVELS.indexOf(b.grade||''); break;
-      case 'column':     va = (a.column||'').toUpperCase();        vb = (b.column||'').toUpperCase(); break;
-      case 'row':        va = +a.row||0;                           vb = +b.row||0; break;
       case 'score': case 'positives': case 'mistakes': case 'passed': case 'missing': {
         va = scoreMap?.[a.number]?.[f.sortField] ?? -1;
         vb = scoreMap?.[b.number]?.[f.sortField] ?? -1;

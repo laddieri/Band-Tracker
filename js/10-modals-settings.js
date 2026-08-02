@@ -16,23 +16,6 @@ function showAddStudentModal(prefill = '') {
       <label class="form-label">Name (optional)</label>
       <input class="form-input" id="m-name" type="text" placeholder="First Last" autocomplete="off">
     </div>
-    ${(hasField('column')||hasField('row')) ? `
-    <div style="display:grid;grid-template-columns:${hasField('column')&&hasField('row')?'1fr 1fr':'1fr'};gap:12px">
-      ${hasField('column') ? `<div class="form-group" style="margin-bottom:0">
-        <label class="form-label">Column (A–L)</label>
-        <select class="form-select" id="m-column">
-          <option value="">—</option>
-          ${COLUMNS.map(c=>`<option value="${c}">${c}</option>`).join('')}
-        </select>
-      </div>` : ''}
-      ${hasField('row') ? `<div class="form-group" style="margin-bottom:0">
-        <label class="form-label">Row (1–12)</label>
-        <select class="form-select" id="m-row">
-          <option value="">—</option>
-          ${ROWS.map(r=>`<option value="${r}">${r}</option>`).join('')}
-        </select>
-      </div>` : ''}
-    </div>` : ''}
     ${hasField('instrument') ? `<div class="form-group">
       <label class="form-label">Instrument</label>
       <select class="form-select" id="m-instrument">
@@ -80,8 +63,6 @@ function saveNewStudent() {
     name:   document.getElementById('m-name').value.trim(),
     songs:  []
   };
-  if (hasField('column'))     student.column     = document.getElementById('m-column')?.value     || '';
-  if (hasField('row'))        student.row        = document.getElementById('m-row')?.value        || '';
   if (hasField('instrument')) student.instrument = document.getElementById('m-instrument')?.value || '';
   if (hasField('section'))    student.section    = document.getElementById('m-section')?.value    || '';
   if (hasField('grade'))      student.grade      = document.getElementById('m-grade')?.value      || '';
@@ -108,23 +89,6 @@ function showEditStudentModal(num) {
       <label class="form-label">Name (optional)</label>
       <input class="form-input" id="m-name" type="text" value="${esc(s.name||'')}" autocomplete="off">
     </div>
-    ${(hasField('column')||hasField('row')) ? `
-    <div style="display:grid;grid-template-columns:${hasField('column')&&hasField('row')?'1fr 1fr':'1fr'};gap:12px">
-      ${hasField('column') ? `<div class="form-group" style="margin-bottom:0">
-        <label class="form-label">Column (A–L)</label>
-        <select class="form-select" id="m-column">
-          <option value="">—</option>
-          ${COLUMNS.map(c=>`<option value="${c}" ${s.column===c?'selected':''}>${c}</option>`).join('')}
-        </select>
-      </div>` : ''}
-      ${hasField('row') ? `<div class="form-group" style="margin-bottom:0">
-        <label class="form-label">Row (1–12)</label>
-        <select class="form-select" id="m-row">
-          <option value="">—</option>
-          ${ROWS.map(r=>`<option value="${r}" ${String(s.row)===String(r)?'selected':''}>${r}</option>`).join('')}
-        </select>
-      </div>` : ''}
-    </div>` : ''}
     ${hasField('instrument') ? `<div class="form-group">
       <label class="form-label">Instrument</label>
       <select class="form-select" id="m-instrument">
@@ -195,8 +159,6 @@ function saveEditStudent(num) {
     studentCode:  document.getElementById('m-student-code').value.trim().toUpperCase(),
     studentEmail: document.getElementById('m-student-email').value.trim().toLowerCase(),
   };
-  if (hasField('column'))     patch.column     = document.getElementById('m-column')?.value     || '';
-  if (hasField('row'))        patch.row        = document.getElementById('m-row')?.value        || '';
   if (hasField('instrument')) patch.instrument = document.getElementById('m-instrument')?.value || '';
   if (hasField('section'))    patch.section    = document.getElementById('m-section')?.value    || '';
   if (hasField('grade'))      patch.grade      = document.getElementById('m-grade')?.value      || '';
@@ -1201,8 +1163,6 @@ function showImportModal() {
 const STUDENT_FIELD_DEFS = [
   { key: 'instrument', label: 'Instrument',  description: 'Instrument played',                        aliases: 'Instrument, Inst' },
   { key: 'section',    label: 'Section',     description: 'Band section or ensemble group',           aliases: 'Section, Part, Group, Ensemble' },
-  { key: 'column',     label: 'Column',      description: 'Marching position — column letter (A–L)',  aliases: 'Column, Col, Letter, Column Letter, File' },
-  { key: 'row',        label: 'Row',         description: 'Marching position — row number (1–12)',    aliases: 'Row, Rank, Row Number, Set' },
   { key: 'grade',      label: 'Grade',       description: 'Grade level (9–12)',                       aliases: 'Grade, Grade Level, Year, Class Year' },
   { key: 'notes',      label: 'Notes',       description: 'Private director notes for the student',   aliases: 'Notes, Note, Comments, Director Notes' },
 ];
@@ -1246,7 +1206,7 @@ function renderImportPreview() {
   const newCount  = rows.filter(r => !existing[r[colMap.number]?.trim()]).length;
   const dupCount  = rows.length - newCount;
   const preview   = rows.slice(0, 8);
-  const LABELS    = { number:'Number', name:'Name', column:'Column', row:'Row', instrument:'Instrument', section:'Section', grade:'Grade', notes:'Notes' };
+  const LABELS    = { number:'Number', name:'Name', instrument:'Instrument', section:'Section', grade:'Grade', notes:'Notes' };
   for (const cf of (STATE.customStudentFields || [])) LABELS[cf.key] = cf.label;
   const customKeys = new Set((STATE.customStudentFields || []).map(cf => cf.key));
   const fields    = Object.keys(colMap).filter(f => f === 'number' || f === 'name' || hasField(f) || customKeys.has(f));
@@ -1322,8 +1282,6 @@ async function executeImport() {
     if (!num) continue;
     const incoming = { number: num };
     if (colMap.name       !== undefined)              incoming.name       = csvRow[colMap.name].trim();
-    if (colMap.column     !== undefined && hasField('column'))     incoming.column     = csvRow[colMap.column].trim().toUpperCase();
-    if (colMap.row        !== undefined && hasField('row'))        incoming.row        = csvRow[colMap.row].trim();
     if (colMap.instrument !== undefined && hasField('instrument')) incoming.instrument = csvRow[colMap.instrument].trim();
     if (colMap.section    !== undefined && hasField('section'))    incoming.section    = csvRow[colMap.section].trim();
     if (colMap.grade      !== undefined && hasField('grade'))      incoming.grade      = normalizeGrade(csvRow[colMap.grade].trim());
