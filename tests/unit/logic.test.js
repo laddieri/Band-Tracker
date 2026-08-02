@@ -514,6 +514,19 @@ describe('drillSpotNums', () => {
   });
 });
 
+describe('drillSpotLabelParts (section letter + rank)', () => {
+  it('splits letters from the trailing number', () => {
+    assert.deepStrictEqual(L.drillSpotLabelParts('M1'), { section: 'M', rank: 1 });
+    assert.deepStrictEqual(L.drillSpotLabelParts('a12'), { section: 'A', rank: 12 });
+    assert.deepStrictEqual(L.drillSpotLabelParts('BD3'), { section: 'BD', rank: 3 });
+  });
+  it('handles a number-only or letter-only label', () => {
+    assert.deepStrictEqual(L.drillSpotLabelParts('7'), { section: '?', rank: 7 });
+    assert.deepStrictEqual(L.drillSpotLabelParts('X'), { section: 'X', rank: 0 });
+    assert.deepStrictEqual(L.drillSpotLabelParts(''), { section: '?', rank: 0 });
+  });
+});
+
 describe('drillSpotStripOthers (one spot per student per show)', () => {
   it('removes the student from other spots, keeping the target label', () => {
     const m = { A1: '42', B2: '42' };

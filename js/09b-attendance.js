@@ -707,9 +707,19 @@ function submitAttendance(rid) {
 // big tappable name that toggles absent (red). Marking only records absences —
 // everyone else is present by default on submit, like the standard flow.
 
+// Attendance-by-block groups. Each group is one "block" to step through, and
+// each entry is { s, pos, shared }: the student, the position label to show
+// (roster spot A1, or a show's field-spot label M1), and whether that spot is
+// shared by more than one student. Grouping is by roster column by default, or
+// by a show's field-spot letters when a show was chosen (_blockAttShowId).
+function _blockAttGroups(rid) {
+  return _blockAttShowId ? _blockAttShowGroups(rid, _blockAttShowId)
+                         : _blockAttColumnGroups(rid);
+}
+
 // Ordered column groups for the rehearsal's in-scope roster. Columns follow the
 // A–L order; students with no column fall into a trailing "No Column" group.
-function _blockAttGroups(rid) {
+function _blockAttColumnGroups(rid) {
   const byCol = {};
   for (const s of rehearsalStudents(rid)) {
     const col = String(s.column || '').toUpperCase().trim();
@@ -720,17 +730,96 @@ function _blockAttGroups(rid) {
   // reach higher row numbers (mirrors looking down a file from the front).
   const byRow = list => list.slice().sort((a, b) =>
     (+b.row || 0) - (+a.row || 0) || (a.name || '').localeCompare(b.name || ''));
+  const wrap = list => byRow(list).map(s => ({ s, pos: fmtPos(s.column, s.row), shared: false }));
   const groups = [];
-  for (const c of COLUMNS) if (byCol[c]?.length) groups.push({ key: c, label: `Column ${c}`, students: byRow(byCol[c]) });
+  for (const c of COLUMNS) if (byCol[c]?.length) groups.push({ key: c, label: `Column ${c}`, students: wrap(byCol[c]) });
   // Any non-standard column letters, then the unassigned group.
   Object.keys(byCol).filter(c => c && !COLUMNS.includes(c)).sort()
-    .forEach(c => groups.push({ key: c, label: `Column ${c}`, students: byRow(byCol[c]) }));
+    .forEach(c => groups.push({ key: c, label: `Column ${c}`, students: wrap(byCol[c]) }));
   if (byCol['']?.length)
-    groups.push({ key: '', label: 'No Column', students: byCol[''].slice().sort((a, b) => (a.name || '').localeCompare(b.name || '')) });
+    groups.push({ key: '', label: 'No Column',
+      students: byCol[''].slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        .map(s => ({ s, pos: '', shared: false })) });
   return groups;
 }
 
+// Groups by a show's field-spot assignments: one group per section letter, each
+// listing that section's spots (rank high → low, like the column flow). A spot
+// shared by two students yields one entry per student (each toggled on its own).
+// In-scope students with no spot in the show fall into a trailing group so
+// attendance still covers everyone.
+function _blockAttShowGroups(rid, showId) {
+  const show    = STATE.shows && STATE.shows[showId];
+  const mapping = (show && show.mapping) || {};
+  const scope   = rehearsalStudents(rid);
+  const byNum   = {};
+  scope.forEach(s => { byNum[String(s.number)] = s; });
+
+  const assigned  = new Set();
+  const bySection = {}; // letter → [{ rank, name, entry }]
+  Object.keys(mapping).forEach(label => {
+    const nums = drillSpotNums(mapping[label]).filter(n => byNum[n]);
+    if (!nums.length) return;
+    const { section, rank } = drillSpotLabelParts(label);
+    const shared = nums.length > 1;
+    nums.forEach(n => {
+      assigned.add(n);
+      (bySection[section] = bySection[section] || []).push({
+        rank, name: byNum[n].name || '',
+        entry: { s: byNum[n], pos: label, shared },
+      });
+    });
+  });
+
+  const groups = Object.keys(bySection).sort().map(letter => ({
+    key: 'S:' + letter,
+    label: `Section ${letter}`,
+    students: bySection[letter]
+      .sort((a, b) => (b.rank - a.rank) || a.name.localeCompare(b.name))
+      .map(i => i.entry),
+  }));
+
+  const leftovers = scope.filter(s => !assigned.has(String(s.number)))
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  if (leftovers.length) {
+    groups.push({
+      key: 'NOSPOT', label: 'No spot in this show',
+      students: leftovers.map(s => ({ s, pos: fmtPos(s.column, s.row), shared: false })),
+    });
+  }
+  return groups;
+}
+
+// Entry point: if any shows exist, let the director group the flow by roster
+// column OR by a show's field spots; with no shows, go straight to columns.
 function startBlockAttendance(rid) {
+  const shows = Object.values(STATE.shows || {}).sort((a, b) =>
+    (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0) || (a.name || '').localeCompare(b.name || ''));
+  if (!shows.length) { _beginBlockAttendance(rid, null); return; }
+  const showRows = shows.map(s => `
+    <button class="options-menu-item" onclick="closeModal();_beginBlockAttendance('${esc(rid)}','${esc(s.id)}')">
+      <div class="options-menu-icon">🎬</div>
+      <div><div class="options-menu-label">${esc(s.name || 'Show')}</div><div class="options-menu-sub">By this show's field spots (letters &amp; numbers)</div></div>
+    </button>`).join('');
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Take Attendance by Block</div>
+    <p class="modal-sub" style="margin:0 0 10px">Step through students a block at a time. Group by roster column, or by a show's field-spot assignments.</p>
+    <div class="options-menu">
+      <button class="options-menu-item" onclick="closeModal();_beginBlockAttendance('${esc(rid)}','')">
+        <div class="options-menu-icon">▦</div>
+        <div><div class="options-menu-label">By roster column</div><div class="options-menu-sub">Block columns A–L</div></div>
+      </button>
+      ${showRows}
+    </div>
+    <div class="modal-actions" style="margin-top:8px">
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Cancel</button>
+    </div>
+  `);
+}
+
+function _beginBlockAttendance(rid, showId) {
+  _blockAttShowId = showId || null;
   _blockAttIdx    = 0;
   _blockAttReview = false;
   navigate('attendance-block', { rid, from: _params.from });
@@ -751,16 +840,17 @@ function viewAttendanceBlock(rid) {
     return `<div class="empty-state"><p>No students to take attendance for.</p></div>`;
   }
 
-  const isAbsent = s => entries[s.number]?.attendance === 'absent';
+  const isAbsent = e => entries[e.s.number]?.attendance === 'absent';
   const allAbsent = () => groups.flatMap(g => g.students).filter(isAbsent);
+  const showName = _blockAttShowId ? (STATE.shows?.[_blockAttShowId]?.name || 'Show') : '';
 
   // ── Review screen ──────────────────────────────────────────────────────────
   if (_blockAttReview) {
-    const absentees = allAbsent().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    const absentees = allAbsent().sort((a, b) => (a.s.name || '').localeCompare(b.s.name || ''));
     const rows = absentees.length
-      ? absentees.map(s => {
-          const pos = fmtPos(s.column, s.row);
-          const meta = [pos, normInstrument(s.instrument)].filter(Boolean).join(' · ');
+      ? absentees.map(e => {
+          const s = e.s;
+          const meta = [e.pos, normInstrument(s.instrument)].filter(Boolean).join(' · ');
           return `
             <button class="blk-att-review-row" onclick="blockToggleAbsent('${esc(rid)}','${esc(s.number)}')">
               <span class="blk-att-review-name">${esc(s.name || `#${s.number}`)}</span>
@@ -775,7 +865,7 @@ function viewAttendanceBlock(rid) {
           <div class="blk-att-title">Review Absences</div>
           <div class="blk-att-progress">${absentees.length} absent</div>
         </div>
-        <p class="blk-att-hint">Tap a name to remove them from the absent list.</p>
+        <p class="blk-att-hint">${showName ? `${esc(showName)} · ` : ''}Tap a name to remove them from the absent list.</p>
         <div class="blk-att-review-list">${rows}</div>
         <div class="blk-att-footer">
           <button class="btn btn-secondary blk-att-back" onclick="blockAttBack('${esc(rid)}')">← Back</button>
@@ -784,20 +874,22 @@ function viewAttendanceBlock(rid) {
       </div>`;
   }
 
-  // ── Column screen ──────────────────────────────────────────────────────────
+  // ── Block screen (one column or one show section) ────────────────────────────
   const idx     = Math.min(_blockAttIdx, groups.length - 1);
   const group   = groups[idx];
   const isLast  = idx >= groups.length - 1;
   const colAbsent = group.students.filter(isAbsent).length;
+  const unit    = _blockAttShowId ? 'section' : 'column';
 
   const nextLabel = isLast
     ? (colAbsent ? `${colAbsent} absent. Review` : `Everybody's here. Review`)
-    : (colAbsent ? `${colAbsent} absent. Next column` : `Everybody's here. Next column`);
+    : (colAbsent ? `${colAbsent} absent. Next ${unit}` : `Everybody's here. Next ${unit}`);
 
-  const stuBtns = group.students.map(s => {
-    const pos = fmtPos(s.column, s.row);
+  const stuBtns = group.students.map(e => {
+    const s = e.s;
+    const pos = [e.pos, e.shared ? 'shared' : ''].filter(Boolean).join(' · ');
     return `
-      <button class="blk-att-stu ${isAbsent(s) ? 'blk-att-absent' : ''}" id="blkstu-${esc(s.number)}"
+      <button class="blk-att-stu ${isAbsent(e) ? 'blk-att-absent' : ''}" id="blkstu-${esc(s.number)}"
               onclick="blockToggleAbsent('${esc(rid)}','${esc(s.number)}')">
         <span class="blk-att-stu-name">${esc(s.name || `#${s.number}`)}</span>
         ${pos ? `<span class="blk-att-stu-pos">${esc(pos)}</span>` : ''}
@@ -810,7 +902,7 @@ function viewAttendanceBlock(rid) {
         <div class="blk-att-title">${esc(group.label)}</div>
         <div class="blk-att-progress">${idx + 1} of ${groups.length}</div>
       </div>
-      <p class="blk-att-hint">Tap a student to mark them absent.</p>
+      <p class="blk-att-hint">${showName ? `${esc(showName)} · ` : ''}Tap a student to mark them absent.</p>
       <div class="blk-att-list">${stuBtns}</div>
       <div class="blk-att-footer">
         ${idx > 0 ? `<button class="btn btn-secondary blk-att-back" onclick="blockAttBack('${esc(rid)}')">←</button>` : ''}

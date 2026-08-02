@@ -281,6 +281,15 @@ function drillSpotNums(v) {
   return (v === 0 || v) ? [String(v)].filter(Boolean) : [];
 }
 
+// Split a field-spot label into its section letter(s) and rank number, e.g.
+// "M1" → { section:'M', rank:1 }, "A12" → { section:'A', rank:12 }. A label with
+// no trailing number keeps the whole label as the section and rank 0.
+function drillSpotLabelParts(label) {
+  const m = /^([A-Za-z]*)(\d+)$/.exec(String(label || '').trim());
+  if (m) return { section: (m[1] || '?').toUpperCase(), rank: parseInt(m[2], 10) };
+  return { section: (String(label || '').trim() || '?').toUpperCase(), rank: 0 };
+}
+
 // Enforce "one spot per student per show": pull `num` out of every spot except
 // `keepLabel`, so a student never holds two spots in the same show. Shared spots
 // (2+ students at ONE label) are preserved — only the student's OTHER labels are
@@ -787,7 +796,7 @@ if (typeof module !== 'undefined' && module.exports) {
     lbWeights, scoreStudentsCore, buildPublicStats,
     checkAutoMarkCondition, computeAutoMarkEvents,
     parseCSVLine, parseCSV, COL_ALIASES, normalizeGrade, detectCols,
-    DRILL_LABEL_ALIASES, drillSpotNums, drillSpotStripOthers, applyDrillSpotCsv,
+    DRILL_LABEL_ALIASES, drillSpotNums, drillSpotStripOthers, drillSpotLabelParts, applyDrillSpotCsv,
     suggestSeasonLabel,
     normInstrument, instrOrder, GRADE_LEVELS, filterAndSortStudents,
     _hasMarker, _indexOfMarker, _parsePywareFile, _pywareAssembleDrill, _pyware3daPageNote,
