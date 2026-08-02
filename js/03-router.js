@@ -29,7 +29,7 @@ window.addEventListener('popstate', e => {
 
 function navigate(view, params = {}, _fromHistory = false) {
   if (_view === 'rehearsal' && view !== 'rehearsal') {
-    _activeNum = null; _trackerFilter = _mkFilter('name', 'asc'); _blockMode = false; _blockPath = []; _drillSelectedNums = [];
+    _activeNum = null; _trackerFilter = _mkFilter('name', 'asc'); _drillSelectedNums = [];
   }
   if (_view === 'song' && view !== 'song') {
     _songFilter           = _mkFilter('name', 'asc');
@@ -39,7 +39,7 @@ function navigate(view, params = {}, _fromHistory = false) {
     _lbFilter = _mkFilter('score', 'desc');
   }
   if (_view === 'dashboard' && view !== 'dashboard') {
-    _activeNum = null; _trackerFilter = _mkFilter('name', 'asc'); _blockMode = false; _blockPath = []; _drillSelectedNums = [];
+    _activeNum = null; _trackerFilter = _mkFilter('name', 'asc'); _drillSelectedNums = [];
     _dashRid = null;
   }
   if (_view === 'attendance' && view !== 'attendance') {
@@ -85,8 +85,6 @@ let _attSummaryStatus        = '';    // quick-filter on submitted summary: ''|'
 let _blockAttIdx    = 0;     // column index in the "take attendance by block" flow
 let _blockAttReview = false; // true = showing the block-attendance review/submit screen
 let _blockAttShowId = null;  // null = group by roster column; a showId = group by that show's field spots
-let _blockMode  = false;
-let _blockPath  = []; // [{c0,c1,r0,r1}] — zoom drill path
 let _drillData       = null; // parsed Pyware sections: [{letter, performers:[label]}]
 let _drillPages      = null; // distinct formation frames: [{label,section,num,stepsX,stepsY}][]
 let _drillCurrentSet = 0;    // currently viewed frame index in chart modal
@@ -313,7 +311,7 @@ function updateFilter(viewId, field, value) {
               <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
                 <span class="suggestion-num">#${esc(s.number)}</span>
                 <span class="suggestion-name">${esc(s.name || '—')}</span>
-                <span class="suggestion-detail">${esc([fmtPos(s.column,s.row),s.instrument].filter(Boolean).join(' · '))}</span>
+                <span class="suggestion-detail">${esc([_studentSpotText(s),s.instrument].filter(Boolean).join(' · '))}</span>
               </div>`).join('')
           : `<div class="tracker-hint">No students match "${esc(trimmed)}".</div>`;
       } else {
@@ -435,11 +433,6 @@ function fmtShort(d) {
   const [, m, day] = d.split('-').map(Number);
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   return `${months[m-1]} ${day}`;
-}
-
-function fmtPos(col, row) {
-  if (!col && !row) return '';
-  return `${col || ''}${row || ''}`;
 }
 
 // Display label for a mark/status author. New data stamps director uids

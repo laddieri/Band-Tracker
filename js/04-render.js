@@ -194,7 +194,6 @@ function render() {
       title.textContent = r ? fmtShort(r.date) + (r.label ? ` — ${r.label}` : '') : 'Rehearsal';
       actions.innerHTML = userBtn();
       main.innerHTML = viewRehearsal(_params.rid);
-      if (_blockMode && !_activeNum) initBlockPinch(_params.rid);
       break;
     }
 

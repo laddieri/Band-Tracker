@@ -304,20 +304,6 @@ function _migrateDrillShows() {
 let _drillActiveSection = 0;
 let _drillChecked = new Set(); // selected performer indices
 
-// Drill labels are "section letter + front-to-back rank" (e.g. "A1"), which
-// matches the block-grid spot students already carry (column letter + row
-// number). So a performer labelled "A1" maps to the student at column A, row 1
-// with no manual setup. An explicit pywareMapping entry (mapping modal) still
-// overrides the position match.
-function _drillPosIndex() {
-  const idx = {};
-  Object.values(STATE.students || {}).forEach(s => {
-    const pos = fmtPos(s.column, s.row);
-    if (pos) idx[pos.toUpperCase()] = s.number;
-  });
-  return idx;
-}
-
 // The show the active drill belongs to (null if it isn't grouped into one).
 // A show owns the shared label → student spot map for all its drills, so an
 // assignment made on one drill carries over to every other drill in the show —
@@ -340,17 +326,16 @@ function _activeDrillMapping() {
 }
 
 // All students at a spot (a spot may be shared by more than one student).
-// Resolution per label: an explicit per-drill entry wins — even an empty one,
-// which means the spot was deliberately cleared, so it does NOT fall back to a
-// block-spot match (that's what let a removed student reappear). Then the legacy
-// band-wide mapping, then the column/row block-spot match.
+// Resolution per label: the show's (or ungrouped drill's) explicit assignment
+// wins — even an empty one, which means the spot was deliberately cleared. Then
+// the legacy band-wide pywareMapping. Spots are assigned per show now, so there
+// is no roster column/row fallback.
 function drillStudentNumsByLabel(label) {
   const m = _activeDrillMapping();
   if (Object.prototype.hasOwnProperty.call(m, label)) return drillSpotNums(m[label]);
   const g = STATE.pywareMapping || {};
   if (Object.prototype.hasOwnProperty.call(g, label)) return drillSpotNums(g[label]);
-  const pos = _drillPosIndex()[(label || '').toUpperCase()];
-  return pos ? [String(pos)] : [];
+  return [];
 }
 
 // The first student at a spot (single-value callers: trace, profile, etc.).
@@ -1059,10 +1044,8 @@ function _drillMapRowsHtml() {
     (a.name || '').localeCompare(b.name || ''));
   const studentOptions = `<option value="">— Not mapped —</option>` +
     students.map(s => `<option value="${esc(s.number)}">${esc(s.name || `#${s.number}`)}${s.instrument ? ` (${esc(normInstrument(s.instrument))})` : ''}</option>`).join('');
-  const posIdx = _drillPosIndex();
   const sec = _drillData[_drillMappingSection];
   return sec.performers.map(label => {
-    const hasExplicit = Object.prototype.hasOwnProperty.call(mapping, label);
     const explicit = drillSpotNums(mapping[label]);
     // A shared spot (2+ students) is shown read-only here — edit it by tapping
     // the dot on the chart or via CSV, so the dropdown can't silently drop a
@@ -1075,13 +1058,10 @@ function _drillMapRowsHtml() {
           <div class="drill-map-shared">${esc(names)} <span style="color:var(--text-muted)">· tap the dot to edit</span></div>
         </div>`;
     }
-    // Pre-select the effective student: an explicit entry (incl. a cleared one)
-    // wins; only an untouched spot pre-fills from the block-spot match.
-    const currentNum = hasExplicit ? (explicit[0] || '') : (posIdx[label.toUpperCase()] || '');
-    const auto = !hasExplicit && posIdx[label.toUpperCase()];
+    const currentNum = explicit[0] || '';
     return `
       <div class="drill-map-row">
-        <div class="drill-map-pos">${esc(label)}${auto ? `<span class="drill-map-auto" title="Matched to block spot ${esc(label)}">auto</span>` : ''}</div>
+        <div class="drill-map-pos">${esc(label)}</div>
         <select class="drill-map-select form-input" data-label="${esc(label)}"
           onchange="drillMappingChange('${esc(label)}', this.value)">
           ${studentOptions.replace(`value="${esc(currentNum)}"`, `value="${esc(currentNum)}" selected`)}
@@ -1111,7 +1091,7 @@ function _renderDrillMappingModal() {
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Spots for ${esc(drillName)}</div>
-    <p class="modal-sub" style="margin:0 0 10px">Assign this show's spots to students. ${show ? `Every drill in <strong>${esc(show.name || 'this show')}</strong> shares these assignments, so a new drill file for the show inherits them.` : `Each show maps independently, so a student can have different spots per show.`} Unset "auto" rows fall back to a student's block spot (column&nbsp;+&nbsp;row). Saved automatically.</p>
+    <p class="modal-sub" style="margin:0 0 10px">Assign this show's spots to students. ${show ? `Every drill in <strong>${esc(show.name || 'this show')}</strong> shares these assignments, so a new drill file for the show inherits them.` : `Each show maps independently, so a student can have different spots per show.`} Saved automatically.</p>
     <button class="btn btn-secondary btn-full" style="margin-bottom:10px" onclick="showDrillSpotImportModal()">⬆︎ Import / export spots (CSV)</button>
     <div class="drill-tabs">${renderSectionTabs()}</div>
     <div class="drill-map-list" id="drill-map-list">${_drillMapRowsHtml()}</div>
@@ -1161,11 +1141,9 @@ function drillMappingChange(label, studentNum) {
   _drillUnassignedRefresh(); // keep the Drill-tab pill accurate under the modal
 }
 
-// Add/remove operate on what the panel actually SHOWS (the effective list,
-// which may include a block-spot auto-match), then write it back explicitly.
-// This makes the panel WYSIWYG: ✕ always removes the person you see, and an
-// emptied spot is stored as an explicit [] ("cleared") so the auto-match can't
-// re-fill it.
+// Add/remove operate on what the panel actually SHOWS (the effective list),
+// then write it back explicitly. This makes the panel WYSIWYG: ✕ always removes
+// the person you see, and an emptied spot is stored as an explicit [] ("cleared").
 function drillSpotAddStudent(label, num) {
   if (!num || !STATE.activeDrillId) return;
   const mapping = { ..._activeDrillMapping() };

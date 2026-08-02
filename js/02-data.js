@@ -247,6 +247,7 @@ async function startListeners() {
         else STATE.students[ch.doc.id] = { ...ch.doc.data(), _id: ch.doc.id };
       });
       tick('students');
+      _purgeBlockSpots();        // director-only: drop obsolete roster column/row
       _syncStudentSpotsMirror(); // director-only: keep each student's spot mirror current
       schedulePublishPublicStats();
     }),
@@ -360,6 +361,25 @@ function _syncStudentSpotsMirror() {
 function _studentSpotsKey(obj) {
   return Object.keys(obj || {}).sort()
     .map(k => `${k}=${obj[k].label}|${obj[k].show}|${obj[k].shared ? 1 : 0}`).join(';');
+}
+
+// Retire the legacy block-spot fields: positions are assigned per show now, so
+// the roster's column/row are obsolete. A director client deletes them from any
+// student doc that still carries either. Idempotent (once cleared, a no-op) and
+// director-only, so it self-limits after the first pass.
+function _purgeBlockSpots() {
+  if (!STATE.isAdmin || !STATE.students) return;
+  const del = firebase.firestore.FieldValue.delete();
+  const targets = Object.values(STATE.students).filter(s => s.column !== undefined || s.row !== undefined);
+  if (!targets.length) return;
+  for (let i = 0; i < targets.length; i += 400) {
+    const batch = db.batch();
+    targets.slice(i, i + 400).forEach(s => {
+      batch.update(orgCol('students').doc(String(s.number)), { column: del, row: del });
+      delete s.column; delete s.row; // optimistic; the listener will confirm
+    });
+    batch.commit().catch(e => console.error('block-spot purge failed:', e));
+  }
 }
 
 // Listeners for student accounts — limited to exactly what the rules allow.

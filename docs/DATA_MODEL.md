@@ -102,10 +102,10 @@ re-entry.
   students share). Each drill doc carries a `showId` pointing at its show.
 - **Resolution order** (`drillStudentNumsByLabel` in js/12-drill.js): the active
   drill's *show* mapping (or, for an ungrouped drill, the drill's own legacy
-  `mapping`) → the band-wide `settings/presets.pywareMapping` → the column/row
-  block-spot match (`_drillPosIndex`). An explicit entry — even an empty `[]`
-  ("cleared") — wins over the fallbacks, so a removed student can't reappear via
-  the block-spot match.
+  `mapping`) → the band-wide `settings/presets.pywareMapping`. An explicit entry
+  — even an empty `[]` ("cleared") — wins, so a removed student can't reappear.
+  (Positions are assigned per show now; there is no roster column/row fallback —
+  the old block-spot system was retired.)
 - **All spot edits write to the show** when the drill is grouped
   (`_saveActiveMapping`): the dot panel, the mapping modal, and the CSV import
   all update `shows/{id}.mapping` with `update()` (not set-merge, so clearing a
@@ -121,7 +121,13 @@ re-entry.
 - **Unassigned view.** The Drill tab shows the director a pill of how many
   roster students have no spot in the active show, opening a full list
   (`_drillUnassignedNums` / `showDrillUnassignedModal`), computed from the
-  explicit show map (not the block-spot fallback).
+  explicit show map.
+- **No block spots.** The legacy roster block-spot fields (`column`/`row`, the
+  A–L × 1–12 grid) were retired once positions moved per-show. They no longer
+  appear on the roster (no edit fields, sort, CSV columns, or assign/delete
+  tools), the rehearsal Block Navigator and the drill column/row fallback are
+  gone, and a director client deletes any stored `column`/`row` from student
+  docs on load (`_purgeBlockSpots` in js/02-data.js, idempotent).
 - **Roster display + student mirror.** The roster row, the director/staff
   student profile, and the student's own portal all show a student's show spots
   (replacing the old block column/row "position"). Directors and staff render
@@ -133,11 +139,11 @@ re-entry.
   idempotent (writes only changed students; re-runs on every shows/students
   snapshot), so it self-heals after any spot edit and needs no rules change (a
   student reads its own doc; the field carries no PII).
-- **Attendance by block** (js/09b-attendance.js) can group by a show's spots
-  instead of roster columns: "Take Attendance by Block" offers each show, and
-  `_blockAttShowGroups` builds one screen per section letter from the show map
-  (`drillSpotLabelParts` splits `M1` → section `M`, rank `1`). A spot shared by
-  two students lists both (each toggled independently); in-scope students with
+- **Attendance by block** (js/09b-attendance.js) is show-based: "Take Attendance
+  by Block" (shown only when a show exists) steps through a show's field spots,
+  and `_blockAttShowGroups` builds one screen per section letter from the show
+  map (`drillSpotLabelParts` splits `M1` → section `M`, rank `1`). A spot shared
+  by two students lists both (each toggled independently); in-scope students with
   no spot in the show fall into a trailing "No spot" screen so attendance still
   covers everyone.
 - **Migration** is director-only and idempotent (`_migrateDrillShows`): every
