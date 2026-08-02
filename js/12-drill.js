@@ -627,6 +627,9 @@ function _drillZoomSetup(wrap) {
   wrap.addEventListener('touchstart', _drillOnTouchStart, { passive: false });
   wrap.addEventListener('touchmove',  _drillOnTouchMove,  { passive: false });
   wrap.addEventListener('touchend',   _drillOnTouchEnd,   { passive: false });
+  // Desktop: scroll wheel zooms toward the cursor; click-drag pans once zoomed.
+  wrap.addEventListener('wheel',      _drillOnWheel,      { passive: false });
+  wrap.addEventListener('mousedown',  _drillOnMouseDown);
   _drillApplyZoom(wrap);
 }
 
@@ -643,6 +646,7 @@ function _drillApplyZoom(wrap) {
   _drillPanY = (wH - sH) > 0 ? (wH - sH) / 2 : Math.max(wH - sH, Math.min(0, _drillPanY));
   svg.style.transformOrigin = '0 0';
   svg.style.transform = `translate(${_drillPanX}px,${_drillPanY}px) scale(${_drillZoomScale})`;
+  wrap.style.cursor = _drillZoomScale > 1.01 ? 'grab' : ''; // hint that you can drag to pan
   _drillRenderFsAxis(wrap);
 }
 
@@ -756,6 +760,62 @@ function _drillOnTouchEnd(e) {
   }
 }
 
+// True on a mouse/trackpad (fine pointer) — used to surface the desktop hints.
+function _drillFinePointer() {
+  return typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: fine)').matches;
+}
+
+// Desktop: scroll-wheel zoom, anchored on the cursor so the point under it stays
+// put (same idea as the pinch center). Ctrl/⌘ makes trackpad pinch-zoom land
+// here too, since browsers report that as a wheel event.
+function _drillOnWheel(e) {
+  if (e.target.closest && e.target.closest('.drill-info-pop, .drill-view-note')) return; // let panels scroll
+  e.preventDefault();
+  const wrap = e.currentTarget;
+  const rect = wrap.getBoundingClientRect();
+  const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+  let dy = e.deltaY;
+  if (e.deltaMode === 1) dy *= 16;                 // lines → px
+  else if (e.deltaMode === 2) dy *= wrap.clientHeight; // pages → px
+  const start = _drillZoomScale;
+  const next  = Math.max(1.0, Math.min(6.0, start * Math.exp(-dy * 0.0015)));
+  if (next === start) return;
+  const r = next / start;
+  _drillZoomScale = next;
+  _drillPanX = cx + (_drillPanX - cx) * r; // keep the cursor point fixed
+  _drillPanY = cy + (_drillPanY - cy) * r;
+  _drillApplyZoom(wrap);
+}
+
+// Desktop: click-drag to pan (meaningful once zoomed in). A drag suppresses the
+// click that follows so it doesn't also select a dot; a plain click still does.
+let _drillMouseMoved = false;
+function _drillOnMouseDown(e) {
+  if (e.button !== 0) return;
+  if (e.target.closest && e.target.closest('.drill-info-pop, .drill-view-note')) return;
+  const wrap = e.currentTarget;
+  const startX = e.clientX, startY = e.clientY, panX0 = _drillPanX, panY0 = _drillPanY;
+  _drillMouseMoved = false;
+  const move = ev => {
+    const dx = ev.clientX - startX, dy = ev.clientY - startY;
+    if (!_drillMouseMoved && Math.hypot(dx, dy) < 4) return; // small movement = a click
+    _drillMouseMoved = true;
+    wrap.style.cursor = 'grabbing';
+    _drillPanX = panX0 + dx;
+    _drillPanY = panY0 + dy;
+    _drillApplyZoom(wrap);
+  };
+  const up = () => {
+    window.removeEventListener('mousemove', move);
+    window.removeEventListener('mouseup', up);
+    if (_drillMouseMoved) {
+      wrap.addEventListener('click', ev => { ev.stopPropagation(); ev.preventDefault(); }, { capture: true, once: true });
+    }
+  };
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', up);
+}
+
 // Translate a tap in the fullscreen chart into a click on the dot under it.
 function _drillFsTapAt(touch) {
   if (!touch) return;
@@ -769,6 +829,22 @@ function _drillChartFsKeydown(e) {
   if (e.key === 'Escape')     { drillChartCollapse(); return; }
   if (e.key === 'ArrowLeft')  drillChartNav(-1);
   if (e.key === 'ArrowRight') drillChartNav(1);
+  // Keyboard zoom (fullscreen): +/- step, 0 resets — anchored on the centre.
+  if (e.key === '+' || e.key === '=' || e.key === '-' || e.key === '0') _drillKeyZoom(e.key);
+}
+
+function _drillKeyZoom(key) {
+  const wrap = _drillZoomWrap || document.querySelector('#drill-chart-fs .drill-fs-svg-wrap');
+  if (!wrap) return;
+  if (key === '0') { _drillZoomReset(); _drillApplyZoom(wrap); return; }
+  const start = _drillZoomScale;
+  const next  = Math.max(1.0, Math.min(6.0, start * (key === '-' ? 1 / 1.3 : 1.3)));
+  if (next === start) return;
+  const cx = wrap.clientWidth / 2, cy = wrap.clientHeight / 2, r = next / start;
+  _drillZoomScale = next;
+  _drillPanX = cx + (_drillPanX - cx) * r;
+  _drillPanY = cy + (_drillPanY - cy) * r;
+  _drillApplyZoom(wrap);
 }
 
 function drillChartNav(delta) {
@@ -1242,9 +1318,8 @@ function drillQuickMark(num, type) {
 function _drillFootText() {
   const pg = _drillPages[_drillCurrentSet];
   const base = `Set ${_drillCurrentSet + 1}/${_drillPages.length} · count ${pg.count}`;
-  return _drillTraceLabel
-    ? `${base} · tracing ${_drillTraceDisplay(_drillTraceLabel)}`
-    : `${base} · tap a performer for details`;
+  if (_drillTraceLabel) return `${base} · tracing ${_drillTraceDisplay(_drillTraceLabel)}`;
+  return `${base} · ${_drillFinePointer() ? 'click a performer for details · scroll to zoom' : 'tap a performer for details'}`;
 }
 
 // True if any set carries the drill writer's Pyware instruction text.
