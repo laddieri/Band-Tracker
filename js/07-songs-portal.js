@@ -868,8 +868,8 @@ function viewStudentPortal(previewMode = false) {
   const mySongs   = _portalSongs(num);
   const pseudonym = portalPseudonym(num);
 
-  const pos        = fmtPos(s?.column, s?.row);
-  const metaParts  = [s?.instrument, s?.section, s?.grade ? s.grade + ' Grade' : '', pos ? `Position ${pos}` : ''].filter(Boolean);
+  const spots      = studentSpots(s);
+  const metaParts  = [s?.instrument, s?.section, s?.grade ? s.grade + ' Grade' : ''].filter(Boolean);
   const totalErr   = hist.reduce((sum, {entry: e}) => sum + (e.mistakes  || 0), 0);
   const totalPos   = hist.reduce((sum, {entry: e}) => sum + (e.positives || 0), 0);
 
@@ -880,6 +880,9 @@ function viewStudentPortal(previewMode = false) {
         <div>
           <div class="portal-name">${esc(s?.name || 'Student #' + num)}</div>
           ${metaParts.length ? `<div class="portal-meta">${metaParts.map(esc).join(' &middot; ')}</div>` : ''}
+          ${spots.length ? `<div class="portal-spots">${spots.map(sp =>
+            `<span class="badge badge-primary" style="font-weight:800">${esc(sp.label)}<span style="font-weight:600;opacity:.82"> · ${esc(sp.show)}</span>${sp.shared ? ' 👥' : ''}</span>`
+          ).join(' ')}</div>` : ''}
           ${(STATE.marchingLeaderboardEnabled && portalFeatureOn('stats') && pseudonym) ? `<div class="portal-animal-name">🐾 Leaderboard name: <strong>${esc(pseudonym)}</strong></div>` : ''}
         </div>
       </div>

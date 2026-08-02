@@ -122,6 +122,17 @@ re-entry.
   roster students have no spot in the active show, opening a full list
   (`_drillUnassignedNums` / `showDrillUnassignedModal`), computed from the
   explicit show map (not the block-spot fallback).
+- **Roster display + student mirror.** The roster row, the director/staff
+  student profile, and the student's own portal all show a student's show spots
+  (replacing the old block column/row "position"). Directors and staff render
+  them live from `STATE.shows` (`studentSpots` in js/06-roster.js). Students
+  can't read the `shows` collection, so a director client MIRRORS each student's
+  spots onto their own doc — `students/{num}.spots = { showId: {show, label,
+  shared} }` — via `_syncStudentSpotsMirror` (js/02-data.js), the same
+  own-doc-mirror pattern as `songStatuses`. It's director-only, diff-based and
+  idempotent (writes only changed students; re-runs on every shows/students
+  snapshot), so it self-heals after any spot edit and needs no rules change (a
+  student reads its own doc; the field carries no PII).
 - **Attendance by block** (js/09b-attendance.js) can group by a show's spots
   instead of roster columns: "Take Attendance by Block" offers each show, and
   `_blockAttShowGroups` builds one screen per section letter from the show map

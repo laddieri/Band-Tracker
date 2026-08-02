@@ -37,7 +37,12 @@ app doesn't show it" is never a justification. Full model:
    `settings/presets` or raw collections in student-facing code paths.
 4. **Per-student song results** live in the director-only song docs AND are
    mirrored to `students/{num}.songStatuses.{songId}` (status/note/updatedAt
-   only) by `_applySongStatus()`. Keep both writes in sync.
+   only) by `_applySongStatus()`. Keep both writes in sync. **Per-student field
+   spots** follow the same own-doc-mirror pattern: the show maps are
+   director/staff-only, so a director client mirrors each student's spots to
+   `students/{num}.spots` (`_syncStudentSpotsMirror()` in `js/02-data.js`) for
+   the student portal to read. Director/staff views compute spots live from
+   `STATE.shows` instead (`studentSpots()`).
 5. **The org doc holds the co-director and staff invite codes.** It must stay
    director-only readable (not even staff), or students/staff can escalate to
    directors. The rules also pair invite codes with roles: a `role:'staff'`
