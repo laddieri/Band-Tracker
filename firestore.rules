@@ -185,6 +185,17 @@ service cloud.firestore {
           allow write: if canWrite();
         }
       }
+
+      // A "show" groups the drills of one production (e.g. a halftime show) so
+      // they share one label→student spot map: assign a student to "M1" once and
+      // every drill in the show resolves "M1" to them, with no re-entry when the
+      // next drill file is uploaded. Same visibility as drills — directors and
+      // staff READ (staff need the shared map to record marks on any drill), only
+      // directors WRITE (spot assignments stay director-controlled).
+      match /shows/{showId} {
+        allow read:  if canRecord();
+        allow write: if canWrite();
+      }
     }
 
     // ── Membership ────────────────────────────────────────────────────────────

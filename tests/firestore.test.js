@@ -63,8 +63,9 @@ async function seed() {
     await db.doc('orgs/a/entries/r1_42').set({ rehearsalId: 'r1', studentNumber: '42', attendance: 'present' });
     await db.doc('orgs/a/entries/r1_7').set({ rehearsalId: 'r1', studentNumber: '7', mistakes: 2 });
     await db.doc('orgs/a/songs/s1').set({ title: 'Anthem', statuses: { 7: { status: 'failed', note: 'bars 12-16' } } });
-    await db.doc('orgs/a/drills/d1').set({ name: '2026 Show', fileName: 'show.3dj', setCount: 30 });
+    await db.doc('orgs/a/drills/d1').set({ name: '2026 Show', fileName: 'show.3dj', setCount: 30, showId: 'sh1' });
     await db.doc('orgs/a/drills/d1/data/main').set({ sections: [], pages: [] });
+    await db.doc('orgs/a/shows/sh1').set({ name: 'Halftime', mapping: { M1: '42' } });
     await db.doc('orgs/a/settings/drill').set({ activeId: 'd1' });
 
     await db.doc('orgs/b').set({ createdBy: 'dirB', name: 'Org B' });
@@ -173,10 +174,21 @@ describe('student data visibility', () => {
     await assertSucceeds(director('dirA').doc('orgs/a/drills/d1/data/main').get());
     await assertSucceeds(director('dirA').doc('orgs/a/drills/d1/data/main').set({ sections: [], pages: [] }));
   });
+  it('a director can read and write shows (the shared spot map)', async () => {
+    await assertSucceeds(director('dirA').doc('orgs/a/shows/sh1').get());
+    await assertSucceeds(director('dirA').collection('orgs/a/shows').get());
+    await assertSucceeds(director('dirA').doc('orgs/a/shows/sh1').set({ mapping: { M1: '7' } }, { merge: true }));
+    await assertSucceeds(director('dirA').doc('orgs/a/shows/sh2').set({ name: 'Pregame', mapping: {} }));
+  });
   it('a student CANNOT read drills or their position payload', async () => {
     await assertFails(director('studA').doc('orgs/a/drills/d1').get());
     await assertFails(director('studA').collection('orgs/a/drills').get());
     await assertFails(director('studA').doc('orgs/a/drills/d1/data/main').get());
+  });
+  it('a student CANNOT read or write shows', async () => {
+    await assertFails(director('studA').doc('orgs/a/shows/sh1').get());
+    await assertFails(director('studA').collection('orgs/a/shows').get());
+    await assertFails(director('studA').doc('orgs/a/shows/sh1').set({ mapping: { M1: '99' } }, { merge: true }));
   });
   it('a student CANNOT write drills', async () => {
     await assertFails(director('studA').doc('orgs/a/drills/d1').set({ name: 'hacked' }));
@@ -185,6 +197,7 @@ describe('student data visibility', () => {
   it('a director CANNOT read another org\'s drills', async () => {
     await assertFails(director('dirB').doc('orgs/a/drills/d1').get());
     await assertFails(director('dirB').doc('orgs/a/drills/d1/data/main').get());
+    await assertFails(director('dirB').doc('orgs/a/shows/sh1').get());
   });
   it('a student can read rehearsal metadata', async () => {
     await assertSucceeds(director('studA').doc('orgs/a/rehearsals/r1').get());
@@ -266,6 +279,13 @@ describe('staff role (recording access, no admin control)', () => {
     await assertFails(staff().doc('orgs/a/drills/d1').set({ mapping: { A1: '42' } }, { merge: true })); // reassign
     await assertFails(staff().doc('orgs/a/drills/d1').delete());                        // delete
     await assertFails(staff().doc('orgs/a/drills/d1/data/main').set({ pages: [] }));    // payload
+  });
+  it('staff can READ shows but CANNOT write them (spot assignments stay director-only)', async () => {
+    await assertSucceeds(staff().doc('orgs/a/shows/sh1').get());
+    await assertSucceeds(staff().collection('orgs/a/shows').get());
+    await assertFails(staff().doc('orgs/a/shows/sh1').set({ mapping: { M1: '42' } }, { merge: true }));
+    await assertFails(staff().doc('orgs/a/shows/sh2').set({ name: 'New show', mapping: {} }));
+    await assertFails(staff().doc('orgs/a/shows/sh1').delete());
   });
   it('staff can switch the active drill (settings/drill activeId) but not other drill settings', async () => {
     await assertSucceeds(staff().doc('orgs/a/settings/drill').set({ activeId: 'd1' }, { merge: true }));
