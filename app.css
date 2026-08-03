@@ -1409,9 +1409,14 @@ html, body {
 .suggestion-detail {
   font-size: 0.75rem;
   color: var(--text-muted);
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Per-rehearsal marks/attendance on each row of the tracker's roster list */
+.suggestion-badges { display: flex; gap: 5px; flex-shrink: 0; }
 
 /* ── Student Portal ─────────────────────────────────────────────────────────── */
 

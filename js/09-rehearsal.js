@@ -290,6 +290,54 @@ function rhPopGo(type, rid) {
 
 // ── View: Rehearsal Detail ────────────────────────────────────────────────────
 
+// The tracker's student list. It shows the whole in-scope roster by default —
+// like the Roster tab — narrowed by the filter bar (search, sort, instrument /
+// grade / section filters). A drill selection replaces the list with just the
+// students standing on the selected spots.
+function _trackerListHtml(rid) {
+  const students = DB.getStudents();
+  const entries  = DB.getRehearsalEntries(rid);
+
+  const row = (s, num) => {
+    const e      = entries[num] || {};
+    const detail = [
+      _studentSpotText(s),
+      hasField('instrument') ? normInstrument(s?.instrument) : '',
+      hasField('section')    ? (s?.section || '')            : ''
+    ].filter(Boolean).join(' · ');
+    return `
+      <div class="suggestion-row" onclick="pickStudent('${esc(num)}','${esc(rid)}')">
+        <span class="suggestion-name">${esc(s?.name || `#${num}`)}</span>
+        <span class="suggestion-detail">${esc(detail)}</span>
+        <span class="suggestion-badges">
+          ${e.attendance === 'absent' ? `<span class="badge att-badge-absent">Absent</span>` : ''}
+          ${e.attendance === 'late'   ? `<span class="badge att-badge-late">Late</span>`     : ''}
+          ${e.mistakes  > 0 ? `<span class="badge badge-danger">${e.mistakes}✗</span>`  : ''}
+          ${e.positives > 0 ? `<span class="badge badge-success">${e.positives}✓</span>` : ''}
+        </span>
+      </div>`;
+  };
+
+  if (_drillSelectedNums.length) {
+    return _drillSelectedNums.map(num => row(students[num], num)).join('');
+  }
+
+  const list = filterAndSortStudents(rehearsalStudents(rid), _trackerFilter);
+  if (list.length) return list.map(s => row(s, s.number)).join('');
+
+  // A number that isn't on the roster is still markable — that's how a director
+  // logs a student who hasn't been added yet.
+  const q = _trackerFilter.search.trim();
+  return `
+    <div class="tracker-hint">
+      No students match${q ? ` "${esc(q)}"` : ' the current filter'}.
+      ${/^\d+$/.test(q) ? `
+        <button class="btn btn-secondary btn-sm mt-8" onclick="pickStudent('${esc(q)}','${esc(rid)}')">
+          Track #${esc(q)} anyway
+        </button>` : ''}
+    </div>`;
+}
+
 function viewRehearsal(rid) {
   const r = DB.getRehearsals().find(r => r.id === rid);
   if (!r) return `<div class="empty-state"><p>Rehearsal not found.</p></div>`;
@@ -398,17 +446,6 @@ function viewRehearsal(rid) {
 
   let trackerSection;
   {
-    const searchVal    = _trackerFilter.search;
-    const isNameSearch = searchVal.trim() && !/^\d+$/.test(searchVal.trim());
-    // Tracker candidates are limited to the students this rehearsal applies to.
-    const scopePool    = rehearsalStudents(r);
-    const suggestions  = isNameSearch ? studentSuggestions(searchVal, _trackerFilter.instruments[0] || '', _trackerFilter.grades[0] || '', scopePool) : [];
-    const activeFilterCount = _trackerFilter.instruments.length + _trackerFilter.grades.length + _trackerFilter.sections.length;
-    // Only show the full student list when a filter is active — not by default
-    const showAllForFilter = !searchVal.trim() && activeFilterCount > 0;
-    const allFiltered = showAllForFilter
-      ? filterAndSortStudents(scopePool, _trackerFilter)
-      : [];
     const activeFilterLabel = [
       ..._trackerFilter.instruments,
       ..._trackerFilter.grades.map(g => g + ' Grade')
@@ -440,25 +477,7 @@ function viewRehearsal(rid) {
           <button class="mark-all-btn" onclick="showMarkAllModal('${esc(rid)}')">
             Mark All${activeFilterLabel ? ` (${esc(activeFilterLabel)})` : ''}
           </button>
-          <div id="tracker-suggestions" class="student-suggestions">
-            ${_drillSelectedNums.length ? _drillSelectedNums.map(num => {
-              const s = students[num];
-              return `<div class="suggestion-row" onclick="pickStudent('${esc(num)}','${esc(rid)}')">
-                <span class="suggestion-name">${esc(s?.name || `#${num}`)}</span>
-                <span class="suggestion-detail">${esc([_studentSpotText(s),normInstrument(s?.instrument)].filter(Boolean).join(' · '))}</span>
-              </div>`;
-            }).join('') : ''}
-            ${!_drillSelectedNums.length && isNameSearch ? suggestions.map(s => `
-              <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
-                <span class="suggestion-name">${esc(s.name || `#${s.number}`)}</span>
-                <span class="suggestion-detail">${esc([_studentSpotText(s),normInstrument(s.instrument)].filter(Boolean).join(' · '))}</span>
-              </div>`).join('') : ''}
-            ${!_drillSelectedNums.length && showAllForFilter ? allFiltered.map(s => `
-              <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
-                <span class="suggestion-name">${esc(s.name || `#${s.number}`)}</span>
-                <span class="suggestion-detail">${esc(_studentSpotText(s))}</span>
-              </div>`).join('') : ''}
-          </div>
+          <div id="tracker-suggestions" class="student-suggestions">${_trackerListHtml(rid)}</div>
         ` : ''}
         ${activeCard}
       </div>`;
@@ -518,7 +537,7 @@ function viewRehearsal(rid) {
     ` : `
       <div class="empty-state" style="padding:24px">
         <p>No students tracked yet.</p>
-        <p>Enter a student number above to begin.</p>
+        <p>Tap a student in the list above to begin.</p>
       </div>`}
 
     ${r.ended ? `
