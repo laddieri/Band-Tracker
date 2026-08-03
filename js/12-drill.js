@@ -701,6 +701,8 @@ function drillChartCycleLabels() {
 }
 
 function _drillChartRefresh() {
+  // Held until finger-up if a pinch/pan is in flight — see _drillGestureBusy.
+  if (_drillGestureBusy) { _drillDeferRender(_drillChartRefresh); return; }
   const fs = document.getElementById('drill-chart-fs');
   if (fs && !fs.classList.contains('hidden')) {
     fs.innerHTML = _drillChartSelect ? _drillChartHtml(true) : _drillViewFsHtml();
@@ -761,14 +763,45 @@ function _drillZoomReset() {
 
 // Past this zoom the dots grow and print their spot letter+number inside — no
 // need to reach for the labels toggle, the numbers just appear as you zoom in.
-const _DRILL_DOTLABEL_ZOOM = 1.8;
+// Two thresholds: labels come on at 1.8x and don't drop off again until 1.55x,
+// so a wobble right at the line can't flip the chart back and forth.
+const _DRILL_DOTLABEL_ZOOM     = 1.8;
+const _DRILL_DOTLABEL_ZOOM_OFF = 1.55;
+
+// True while fingers are on the chart. Rebuilding the SVG mid-gesture rips the
+// touch target out of the DOM, and iOS then delivers the rest of that gesture to
+// the removed node instead of to the wrap — our handlers (and the preventDefault
+// they call) stop running, so the browser takes the pinch over and zooms the
+// *page*, which reads as the field suddenly jumping off to one side. So nothing
+// re-renders the chart while a gesture is live; queued work runs on finger-up.
+let _drillGestureBusy   = false;
+let _drillPendingRender = null;
+
+// Run a chart re-render now, or hold it until the current gesture ends. Only the
+// last request is kept — they all rebuild the same surface from current state.
+function _drillDeferRender(fn) {
+  if (_drillGestureBusy) { _drillPendingRender = fn; return; }
+  fn();
+}
+
+// All fingers up (or the gesture was cancelled): flush what the gesture held off.
+function _drillEndGesture() {
+  _drillGestureBusy = false;
+  const pending = _drillPendingRender;
+  _drillPendingRender = null;
+  _drillMaybeToggleDotLabels(); // apply any threshold crossed mid-gesture
+  if (pending) pending();
+}
 
 // Called after every zoom change: when the scale crosses the threshold, flip the
 // in-dot labels on/off and re-render the active chart surface (preserving the
 // current pan/zoom). Only fires on an actual crossing, so panning stays cheap.
 function _drillMaybeToggleDotLabels() {
-  const want = _drillZoomScale >= _DRILL_DOTLABEL_ZOOM;
+  const want = _drillDotLabelsOn
+    ? _drillZoomScale >= _DRILL_DOTLABEL_ZOOM_OFF
+    : _drillZoomScale >= _DRILL_DOTLABEL_ZOOM;
   if (want === _drillDotLabelsOn) return;
+  if (_drillGestureBusy) return; // re-checked by _drillEndGesture() on finger-up
   _drillDotLabelsOn = want;
   const fs = document.getElementById('drill-chart-fs');
   if (fs && !fs.classList.contains('hidden')) _drillChartRefresh();
@@ -783,9 +816,14 @@ function _drillZoomSetup(wrap) {
   wrap = wrap || document.querySelector('.drill-fs-svg-wrap');
   if (!wrap) return;
   _drillZoomWrap = wrap;
-  wrap.addEventListener('touchstart', _drillOnTouchStart, { passive: false });
-  wrap.addEventListener('touchmove',  _drillOnTouchMove,  { passive: false });
-  wrap.addEventListener('touchend',   _drillOnTouchEnd,   { passive: false });
+  // A rebuilt surface means any gesture that was running is gone — its touches
+  // can no longer reach us, so don't leave the "busy" latch stuck on.
+  _drillGestureBusy   = false;
+  _drillPendingRender = null;
+  wrap.addEventListener('touchstart',  _drillOnTouchStart,  { passive: false });
+  wrap.addEventListener('touchmove',   _drillOnTouchMove,   { passive: false });
+  wrap.addEventListener('touchend',    _drillOnTouchEnd,    { passive: false });
+  wrap.addEventListener('touchcancel', _drillOnTouchCancel, { passive: false });
   // Desktop: scroll wheel zooms toward the cursor; click-drag pans once zoomed.
   wrap.addEventListener('wheel',      _drillOnWheel,      { passive: false });
   wrap.addEventListener('mousedown',  _drillOnMouseDown);
@@ -797,6 +835,10 @@ function _drillApplyZoom(wrap) {
   const svg = wrap?.querySelector('svg');
   if (!svg) return;
   const wW = wrap.clientWidth, wH = wrap.clientHeight;
+  // A detached (replaced) or not-yet-laid-out wrap measures 0x0. Clamping the
+  // pan against that would zero it and snap the view to the field's corner, so
+  // leave the pan alone and let the live surface re-apply it.
+  if (!wW || !wH) return;
   const sW = (svg.clientWidth  || wW) * _drillZoomScale;
   const sH = (svg.clientHeight || wH) * _drillZoomScale;
   // Centre on any axis with slack (content smaller than the viewport); clamp to
@@ -846,13 +888,22 @@ function _drillRenderFsAxis(wrap) {
 
 let _drillTouchIgnore = false; // touch started on the info panel — let it click through
 
+// The container to measure and transform for this event: the element the
+// listener sits on, unless it has been swapped out of the document since the
+// gesture began (a detached wrap measures 0x0 and would corrupt the pan).
+function _drillWrapFor(e) {
+  const t = e.currentTarget;
+  return (t && t.isConnected) ? t : (_drillZoomWrap || t);
+}
+
 function _drillOnTouchStart(e) {
   // Let the info panel and the instructions overlay handle their own touches
   // (buttons, scrolling) instead of panning/zooming the field underneath.
   if (e.target.closest && e.target.closest('.drill-info-pop, .drill-view-note')) { _drillTouchIgnore = true; return; }
   _drillTouchIgnore = false;
+  _drillGestureBusy = true;
   e.preventDefault();
-  const wrap = e.currentTarget;
+  const wrap = _drillWrapFor(e);
   const rect = wrap.getBoundingClientRect();
   if (e.touches.length >= 2) {
     _drillWasPinch = true;
@@ -879,7 +930,7 @@ function _drillOnTouchStart(e) {
 function _drillOnTouchMove(e) {
   if (_drillTouchIgnore) return;
   e.preventDefault();
-  const wrap = e.currentTarget;
+  const wrap = _drillWrapFor(e);
   if (e.touches.length >= 2 && _drillPinchInitDist) {
     const t0 = e.touches[0], t1 = e.touches[1];
     const dist     = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
@@ -899,14 +950,23 @@ function _drillOnTouchMove(e) {
 }
 
 function _drillOnTouchEnd(e) {
-  if (_drillTouchIgnore) { if (e.touches.length === 0) _drillTouchIgnore = false; return; }
+  if (_drillTouchIgnore) {
+    // A finger that landed on a panel took the gesture over; still release the
+    // latch when everything is up so held-back renders aren't stranded.
+    if (e.touches.length === 0) { _drillTouchIgnore = false; _drillEndGesture(); }
+    return;
+  }
   if (e.touches.length === 0) {
-    // All fingers up. A clean single-finger touch with no real movement is a
-    // tap — forward it to the dot underneath (preventDefault suppressed the
-    // browser's own click), so selecting/inspecting marchers works zoomed too.
-    if (!_drillWasPinch && !_drillTapMoved) _drillFsTapAt(e.changedTouches[0]);
+    const wasTap = !_drillWasPinch && !_drillTapMoved;
     _drillWasPinch      = false;
     _drillPinchInitDist = 0;
+    // Gesture over: safe to rebuild the chart again (in-dot labels, any render
+    // that came in while fingers were down) before anything else touches it.
+    _drillEndGesture();
+    // A clean single-finger touch with no real movement is a tap — forward it to
+    // the dot underneath (preventDefault suppressed the browser's own click), so
+    // selecting/inspecting marchers works zoomed too.
+    if (wasTap) _drillFsTapAt(e.changedTouches[0]);
     return;
   }
   if (e.touches.length < 2) _drillPinchInitDist = 0;
@@ -918,6 +978,16 @@ function _drillOnTouchEnd(e) {
     _drillGestureStartPanX = _drillPanX;
     _drillGestureStartPanY = _drillPanY;
   }
+}
+
+// iOS cancels the whole gesture when the system takes over (call banner, edge
+// swipe). Clear the same state as a finger-up, minus the tap forwarding.
+function _drillOnTouchCancel(e) {
+  if (e.touches.length) return;
+  _drillTouchIgnore   = false;
+  _drillWasPinch      = false;
+  _drillPinchInitDist = 0;
+  _drillEndGesture();
 }
 
 // True on a mouse/trackpad (fine pointer) — used to surface the desktop hints.
@@ -1614,6 +1684,7 @@ function _drillViewSetup() {
 }
 
 function _drillViewRerender() {
+  if (_drillGestureBusy) { _drillDeferRender(_drillViewRerender); return; }
   const root = document.getElementById('drill-view-root');
   if (!root) return;
   root.innerHTML = _drillViewInner();
@@ -1622,6 +1693,9 @@ function _drillViewRerender() {
 
 // Rebuild only the stage (keeps the search box focused) and re-apply zoom.
 function _drillViewRenderSvg() {
+  // Never mid-gesture: replacing the SVG would hand the rest of the pinch to the
+  // browser (see _drillGestureBusy), which zooms the page instead of the field.
+  if (_drillGestureBusy) { _drillDeferRender(_drillViewRenderSvg); return; }
   const stage = document.getElementById('drill-stage');
   if (!stage) return;
   stage.innerHTML = _drillStageInner();
