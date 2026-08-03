@@ -198,7 +198,8 @@ function renderFilterBar(viewId, f, sortOptions, { hideSearch = false, extra = '
         <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
-        <input class="search-input" type="search" placeholder="Search by name or number…"
+        <input class="search-input" type="search" id="sfb-search-${esc(viewId)}"
+               placeholder="Search by name or number…"
                aria-label="Search students" value="${esc(f.search)}"
                oninput="updateFilter('${viewId}','search',this.value)" autocomplete="off">
       </div>`}
@@ -230,6 +231,32 @@ function _getFilterObj(viewId) {
   return { roster: _rosterFilter, tracker: _trackerFilter, att: _attFilter, 'att-tab': _attTabFilter, lb: _lbFilter, song: _songFilter, 'song-roster': _songRosterFilter }[viewId];
 }
 
+// Re-renders replace the whole view, so anything the user was typing in loses
+// focus — and on mobile that closes the keyboard mid-word. Remember the focused
+// field (by id) and its caret, then put both back once the new HTML is in.
+// Prefer not re-rendering at all while typing (see _refreshFilterList); this is
+// the net for the cases that must, including Firestore snapshots landing
+// mid-keystroke.
+function _captureFocus() {
+  const el = document.activeElement;
+  if (!el || !el.id || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) return null;
+  let start = null, end = null;
+  try { start = el.selectionStart; end = el.selectionEnd; } catch {} // not all input types expose a caret
+  return { id: el.id, start, end };
+}
+
+function _restoreFocus(snap) {
+  if (!snap) return;
+  const el = document.getElementById(snap.id);
+  if (!el || el === document.activeElement) return;
+  el.focus({ preventScroll: true });
+  if (snap.start != null) { try { el.setSelectionRange(snap.start, snap.end); } catch {} }
+}
+
+// Note: no focus restore here on purpose. This path runs when the user taps a
+// sort/filter control, and re-focusing the search box would pop the keyboard
+// back up over the filter panel they just opened. Typing goes through
+// _refreshFilterList, which never replaces the input in the first place.
 function _rerenderForFilter(viewId) {
   const mc = document.getElementById('main-content');
   const st = mc ? mc.scrollTop : 0;
@@ -264,6 +291,23 @@ function _refreshFilterList(viewId) {
       return true;
     },
     tracker:      ['tracker-suggestions', () => _trackerListHtml(_params.rid)],
+    // The attendance screen has two shapes: the marking roster, and the
+    // read-only summary once attendance is submitted.
+    att: () => {
+      const rid  = _params.rid;
+      const list = document.getElementById('att-student-list');
+      const sum  = document.getElementById('att-summary-list');
+      if (!list && !sum) return false;
+      const mc = document.getElementById('main-content');
+      const st = mc ? mc.scrollTop : 0;
+      if (list) {
+        const r = STATE.rehearsals.find(x => x.id === rid);
+        list.innerHTML = buildAttBodyHtml(rid, rehearsalStudents(r), STATE.entries[rid] || {});
+      }
+      if (sum) sum.innerHTML = _buildAttSummaryRows(rid);
+      if (mc) mc.scrollTop = st;
+      return true;
+    },
     lb:           ['lb-rank-list',      () => _buildLbRankRows()],
     'song-roster':['song-roster-list', () => _buildSongRosterRows()],
     song:         ['song-student-list', () => {
