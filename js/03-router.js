@@ -263,6 +263,7 @@ function _refreshFilterList(viewId) {
       if (mc) mc.scrollTop = st;
       return true;
     },
+    tracker:      ['tracker-suggestions', () => _trackerListHtml(_params.rid)],
     lb:           ['lb-rank-list',      () => _buildLbRankRows()],
     'song-roster':['song-roster-list', () => _buildSongRosterRows()],
     song:         ['song-student-list', () => {
@@ -294,32 +295,6 @@ function updateFilter(viewId, field, value) {
     return;
   }
   f[field] = value;
-  // Tracker search drives student lookup: numbers auto-select, names show suggestions.
-  if (viewId === 'tracker' && field === 'search') {
-    const rid = _params.rid;
-    const trimmed = value.trim();
-    if (!trimmed || /^\d+$/.test(trimmed)) {
-      _activeNum = trimmed || null;
-      reRender(rid);
-    } else {
-      _activeNum = null;
-      const el = document.getElementById('tracker-suggestions');
-      if (el) {
-        const matches = studentSuggestions(trimmed, _trackerFilter.instruments[0] || '', _trackerFilter.grades[0] || '', rehearsalStudents(rid));
-        el.innerHTML = matches.length
-          ? matches.map(s => `
-              <div class="suggestion-row" onclick="pickStudent('${esc(s.number)}','${esc(rid)}')">
-                <span class="suggestion-num">#${esc(s.number)}</span>
-                <span class="suggestion-name">${esc(s.name || '—')}</span>
-                <span class="suggestion-detail">${esc([_studentSpotText(s),s.instrument].filter(Boolean).join(' · '))}</span>
-              </div>`).join('')
-          : `<div class="tracker-hint">No students match "${esc(trimmed)}".</div>`;
-      } else {
-        reRender(rid);
-      }
-    }
-    return;
-  }
   // While typing in search, update only the list so the input keeps focus
   // (a full re-render would replace the input and dismiss the keyboard).
   if (field === 'search' && _refreshFilterList(viewId)) return;

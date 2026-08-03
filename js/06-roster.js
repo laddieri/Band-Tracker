@@ -113,19 +113,6 @@ function instrumentFilterChips(activeFilter, fnName, fnFirstArg) {
     </div>`;
 }
 
-function studentSuggestions(query, instrumentFilter, gradeFilter, pool = null) {
-  const q = query.toLowerCase().trim();
-  if (!q) return [];
-  return (pool || Object.values(DB.getStudents())).filter(s => {
-    if (instrumentFilter && normInstrument(s.instrument) !== instrumentFilter) return false;
-    if (gradeFilter && (s.grade || '') !== gradeFilter) return false;
-    return (s.name||'').toLowerCase().includes(q) ||
-           String(s.number).includes(q) ||
-           (s.section||'').toLowerCase().includes(q);
-  }).sort((a,b) => (a.name||'').localeCompare(b.name||''))
-    .slice(0, 10);
-}
-
 function viewRoster() {
   const students = DB.getStudents();
   const allStudents = Object.values(students);
