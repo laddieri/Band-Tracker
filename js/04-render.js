@@ -10,6 +10,10 @@ function render() {
   const main    = document.getElementById('main-content');
   const tabs    = document.querySelectorAll('.nav-tab');
   const nav     = document.getElementById('bottom-nav');
+  // A Firestore snapshot can land mid-keystroke and re-render the whole view;
+  // without this the field being typed in is replaced and the mobile keyboard
+  // closes. Restored at the end of the render.
+  const focusSnap = _captureFocus();
 
   // Apply the band's custom primary color (no-op when unset / already applied).
   applyBandColor(STATE.bandColor);
@@ -265,6 +269,8 @@ function render() {
         <button class="season-banner-btn" onclick="setSeasonView('')">Back to ${esc(STATE.activeSeason || 'current')}</button>
       </div>`);
   }
+
+  _restoreFocus(focusSnap);
 }
 
 function reportBtn(fn) {

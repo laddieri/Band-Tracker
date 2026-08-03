@@ -1469,7 +1469,8 @@ function _drillViewInner() {
 
     <div class="drill-view-bar">
       <div class="drill-search-wrap${_drillSearchQuery.trim() ? ' has-q' : ''}" id="drill-search-wrap">
-        <input class="drill-search form-input" type="search" placeholder="Find a performer or student…"
+        <input class="drill-search form-input" type="search" id="drill-search-input"
+               placeholder="Find a performer or student…"
                value="${esc(_drillSearchQuery)}" autocomplete="off"
                oninput="drillViewSearch(this.value)">
         <button class="drill-search-clear" onclick="drillViewClearSearch()" aria-label="Clear">✕</button>

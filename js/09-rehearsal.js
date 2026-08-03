@@ -419,7 +419,7 @@ function viewRehearsal(rid) {
               <span class="event-note-type ${e.type==='mistake'?'is-mistake':'is-positive'}">${e.type==='mistake'?'✗':'✓'}</span>
               ${e.sectionMark ? `<span class="section-mark-badge">§ ${esc(e.section||'Section')}</span>` : ''}
               ${e.segment ? `<span class="event-seg">${esc(e.segment)}</span>` : ''}
-              <input type="text" class="event-note-inp"
+              <input type="text" class="event-note-inp" id="evtnote-${i}"
                      placeholder="what happened…"
                      value="${esc(e.note)}"
                      oninput="saveEventNote('${esc(rid)}','${esc(_activeNum)}',${i},this.value)">
@@ -430,7 +430,7 @@ function viewRehearsal(rid) {
           }).join('')}
         </div>` : ''}
 
-      <textarea class="active-notes" placeholder="General note for today…"
+      <textarea class="active-notes" id="active-notes" placeholder="General note for today…"
         oninput="saveNote('${esc(rid)}','${esc(_activeNum)}',this.value)">${esc(activeEntry.notes)}</textarea>
 
       ${!activeStu && STATE.isAdmin ? `
@@ -904,6 +904,7 @@ function deleteEvent(rid, num, idx) {
 function reRender(rid) {
   const mc = document.getElementById('main-content');
   const st = mc.scrollTop;
+  const fc = _captureFocus(); // keep the caret (and the mobile keyboard) put
   if (_view === 'student') {
     mc.innerHTML = viewStudent(_params.num);
   } else if (_view === 'attendance') {
@@ -916,4 +917,5 @@ function reRender(rid) {
     return;
   }
   mc.scrollTop = st;
+  _restoreFocus(fc);
 }

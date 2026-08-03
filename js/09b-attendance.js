@@ -322,7 +322,10 @@ function viewAttendanceTab() {
 
 // ── Attendance Screen ─────────────────────────────────────────────────────────
 
-function viewAttendanceSummary(rid) {
+// The submitted-attendance roster, on its own so search/filter changes can swap
+// just the list (a full re-render would drop the focused search box — and with
+// it the mobile keyboard). See _refreshFilterList in js/03-router.js.
+function _buildAttSummaryRows(rid) {
   const students = rehearsalStudents(rid);
   const entries  = STATE.entries[rid] || {};
 
@@ -363,7 +366,18 @@ function viewAttendanceSummary(rid) {
     : _attSummaryStatus === 'present' ? 'No students were marked present.'
     : 'Everyone was present!';
 
-  const listHtml = filtered.length ? filtered.map(stuRow).join('') : `<div class="empty-state"><p>${emptyMsg}</p></div>`;
+  return filtered.length ? filtered.map(stuRow).join('') : `<div class="empty-state"><p>${emptyMsg}</p></div>`;
+}
+
+function viewAttendanceSummary(rid) {
+  const students = rehearsalStudents(rid);
+  const entries  = STATE.entries[rid] || {};
+
+  const absent   = students.filter(s => entries[s.number]?.attendance === 'absent');
+  const late     = students.filter(s => entries[s.number]?.attendance === 'late');
+  const present  = students.filter(s => entries[s.number]?.attendance !== 'absent' && entries[s.number]?.attendance !== 'late');
+
+  const listHtml = _buildAttSummaryRows(rid);
 
   const chip = (status, count, label, cls) => {
     const active = _attSummaryStatus === status;
@@ -391,7 +405,7 @@ function viewAttendanceSummary(rid) {
       {value:'attStatus',  label:'Status'},
     ])}
 
-    <div class="att-summary-list">${listHtml}</div>
+    <div class="att-summary-list" id="att-summary-list">${listHtml}</div>
   `;
 }
 
