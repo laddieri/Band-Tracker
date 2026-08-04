@@ -296,7 +296,10 @@ let _renderDeferred = false;
 function _editableHasFocus() {
   const el = document.activeElement;
   if (!el) return false;
-  if (el.tagName === 'TEXTAREA' || el.isContentEditable) return true;
+  // SELECT counts: on mobile a focused select means its native option picker
+  // is (or is about to be) open, and replacing the element dismisses it — the
+  // options "flash and vanish" (e.g. the drill spot-assign dropdown).
+  if (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable) return true;
   if (el.tagName !== 'INPUT') return false;
   // Only controls that raise the on-screen keyboard (or a native picker)
   // defer; checkboxes, radios and buttons don't hold a keyboard open.
