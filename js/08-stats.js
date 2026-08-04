@@ -734,7 +734,7 @@ function viewStudent(num) {
                   onclick="navigate('song',{sid:'${esc(song.id)}'});event.stopPropagation()">${esc(song.title)}</span>
             ${song.dueDate ? `<span class="song-row-due ${overdue ? 'song-overdue' : ''}" style="font-size:.72rem">${overdue ? '⚠ ' : ''}Due ${fmtDate(song.dueDate)}</span>` : ''}
             <span class="song-stu-status ${st === 'passed' ? 'sss-pass' : st === 'failed' ? 'sss-fail' : 'sss-na'}">
-              ${st === 'passed' ? '✓ Passed' : st === 'failed' ? '✗ Failed' : '— Not Attempted'}
+              ${st === 'passed' ? '✓ Passed' : st === 'failed' ? '↻ Try Again' : '— Not Attempted'}
             </span>
             ${meta ? `<span class="song-stu-meta">${esc(meta)}</span>` : ''}
             ${failNote ? `<span class="song-stu-fail-note">${esc(failNote)}</span>` : ''}
@@ -742,8 +742,8 @@ function viewStudent(num) {
           <div class="song-stu-btns">
             ${showPassBtn ? `<button class="ssb ${st === 'passed' ? 'ssb-on-pass' : 'ssb-pass'}"
                     onclick="setSongStatus('${esc(song.id)}','${esc(String(num))}','passed')">✓</button>` : ''}
-            <button class="ssb ${st === 'failed' ? 'ssb-on-fail' : 'ssb-fail'}"
-                    onclick="setSongStatus('${esc(song.id)}','${esc(String(num))}','failed')">✗</button>
+            <button class="ssb ${st === 'failed' ? 'ssb-on-fail' : 'ssb-fail'}" aria-label="Mark try again"
+                    onclick="setSongStatus('${esc(song.id)}','${esc(String(num))}','failed')">↻</button>
           </div>
         </div>`;
       };
