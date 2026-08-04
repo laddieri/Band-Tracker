@@ -3,6 +3,11 @@
 
 // ── Render engine ─────────────────────────────────────────────────────────────
 
+// Full re-render of header/nav/view. Only call this directly from
+// user-initiated paths (taps, navigation). Anything that can fire while the
+// user is mid-interaction — Firestore snapshots, async loads — must go through
+// renderFromData() (js/03-router.js), or the mobile keyboard gets yanked shut
+// out from under the focused field (see the note in CLAUDE.md).
 function render() {
   const backBtn = document.getElementById('back-btn');
   const title   = document.getElementById('page-title');

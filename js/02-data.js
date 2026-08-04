@@ -95,7 +95,7 @@ async function startListeners() {
     loaded.add(key);
     if (loaded.size >= 4 && STATE.loading) {
       STATE.loading = false;
-      render();
+      render(); // direct-render-ok: loading→ready swap; only the spinner is on screen
     } else if (!STATE.loading) {
       renderFromData();
     }
@@ -156,7 +156,7 @@ async function startListeners() {
     scopedUnsubs.forEach(u => u());
     scopedUnsubs = subscribeScoped();
   };
-  _restartSeasonScoped = () => { rescopeIfNeeded(); render(); };
+  _restartSeasonScoped = () => { rescopeIfNeeded(); render(); }; // direct-render-ok: user just picked a season in settings
 
   const listeners = [
     // Org metadata (name, plan, invite codes) — kept live for the settings UI.
@@ -390,7 +390,7 @@ function studentListeners() {
     loaded.add(key);
     if (loaded.size >= 4 && STATE.loading) {
       STATE.loading = false;
-      render();
+      render(); // direct-render-ok: loading→ready swap; only the spinner is on screen
     } else if (!STATE.loading) {
       renderFromData();
     }
@@ -681,6 +681,6 @@ auth.onAuthStateChanged(user => {
     _lastPublishedJson = '';
     _authMode        = 'signin';
     _studentStep     = null;
-    render();
+    render(); // direct-render-ok: signed out — the whole UI must swap to login now
   }
 });
