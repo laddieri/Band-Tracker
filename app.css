@@ -3567,15 +3567,24 @@ html, body {
 .drill-info-assign-lbl { display:block; font-size:.72rem; color:#c8d4c8; margin-bottom:3px; }
 .drill-info-assign-sel { width:100%; font-size:.82rem; padding:6px 8px; }
 .drill-info-shared { font-size:.68rem; font-weight:700; color:#0f172a; background:#ffd23f; border-radius:4px; padding:1px 5px; vertical-align:middle; }
-.drill-info-stu { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 0; }
-.drill-info-stu-name { font-size:.86rem; font-weight:600; cursor:pointer; text-decoration:underline; text-decoration-color:rgba(255,255,255,.3); }
-.drill-info-stu-actions { display:flex; align-items:center; gap:5px; flex-shrink:0; }
+.drill-info-stu { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:5px 0; }
+.drill-info-stu-name {
+  font-size:.86rem; font-weight:600; cursor:pointer; text-decoration:underline; text-decoration-color:rgba(255,255,255,.3);
+  min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.drill-info-stu-actions { display:flex; align-items:center; gap:7px; flex-shrink:0; }
 .drill-info-stu-x { border:none; background:rgba(255,255,255,.14); color:#fff; width:22px; height:22px; border-radius:50%; cursor:pointer; font-size:.7rem; line-height:1; flex-shrink:0; }
 .drill-map-shared { flex:1; font-size:.82rem; color:var(--text); padding:6px 4px; }
 .drill-info-pop-actions { display:flex; gap:6px; margin-top:9px; }
 .drill-info-marks-label { font-size:0.72rem; color:#c8d4c8; margin-top:9px; }
 .drill-info-marks { display:flex; gap:6px; margin-top:5px; }
-.drill-mark-btn { flex:1; font-weight:700; font-size:0.85rem; padding:9px 6px; border:none; border-radius:var(--r-sm); cursor:pointer; color:#fff; display:flex; align-items:center; justify-content:center; gap:6px; }
+/* Sized for thumbs: these are tapped repeatedly on a phone held at arm's
+   length on the field, so keep them at/above the 44px touch target. */
+.drill-mark-btn {
+  flex:1; font-weight:700; font-size:1.15rem; line-height:1; padding:0 10px;
+  min-width:62px; min-height:46px; border:none; border-radius:var(--r-sm); cursor:pointer; color:#fff;
+  display:flex; align-items:center; justify-content:center; gap:7px;
+}
 .drill-mark-pos { background:var(--success, #2e9e5b); }
 .drill-mark-neg { background:var(--danger, #d9534f); }
-.drill-mark-ct { background:rgba(255,255,255,.28); border-radius:9px; padding:0 6px; font-size:0.78rem; }
+.drill-mark-ct { background:rgba(255,255,255,.28); border-radius:10px; padding:1px 7px; font-size:0.85rem; }
