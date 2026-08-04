@@ -665,6 +665,18 @@ function viewStudent(num) {
       </div>
     </div>` : ''}
 
+    ${STATE.isAdmin ? (() => {
+      // Directors only: every field spot this student has held, and for how
+      // long — the data lives in the director-only spotHistory collection.
+      const spans = studentSpotHistory(num);
+      if (!spans.length) return '';
+      return `
+        <div class="card mb-12">
+          <div class="section-title" style="margin-top:0">Field Spot History</div>
+          ${_spotHistRowsHtml(spans, { title: sp => esc(sp.show) })}
+        </div>`;
+    })() : ''}
+
     ${s.notes ? `
       <div class="card mb-12 clickable" onclick="showEditStudentModal('${esc(num)}')">
         <div class="section-title" style="margin-top:0">Director Notes</div>

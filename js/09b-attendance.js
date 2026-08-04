@@ -466,7 +466,7 @@ function viewAttendance(rid) {
       ${unmarked > 0 ? `<span class="att-summary-chip att-chip-unmarked">${unmarked} Remaining</span>` : ''}
     </div>
 
-    ${Object.keys(STATE.shows || {}).length ? `
+    ${_blockAttShows().length ? `
     <button class="btn btn-secondary btn-full" style="margin-bottom:12px" onclick="startBlockAttendance('${esc(rid)}')">
       ▦ Take Attendance by Block
     </button>` : ''}
@@ -778,12 +778,22 @@ function _blockAttShowGroups(rid, showId) {
   return groups;
 }
 
+// Shows offered by "Take Attendance by Block": only shows that still have a
+// drill file. A show doc can outlive its drills (deleted drills, old
+// migrations); listing such a leftover here just offers a block flow with no
+// usable spots — directors can delete it from the Drill Library.
+function _blockAttShows() {
+  return Object.values(STATE.shows || {})
+    .filter(s => Object.values(STATE.drills || {}).some(d => d.showId === s.id))
+    .sort((a, b) =>
+      (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0) || (a.name || '').localeCompare(b.name || ''));
+}
+
 // Entry point: attendance by block steps through a show's field spots. With one
 // show, jump straight in; with several, pick which show; with none, nothing to
 // do (the button that calls this is hidden unless a show exists).
 function startBlockAttendance(rid) {
-  const shows = Object.values(STATE.shows || {}).sort((a, b) =>
-    (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0) || (a.name || '').localeCompare(b.name || ''));
+  const shows = _blockAttShows();
   if (!shows.length) { showToast('Add a show with spot assignments first.'); return; }
   if (shows.length === 1) { _beginBlockAttendance(rid, shows[0].id); return; }
   const showRows = shows.map(s => `

@@ -40,9 +40,12 @@ orgs/{orgId}                          # org metadata
   │    │  (fields) name, fileName, setCount, …, showId,   # showId groups drills that share a spot map
   │    │  mapping:{label→…}            #   legacy per-drill map, used only for ungrouped drills
   │    └─ data/main                   #   heavy Pyware position payload (loaded on demand)
-  └─ shows/{showId}                   # a show groups drills that share ONE spot map (director-write, +staff read)
-       (fields) name,
-       mapping:{label→studentNumber | [studentNumbers]}   # a spot may be shared by >1 student
+  ├─ shows/{showId}                   # a show groups drills that share ONE spot map (director-write, +staff read)
+  │    (fields) name,
+  │    mapping:{label→studentNumber | [studentNumbers]}   # a spot may be shared by >1 student
+  └─ spotHistory/{showId}             # who held each spot and when (director-ONLY, both ways)
+       (fields) name,                  #   show name snapshot, so history outlives a deleted show
+       events:[{label, num, action:'add'|'remove', at, by}]   # append-only log of mapping edits
 
 members/{uid}                         # who belongs to which org, and as what
   └─ (fields) orgId, role, email?, studentNumber?, joinCode?
@@ -153,8 +156,24 @@ re-entry.
   idempotent (writes only changed students; re-runs on every shows/students
   snapshot), so it self-heals after any spot edit and needs no rules change (a
   student reads its own doc; the field carries no PII).
+- **Spot history.** Every mapping write appends its per-student add/remove diff
+  (`drillMappingDiff` in js/00-logic.js) to `orgs/{orgId}/spotHistory/{showId}`
+  = `{ name, events:[{label, num, action, at, by}] }` via `_spotHistoryRecord`
+  (js/12-drill.js), so directors can see every spot a student has marched and
+  for how long (`spotHistorySpans` folds events into date spans; the live show
+  map marks open spans as current and surfaces pre-tracking assignments).
+  Surfaced on the director's student page ("Field Spot History") and from the
+  chart's tapped-dot panel ("View spot history"). The collection is
+  **director-only in the rules — unlike `shows`, staff can't read it** (it's
+  roster management, not needed for recording, and events carry director uids —
+  uids, never emails; resolve with `dirLabel()`). `at` is a client-side ms
+  timestamp (`serverTimestamp` isn't allowed inside `arrayUnion`). The doc is
+  deliberately kept when its show is deleted; the stored `name` labels it.
 - **Attendance by block** (js/09b-attendance.js) is show-based: "Take Attendance
-  by Block" (shown only when a show exists) steps through a show's field spots,
+  by Block" (shown only when a show with at least one drill file exists — a
+  leftover show doc with no drills is excluded by `_blockAttShows` and can be
+  deleted from the Drill Library, where drill-less shows are listed with a
+  delete action) steps through a show's field spots,
   and `_blockAttShowGroups` builds one screen per section letter from the show
   map (`drillSpotLabelParts` splits `M1` → section `M`, rank `1`). A spot shared
   by two students lists both (each toggled independently); in-scope students with
@@ -259,7 +278,9 @@ guard tech — who should record data but not administer the band.
   including one that drops the field to reopen implicitly),
   song/rehearsal deletion, **drill and show writes** (add/delete/
   rename or change spot assignments — the label→student map lives on the show
-  doc, which only directors write), student/invite codes, member management.
+  doc, which only directors write), **`spotHistory` in either direction**
+  (assignment history is roster management, not recording), student/invite
+  codes, member management.
   Directors remove staff from Band Settings like co-directors.
 
 ### How students get an org (code + PIN)
@@ -328,6 +349,7 @@ What a **student** can read (everything else is director-only):
 | `songs/*`                     | ❌ — embeds every student's pass/fail + fail notes |
 | `drills/*` (+ `drills/*/data/*`) | ❌ — Pyware field-chart library (director-write; directors + staff read) |
 | `shows/*`                     | ❌ — per-show shared spot map (director-write; directors + staff read) |
+| `spotHistory/*`               | ❌ — who held each spot and when (director-ONLY: staff can't read it either) |
 
 **Hiding a rehearsal from students.** A director can flag a rehearsal
 `hiddenFromStudents: true` (Edit Rehearsal → "Hide from students") — e.g. an

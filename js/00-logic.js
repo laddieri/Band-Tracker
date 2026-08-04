@@ -328,6 +328,72 @@ function drillSpotStripOthers(mapping, keepLabel, num) {
   return mapping;
 }
 
+// The assignment changes between two spot maps, as [{ label, num, action }]
+// with action 'add' | 'remove'. Feeds the director-only spot-history log: every
+// mapping write appends its diff so "who marched which spot, and when" survives
+// reassignments. Deterministic order (label, then number, removes before adds)
+// so identical edits produce identical event lists.
+function drillMappingDiff(oldMapping, newMapping) {
+  const events = [];
+  const labels = new Set([...Object.keys(oldMapping || {}), ...Object.keys(newMapping || {})]);
+  [...labels].sort().forEach(label => {
+    const before = new Set(drillSpotNums((oldMapping || {})[label]));
+    const after  = new Set(drillSpotNums((newMapping || {})[label]));
+    const removed = [...before].filter(n => !after.has(n)).sort();
+    const added   = [...after].filter(n => !before.has(n)).sort();
+    removed.forEach(num => events.push({ label, num, action: 'remove' }));
+    added.forEach(num => events.push({ label, num, action: 'add' }));
+  });
+  return events;
+}
+
+// Fold a show's spot-history events into assignment spans: who held which spot,
+// from when to when. `events` are { label, num, action, at? } in any order (at =
+// ms epoch); `currentMapping` is the show's live map, which marks open spans as
+// current and surfaces assignments that predate history tracking (start null).
+// A remove with no matching add (also pre-tracking) yields a span with start
+// null. Returns [{ num, label, start, end, current }] with current spans first,
+// then most recently ended.
+function spotHistorySpans(events, currentMapping) {
+  const sorted = (events || [])
+    .filter(e => e && e.label && (e.num === 0 || e.num))
+    .slice()
+    .sort((a, b) => (a.at || 0) - (b.at || 0));
+
+  const open  = {}; // "num|label" → span still open
+  const spans = [];
+  sorted.forEach(e => {
+    const num = String(e.num);
+    const key = `${num}|${e.label}`;
+    if (e.action === 'add') {
+      if (open[key]) return; // duplicate add — keep the original start
+      const span = { num, label: e.label, start: e.at || null, end: null, current: false };
+      open[key] = span;
+      spans.push(span);
+    } else if (e.action === 'remove') {
+      if (open[key]) { open[key].end = e.at || null; delete open[key]; }
+      else spans.push({ num, label: e.label, start: null, end: e.at || null, current: false });
+    }
+  });
+
+  // Reconcile with the live map: assignments in it are current (adding an
+  // untracked span when history never saw the add), anything else stays closed.
+  const cur = new Set();
+  Object.keys(currentMapping || {}).forEach(label =>
+    drillSpotNums(currentMapping[label]).forEach(n => cur.add(`${n}|${label}`)));
+  Object.values(open).forEach(span => { span.current = cur.has(`${span.num}|${span.label}`); });
+  cur.forEach(key => {
+    if (open[key]) return;
+    const [num, label] = [key.slice(0, key.indexOf('|')), key.slice(key.indexOf('|') + 1)];
+    spans.push({ num, label, start: null, end: null, current: true });
+  });
+
+  return spans.sort((a, b) =>
+    (b.current - a.current)
+    || ((b.end ?? Infinity) - (a.end ?? Infinity))
+    || ((b.start || 0) - (a.start || 0)));
+}
+
 // Apply a spot CSV to a drill's current mapping, merging by STUDENT so partial
 // sheets are safe: every student listed in the sheet is re-placed at the spot in
 // their row (a blank spot ⇒ unassigned); students not in the sheet are left
@@ -1008,6 +1074,7 @@ if (typeof module !== 'undefined' && module.exports) {
     parseCSVLine, parseCSV, COL_ALIASES, normalizeGrade, detectCols,
     csvCell, buildStudentCodesCsv,
     DRILL_LABEL_ALIASES, drillSpotNums, drillSpotStripOthers, drillSpotLabelParts, applyDrillSpotCsv,
+    drillMappingDiff, spotHistorySpans,
     drillPositionPairs, drillRelabelMapping,
     suggestSeasonLabel,
     normInstrument, instrOrder, GRADE_LEVELS, filterAndSortStudents,

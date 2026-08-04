@@ -68,7 +68,7 @@ async function startListeners() {
   _restartSeasonScoped = null;
   _scopedReady = null;
   // Drop any drill state from a previous session/org; listeners repopulate it.
-  STATE.drills = {}; STATE.shows = {}; STATE.activeDrillId = null; _activeDrillLoadedId = null;
+  STATE.drills = {}; STATE.shows = {}; STATE.spotHistory = {}; STATE.activeDrillId = null; _activeDrillLoadedId = null;
   _drillData = null; _drillPages = null; _drillFileName = null; _drillFlipV = false;
 
   // Resolve the user's org before reading any data; bail if redirected.
@@ -167,6 +167,15 @@ async function startListeners() {
         STATE.org = doc.exists ? { id: doc.id, ...doc.data() } : null;
         if (!STATE.loading) renderFromData();
       }),
+
+      // Spot-assignment history, one doc per show (see _spotHistoryRecord in
+      // js/12-drill.js). Director-ONLY — the rules deny staff and students, so
+      // this must not move into the canRecord() block below.
+      orgCol('spotHistory').onSnapshot(snap => {
+        STATE.spotHistory = {};
+        snap.docs.forEach(d => { STATE.spotHistory[d.id] = { id: d.id, ...d.data() }; });
+        if (!STATE.loading) renderFromData();
+      }, err => console.error('spot history listener error:', err)),
     ] : []),
 
     // Settings — all members (students need the leaderboard toggle + pseudonym salt)
@@ -671,6 +680,7 @@ auth.onAuthStateChanged(user => {
     STATE.rehearsals = [];
     STATE.entries    = {};
     STATE.songs      = [];
+    STATE.spotHistory = {};
     STATE.publicStats = null;
     STATE.dirNames   = {};
     STATE.activeSeason = '';

@@ -651,6 +651,90 @@ describe('drillSpotStripOthers (one spot per student per show)', () => {
   });
 });
 
+describe('drillMappingDiff (spot-history events from a mapping edit)', () => {
+  it('reports an assignment as an add and a cleared spot as a remove', () => {
+    assert.deepStrictEqual(L.drillMappingDiff({}, { M1: '42' }),
+      [{ label: 'M1', num: '42', action: 'add' }]);
+    assert.deepStrictEqual(L.drillMappingDiff({ M1: '42' }, {}),
+      [{ label: 'M1', num: '42', action: 'remove' }]);
+    assert.deepStrictEqual(L.drillMappingDiff({ M1: '42' }, { M1: [] }),
+      [{ label: 'M1', num: '42', action: 'remove' }]);
+  });
+
+  it('reports a reassignment as remove + add on the same label', () => {
+    assert.deepStrictEqual(L.drillMappingDiff({ M1: '42' }, { M1: '7' }), [
+      { label: 'M1', num: '42', action: 'remove' },
+      { label: 'M1', num: '7',  action: 'add' },
+    ]);
+  });
+
+  it('reports a student moving spots as a remove on the old label and an add on the new', () => {
+    assert.deepStrictEqual(L.drillMappingDiff({ A1: '42' }, { A1: [], M3: '42' }), [
+      { label: 'A1', num: '42', action: 'remove' },
+      { label: 'M3', num: '42', action: 'add' },
+    ]);
+  });
+
+  it('diffs shared spots per student and ignores unchanged spots and format changes', () => {
+    assert.deepStrictEqual(L.drillMappingDiff(
+      { A1: ['42', '7'], B2: '9', C3: '5' },
+      { A1: '42',        B2: ['9'], C3: '5' }
+    ), [{ label: 'A1', num: '7', action: 'remove' }]);
+    assert.deepStrictEqual(L.drillMappingDiff({ A1: '42' }, { A1: ['42'] }), []);
+  });
+});
+
+describe('spotHistorySpans (assignment spans from history events)', () => {
+  it('pairs add/remove into a closed span and leaves a current assignment open', () => {
+    const events = [
+      { label: 'M1', num: '42', action: 'add',    at: 100 },
+      { label: 'M1', num: '42', action: 'remove', at: 200 },
+      { label: 'X5', num: '42', action: 'add',    at: 200 },
+    ];
+    const spans = L.spotHistorySpans(events, { X5: '42' });
+    assert.deepStrictEqual(spans, [
+      { num: '42', label: 'X5', start: 200, end: null, current: true },
+      { num: '42', label: 'M1', start: 100, end: 200,  current: false },
+    ]);
+  });
+
+  it('tolerates unordered events and duplicate adds', () => {
+    const events = [
+      { label: 'M1', num: '42', action: 'remove', at: 300 },
+      { label: 'M1', num: '42', action: 'add',    at: 100 },
+      { label: 'M1', num: '42', action: 'add',    at: 150 }, // dup — original start kept
+    ];
+    assert.deepStrictEqual(L.spotHistorySpans(events, {}),
+      [{ num: '42', label: 'M1', start: 100, end: 300, current: false }]);
+  });
+
+  it('surfaces pre-tracking assignments: current with no add, and a remove with no add', () => {
+    // Assigned before history existed, still assigned now.
+    assert.deepStrictEqual(L.spotHistorySpans([], { M1: '42' }),
+      [{ num: '42', label: 'M1', start: null, end: null, current: true }]);
+    // Assigned before history existed, later removed.
+    assert.deepStrictEqual(
+      L.spotHistorySpans([{ label: 'M1', num: '42', action: 'remove', at: 500 }], {}),
+      [{ num: '42', label: 'M1', start: null, end: 500, current: false }]);
+  });
+
+  it('handles shared spots and sorts current first, then most recently ended', () => {
+    const events = [
+      { label: 'A1', num: '42', action: 'add',    at: 100 },
+      { label: 'A1', num: '7',  action: 'add',    at: 100 },
+      { label: 'A1', num: '42', action: 'remove', at: 400 },
+      { label: 'B2', num: '42', action: 'add',    at: 400 },
+      { label: 'B2', num: '42', action: 'remove', at: 600 },
+    ];
+    const spans = L.spotHistorySpans(events, { A1: '7' });
+    assert.deepStrictEqual(spans, [
+      { num: '7',  label: 'A1', start: 100, end: null, current: true },
+      { num: '42', label: 'B2', start: 400, end: 600,  current: false },
+      { num: '42', label: 'A1', start: 100, end: 400,  current: false },
+    ]);
+  });
+});
+
 describe('applyDrillSpotCsv (per-drill spot CSV, merge by student)', () => {
   const roster = new Set(['1', '42', '7', '9']);
 

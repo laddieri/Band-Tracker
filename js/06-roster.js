@@ -204,6 +204,66 @@ function _studentSpotText(s) {
   return studentSpots(s).map(sp => sp.label).join(' · ');
 }
 
+// A student's full spot history across shows — every spot they've held and for
+// how long. Directors only: built from the director-only spotHistory docs
+// (STATE.spotHistory) merged with the live show maps, so current assignments
+// show up even if they predate history tracking. Shows whose docs were deleted
+// keep their history under the name stored on the history doc. Returns
+// [{ show, showId, label, start, end, current }] with current spans first.
+function studentSpotHistory(num) {
+  if (!STATE.isAdmin) return [];
+  const n = String(num);
+  const out = [];
+  const ids = new Set([...Object.keys(STATE.spotHistory || {}), ...Object.keys(STATE.shows || {})]);
+  ids.forEach(sid => {
+    const hist = (STATE.spotHistory || {})[sid];
+    const show = (STATE.shows || {})[sid];
+    spotHistorySpans(hist?.events || [], show?.mapping || {})
+      .filter(sp => sp.num === n)
+      .forEach(sp => out.push({ ...sp, showId: sid, show: show?.name || hist?.name || 'Show' }));
+  });
+  return out.sort((a, b) =>
+    (b.current - a.current)
+    || ((b.end ?? Infinity) - (a.end ?? Infinity))
+    || ((b.start || 0) - (a.start || 0)));
+}
+
+// Compact duration for a spot span, e.g. "9 days", "6 wks", "3 mo".
+function _spotSpanDur(start, end) {
+  if (!start) return '';
+  const days = Math.max(1, Math.round(((end || Date.now()) - start) / 86400000));
+  if (days < 14) return `${days} day${days !== 1 ? 's' : ''}`;
+  if (days < 75) { const w = Math.round(days / 7); return `${w} wk${w !== 1 ? 's' : ''}`; }
+  const mo = Math.round(days / 30.4);
+  return `${mo} mo`;
+}
+
+// One span's date line: "Sep 2, 2026 – Oct 14, 2026 · 6 wks", "since Sep 2,
+// 2026 · 3 wks" for a current spot, with pre-tracking gaps spelled out.
+function _spotSpanText(sp) {
+  const dur = _spotSpanDur(sp.start, sp.current ? null : sp.end);
+  if (sp.current) {
+    if (!sp.start) return 'current · assigned before spot tracking began';
+    return `since ${fmtDateFromTs(sp.start)}${dur ? ` · ${dur}` : ''}`;
+  }
+  if (!sp.start && sp.end) return `until ${fmtDateFromTs(sp.end)} · assigned before spot tracking began`;
+  if (sp.start && !sp.end)  return `from ${fmtDateFromTs(sp.start)}`;
+  return `${fmtDateFromTs(sp.start)} – ${fmtDateFromTs(sp.end)}${dur ? ` · ${dur}` : ''}`;
+}
+
+// Rows shared by the student-page card and the chart's spot-history modal.
+// Each span: an optional spot badge, a title line, and the date range.
+function _spotHistRowsHtml(spans, { title, badge = true }) {
+  return spans.map(sp => `
+    <div class="spot-hist-row">
+      ${badge ? `<span class="spot-hist-label">${esc(sp.label)}</span>` : ''}
+      <div class="spot-hist-info">
+        <div class="spot-hist-title">${title(sp)}${sp.current ? ` <span class="spot-hist-current">current</span>` : ''}</div>
+        <div class="spot-hist-dates">${esc(_spotSpanText(sp))}</div>
+      </div>
+    </div>`).join('');
+}
+
 // Badges (label · show) for the profile card.
 function _studentSpotBadges(s) {
   return studentSpots(s).map(sp =>

@@ -1327,14 +1327,39 @@ function _drillSaveMappingFor(drillId, mapping) {
   if (!drill) return;
   const show = drill.showId ? STATE.shows[drill.showId] : null;
   if (show) {
+    const changes = drillMappingDiff(show.mapping || {}, mapping); // diff before the optimistic swap
     show.mapping = mapping; // optimistic; the shows listener will confirm
     orgCol('shows').doc(drill.showId).update({ mapping })
       .catch(e => _toastSaveError(e, 'The spot assignment'));
+    _spotHistoryRecord(drill.showId, show.name, changes);
     return;
   }
   drill.mapping = mapping; // optimistic; the drills listener will confirm
   orgCol('drills').doc(drillId).update({ mapping })
     .catch(e => _toastSaveError(e, 'The spot assignment'));
+}
+
+// Append a mapping edit's add/remove events to the show's spot-history doc
+// (orgs/{orgId}/spotHistory/{showId} — director-ONLY, unlike the show doc, so
+// keep any student- or staff-visible surface away from it). One event per
+// student per label, stamped with a client-side ms timestamp (serverTimestamp
+// isn't allowed inside arrayUnion) and the editor's uid — never an email
+// (resolve for display with dirLabel()). The doc also carries the show's name
+// so history stays labeled after the show itself is deleted.
+function _spotHistoryRecord(showId, showName, changes) {
+  if (!STATE.isAdmin || !changes || !changes.length) return;
+  const at = Date.now();
+  const by = STATE.user?.uid || null;
+  const events = changes.map(c => ({ label: c.label, num: String(c.num), action: c.action, at, by }));
+  // Optimistic local append so the history views update without a round trip.
+  if (!STATE.spotHistory) STATE.spotHistory = {};
+  const local = STATE.spotHistory[showId] = STATE.spotHistory[showId] || { id: showId, events: [] };
+  local.name   = showName || local.name || 'Show';
+  local.events = [...(local.events || []), ...events];
+  orgCol('spotHistory').doc(showId).set({
+    name:   showName || 'Show',
+    events: firebase.firestore.FieldValue.arrayUnion(...events),
+  }, { merge: true }).catch(e => _toastSaveError(e, 'The spot history'));
 }
 
 // Set a spot to a single student (or clear it) — the mapping modal's dropdown.
@@ -1741,8 +1766,39 @@ function _drillInfoPanelHtml() {
       </div>` : ''}
       <div class="drill-info-pop-actions">
         <button class="btn btn-sm ${_drillTraceLabel === label ? 'btn-secondary' : 'btn-primary'}" onclick="drillTracePerformer('${esc(label)}')">${_drillTraceLabel === label ? 'Tracing ✓' : 'Trace path'}</button>
+        ${(STATE.isAdmin && _activeShow()) ? `<button class="btn btn-sm btn-secondary" onclick="drillSpotHistoryModal('${esc(label)}')">View spot history</button>` : ''}
       </div>
     </div>`;
+}
+
+// Director-only: everyone who has ever been assigned to this spot in the active
+// show, and for how long. Opened from the tapped-dot info panel.
+function drillSpotHistoryModal(label) {
+  if (!STATE.isAdmin) return;
+  const show = _activeShow();
+  if (!show) return; // ungrouped drill — history is tracked per show
+  const hist  = (STATE.spotHistory || {})[show.id];
+  const spans = spotHistorySpans(hist?.events || [], show.mapping || {})
+    .filter(sp => sp.label === label);
+  const rows = spans.length
+    ? _spotHistRowsHtml(spans, {
+        badge: false,
+        title: sp => {
+          const st = STATE.students[sp.num];
+          const name = st ? (st.name || `#${sp.num}`) : `#${sp.num}`;
+          return `<span class="clickable" onclick="closeModal();navigate('student',{num:'${esc(sp.num)}'})">${esc(name)}</span>`;
+        },
+      })
+    : `<p style="color:var(--text-muted);text-align:center;padding:14px 0">No one has been assigned to ${esc(label)} in this show yet.</p>`;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Spot ${esc(label)} — ${esc(show.name || 'Show')}</div>
+    <p class="modal-sub" style="margin:0 0 10px">Who has marched this spot in this show, and for how long. Directors only.</p>
+    ${rows}
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Done</button>
+    </div>
+  `);
 }
 
 // Toggle the tapped-dot panel between marking (default) and editing who's on
@@ -2165,6 +2221,10 @@ function showDrillLibraryModal() {
     if (!groups.has(sid)) groups.set(sid, []);
     groups.get(sid).push(id);
   });
+  // Shows with no drills left (deleted drills, old migrations) would otherwise
+  // be invisible everywhere yet still exist — list them so a director can see
+  // and delete the leftover instead of it haunting show pickers.
+  Object.keys(STATE.shows || {}).forEach(sid => { if (!groups.has(sid)) groups.set(sid, []); });
 
   const groupsHtml = [...groups.entries()].map(([sid, gids]) => {
     const show     = sid && STATE.shows[sid];
@@ -2173,8 +2233,12 @@ function showDrillLibraryModal() {
       <div class="drill-lib-group-head">
         <span class="drill-lib-group-name">📁 ${esc(showName)}</span>
         ${(show && STATE.isAdmin) ? `<button class="drill-lib-act" onclick="drillShowRenamePrompt('${esc(sid)}')" title="Rename show" aria-label="Rename show">✎</button>` : ''}
+        ${(show && STATE.isAdmin && !gids.length) ? `<button class="drill-lib-act drill-lib-act--danger" onclick="drillShowDeletePrompt('${esc(sid)}')" title="Delete show" aria-label="Delete show">🗑</button>` : ''}
       </div>`;
-    return `<div class="drill-lib-group">${head}<div class="drill-lib-list">${gids.map(_drillLibRowHtml).join('')}</div></div>`;
+    const body = gids.length
+      ? gids.map(_drillLibRowHtml).join('')
+      : `<p class="drill-lib-empty">No drill files in this show — it only lingers in show pickers. Delete it if it’s a leftover.</p>`;
+    return `<div class="drill-lib-group">${head}<div class="drill-lib-list">${body}</div></div>`;
   }).join('');
 
   openModal(`
@@ -2182,7 +2246,7 @@ function showDrillLibraryModal() {
       <div class="modal-handle"></div>
       <div class="modal-title">Drill Library</div>
       <p class="modal-sub" style="margin:0 0 10px">Drills are grouped by <strong>show</strong> — all drills in a show share one set of spot assignments. Tap a drill to make it the active field chart for everyone.</p>
-      ${ids.length ? groupsHtml : `<p style="color:var(--text-muted);text-align:center;padding:20px 0">No drills saved yet.</p>`}
+      ${groups.size ? groupsHtml : `<p style="color:var(--text-muted);text-align:center;padding:20px 0">No drills saved yet.</p>`}
       ${STATE.isAdmin ? `<button class="btn btn-secondary btn-full" style="margin-top:12px" onclick="drillAddFile()">＋ Add drill file</button>` : ''}
       <div class="modal-actions" style="margin-top:8px">
         <button class="btn btn-secondary btn-full" onclick="closeModal()">Done</button>
@@ -2216,6 +2280,29 @@ function drillShowRenameSave(showId) {
   orgCol('shows').doc(showId).set({ name }, { merge: true }).catch(e => console.error(e));
   showDrillLibraryModal();
   if (_view === 'drill' && _activeShow()?.id === showId) { const r = document.getElementById('drill-view-root'); if (r) _drillViewRerender(); }
+}
+
+// Delete a show that has no drills left (leftovers from deleted drills or old
+// migrations). Only offered for empty shows — deleting a show with drills goes
+// through deleting/moving its drills, which already cleans the show up
+// (_cleanupEmptyShow). Its spot-history doc is kept: the history outlives the
+// production. Director-only.
+function drillShowDeletePrompt(showId) {
+  const s = STATE.shows[showId];
+  if (!s || !STATE.isAdmin) return;
+  if (Object.values(STATE.drills || {}).some(d => d.showId === showId)) return; // safety: empty shows only
+  showConfirmModal(
+    'Delete show?',
+    `Remove “${esc(s.name || 'this show')}” and its spot assignments? It has no drill files, so it only appears in show pickers. This can’t be undone.`,
+    () => drillShowDelete(showId),
+    'Delete', 'btn-danger'
+  );
+}
+
+function drillShowDelete(showId) {
+  delete STATE.shows[showId]; // optimistic; the shows listener will confirm
+  orgCol('shows').doc(showId).delete().catch(e => _toastSaveError(e, 'Deleting the show'));
+  showDrillLibraryModal();
 }
 
 // Move a drill into a different show (or a new one): it takes on that show's
