@@ -1241,12 +1241,7 @@ function _drillRefreshCurrent() {
 }
 
 // ── Per-drill spot import / export (CSV) ──────────────────────────────────────
-
-// A CSV cell, quoted if it contains a comma, quote or newline.
-function _csvCell(v) {
-  const s = String(v ?? '');
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
+// csvCell (js/00-logic.js) and _downloadCsv (js/03-router.js) do the generic work.
 
 // A roster-oriented template you fill in by hand: one row per student (number +
 // name, which you recognise), with a Spot column to write each student's label
@@ -1260,19 +1255,8 @@ function _drillSpotTemplateCsv() {
   const students = Object.values(STATE.students)
     .sort((a, b) => (a.name || '').localeCompare(b.name || '') || String(a.number).localeCompare(String(b.number)));
   const lines = ['Student Number,Name,Spot'];
-  students.forEach(s => lines.push([s.number, _csvCell(s.name || ''), spotOf[s.number] || ''].join(',')));
+  students.forEach(s => lines.push([s.number, csvCell(s.name || ''), spotOf[s.number] || ''].join(',')));
   return lines.join('\n');
-}
-
-function _downloadCsv(filename, text) {
-  try {
-    const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  } catch (e) { console.error('CSV download failed:', e); showToast('Could not download the file.'); }
 }
 
 function downloadDrillSpotTemplate() {

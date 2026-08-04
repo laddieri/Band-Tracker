@@ -264,6 +264,13 @@ function showRosterOptionsModal() {
           <div class="options-menu-sub">${missingCodes === 0 ? 'All students have codes' : `${missingCodes} student${missingCodes !== 1 ? 's' : ''} missing a code`}</div>
         </div>
       </button>
+      <button class="options-menu-item" onclick="closeModal();showExportCodesModal()">
+        <div class="options-menu-icon">📤</div>
+        <div>
+          <div class="options-menu-label">Export Student Codes</div>
+          <div class="options-menu-sub">Printable slips or a CSV to share codes with students</div>
+        </div>
+      </button>
       <button class="options-menu-item" onclick="closeModal();showImportModal()">
         <div class="options-menu-icon">📥</div>
         <div>
@@ -541,6 +548,169 @@ async function autoGenerateStudentCodes() {
     showToast(`${updates.length} code${updates.length !== 1 ? 's' : ''} generated.`);
   }
   render();
+}
+
+// ── Export student codes ──────────────────────────────────────────────────────
+// Handing out sign-in codes is a start-of-season chore, so give directors both
+// shapes: a printable sheet of cut-apart slips (one per student, with the
+// sign-in steps on it) and a CSV for a spreadsheet or mail merge. Codes are
+// credentials — director-only, like the rest of the roster options menu.
+
+let _exportCodesScope = 'all'; // 'all' | 'filtered'
+
+// True when the roster's filter bar is actually narrowing the list, so the
+// export can offer "just what I'm looking at".
+function _rosterFilterIsNarrowing() {
+  const f = _rosterFilter;
+  return !!(f.search || f.instruments.length || f.sections.length || f.grades.length);
+}
+
+// The students to export, always alphabetical — the order you want when you're
+// handing slips out or reading down a list.
+function _exportCodeStudents() {
+  const all = Object.values(DB.getStudents());
+  const pool = _exportCodesScope === 'filtered' ? filterAndSortStudents(all, _rosterFilter) : all;
+  return [...pool].sort((a, b) =>
+    (a.name || '').localeCompare(b.name || '') || String(a.number).localeCompare(String(b.number)));
+}
+
+function showExportCodesModal() {
+  if (!STATE.isAdmin) return;
+  const total = Object.keys(DB.getStudents()).length;
+  if (!total) { showToast('No students to export yet.'); return; }
+  _exportCodesScope = 'all';
+  const narrowing = _rosterFilterIsNarrowing();
+  const filteredCount = narrowing ? filterAndSortStudents(Object.values(DB.getStudents()), _rosterFilter).length : total;
+  const missing = _exportCodeStudents().filter(s => !s.studentCode).length;
+
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Export Student Codes</div>
+    <p class="form-hint" style="margin:0 0 16px">
+      Name${hasField('instrument') ? ', instrument' : ''} and sign-in code for each student.
+      Print the slips to cut apart and hand out, or download the CSV for a spreadsheet or mail merge.
+    </p>
+    ${narrowing ? `
+      <div class="form-label" style="margin-bottom:8px">Who to include</div>
+      <div class="seg-chip-row" style="margin-bottom:16px">
+        <button class="seg-chip seg-selected" id="exp-chip-all" onclick="selectExportCodesScope('all')">Whole roster (${total})</button>
+        <button class="seg-chip" id="exp-chip-filtered" onclick="selectExportCodesScope('filtered')">Current filter (${filteredCount})</button>
+      </div>` : ''}
+    <div id="exp-codes-missing">${_exportCodesMissingNote(missing)}</div>
+    <button class="btn btn-primary btn-full btn-lg" onclick="printStudentCodeSheet()">🖨 Print / Save PDF</button>
+    <button class="btn btn-secondary btn-full" style="margin-top:8px" onclick="downloadStudentCodesCsv()">⬇️ Download CSV</button>
+    <div class="modal-actions" style="margin-top:8px">
+      <button class="btn btn-secondary btn-full" onclick="closeModal()">Cancel</button>
+    </div>
+  `);
+}
+
+// Slips are useless without a code, so say up front how many students would be
+// skipped and offer the one-tap fix.
+function _exportCodesMissingNote(missing) {
+  if (!missing) return '';
+  return `
+    <div class="form-hint" style="margin:0 0 12px;color:var(--danger)">
+      ${missing} student${missing !== 1 ? 's have' : ' has'} no code yet and will be left off the printed slips.
+      <button class="btn-link" onclick="closeModal();showAutoGenerateCodesModal()"
+        style="background:none;border:none;padding:0;color:var(--primary);text-decoration:underline;cursor:pointer;font-size:inherit">
+        Generate codes first
+      </button>
+    </div>`;
+}
+
+function selectExportCodesScope(scope) {
+  _exportCodesScope = scope;
+  ['all', 'filtered'].forEach(s =>
+    document.getElementById(`exp-chip-${s}`)?.classList.toggle('seg-selected', s === scope));
+  const note = document.getElementById('exp-codes-missing');
+  if (note) note.innerHTML = _exportCodesMissingNote(_exportCodeStudents().filter(s => !s.studentCode).length);
+}
+
+function downloadStudentCodesCsv() {
+  if (!STATE.isAdmin) return;
+  const students = _exportCodeStudents();
+  if (!students.length) { showToast('No students in that selection.'); return; }
+  closeModal();
+  const slug = (STATE.bandName || 'band').replace(/[^\w-]+/g, '_').replace(/^_+|_+$/g, '') || 'band';
+  _downloadCsv(`${slug}-student-codes.csv`,
+    buildStudentCodesCsv(students, { includeInstrument: hasField('instrument') }));
+}
+
+function printStudentCodeSheet() {
+  if (!STATE.isAdmin) return;
+  const withCode = _exportCodeStudents().filter(s => s.studentCode);
+  if (!withCode.length) {
+    showToast('No student in that selection has a code yet.');
+    return;
+  }
+  closeModal();
+  _printHtmlDocument(buildStudentCodeSheetHTML(withCode));
+}
+
+// Where students go to sign in — this deployment's own URL, so it's right for
+// bandmarks.app and any other host the app is served from.
+function _appSignInUrl() {
+  return (location.origin + location.pathname).replace(/index\.html$/, '');
+}
+
+function buildStudentCodeSheetHTML(students) {
+  const bandName = STATE.bandName || 'Band Tracker';
+  const urlShort = _appSignInUrl().replace(/^https?:\/\//, '').replace(/\/$/, '');
+
+  const slips = students.map(s => {
+    const detail = [
+      hasField('instrument') ? normInstrument(s.instrument) : '',
+      `#${s.number}`,
+    ].filter(Boolean).join(' · ');
+    return `
+      <div class="slip">
+        <div class="slip-band">${esc(bandName)}</div>
+        <div class="slip-name">${esc(s.name || `Student #${s.number}`)}</div>
+        <div class="slip-detail">${esc(detail)}</div>
+        <div class="slip-code-label">Your sign-in code</div>
+        <div class="slip-code">${esc(String(s.studentCode).toUpperCase())}</div>
+        <ol class="slip-steps">
+          <li>Go to <strong>${esc(urlShort)}</strong></li>
+          <li>Tap <strong>Student Sign-In</strong></li>
+          <li>Enter the code above</li>
+          <li>Choose a 6-digit PIN you'll remember</li>
+        </ol>
+        <div class="slip-foot">Keep this code private — it signs you in to your own progress.</div>
+      </div>`;
+  }).join('');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Student Codes — ${esc(bandName)}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1a1a1a; background: #fff; padding: 24px; }
+  h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  .meta { color: #666; font-size: 12px; margin-bottom: 20px; }
+  .sheet { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .slip { border: 1px dashed #9ca3af; border-radius: 8px; padding: 14px 16px; page-break-inside: avoid; break-inside: avoid; }
+  .slip-band { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: #6b7280; margin-bottom: 6px; }
+  .slip-name { font-size: 16px; font-weight: 700; line-height: 1.2; }
+  .slip-detail { font-size: 11px; color: #6b7280; margin-bottom: 10px; }
+  .slip-code-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #6b7280; }
+  .slip-code { font-family: 'SFMono-Regular', Menlo, Consolas, monospace; font-size: 22px; font-weight: 700; letter-spacing: .12em; margin: 2px 0 10px; }
+  .slip-steps { font-size: 11px; line-height: 1.55; padding-left: 16px; color: #374151; }
+  .slip-foot { font-size: 9.5px; color: #9ca3af; margin-top: 8px; }
+  @media print {
+    body { padding: 10px; }
+    @page { margin: 1cm; }
+  }
+</style>
+</head>
+<body>
+  <h1>Student Sign-In Codes</h1>
+  <div class="meta">${esc(bandName)} &nbsp;·&nbsp; ${students.length} student${students.length !== 1 ? 's' : ''} &nbsp;·&nbsp; Generated ${esc(fmtDate(today()))} &nbsp;·&nbsp; Cut apart and hand out</div>
+  <div class="sheet">${slips}</div>
+</body>
+</html>`;
 }
 
 function showDeleteRosterModal() {

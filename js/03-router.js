@@ -543,6 +543,32 @@ function showToast(msg) {
   setTimeout(() => t.remove(), 2700);
 }
 
+// ── Exporting data out of the app ─────────────────────────────────────────────
+
+// Hand the user a generated CSV as a download.
+function _downloadCsv(filename, text) {
+  try {
+    const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (e) { console.error('CSV download failed:', e); showToast('Could not download the file.'); }
+}
+
+// Open a self-contained HTML document in a new tab and send it to the print
+// dialog — how the app "exports a PDF" without a PDF library. Returns false if
+// the pop-up was blocked so the caller can stop.
+function _printHtmlDocument(html) {
+  const win = window.open('', '_blank');
+  if (!win) { showToast('Allow pop-ups to export a PDF.'); return false; }
+  win.document.write(html);
+  win.document.close();
+  win.onload = () => { win.focus(); win.print(); };
+  return true;
+}
+
 // Surface a failed Firestore write to the user. With offline persistence,
 // latency compensation makes a REJECTED write look successful in the UI (the
 // listener shows the optimistic data, then it silently vanishes when the
