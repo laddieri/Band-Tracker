@@ -237,9 +237,33 @@ function _getFilterObj(viewId) {
 // Prefer not re-rendering at all while typing (see _refreshFilterList); this is
 // the net for the cases that must, including Firestore snapshots landing
 // mid-keystroke.
+//
+// It only ever fires for a field the user is *actively typing in*. Anything else
+// they touch — Back, a filter chip, a student row — clears the latch below, so
+// the keyboard closes on a tap the way it should instead of springing back.
+let _typingId = '';
+let _typingAt = 0;
+const _TYPING_WINDOW_MS = 2500;
+
+document.addEventListener('input', e => {
+  const el = e.target;
+  if (el && el.id && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+    _typingId = el.id;
+    _typingAt = Date.now();
+  }
+}, true);
+
+// A press anywhere other than the field being typed in ends "actively typing",
+// so the next re-render lets the keyboard close (Back, a filter chip, a row…).
+['pointerdown', 'touchstart', 'mousedown'].forEach(evt =>
+  document.addEventListener(evt, e => {
+    if (_typingId && e.target !== document.getElementById(_typingId)) { _typingId = ''; _typingAt = 0; }
+  }, true));
+
 function _captureFocus() {
   const el = document.activeElement;
   if (!el || !el.id || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) return null;
+  if (el.id !== _typingId || Date.now() - _typingAt > _TYPING_WINDOW_MS) return null;
   let start = null, end = null;
   try { start = el.selectionStart; end = el.selectionEnd; } catch {} // not all input types expose a caret
   return { id: el.id, start, end };
@@ -247,8 +271,10 @@ function _captureFocus() {
 
 function _restoreFocus(snap) {
   if (!snap) return;
-  const el = document.getElementById(snap.id);
-  if (!el || el === document.activeElement) return;
+  if (snap.id !== _typingId || Date.now() - _typingAt > _TYPING_WINDOW_MS) return; // they moved on
+  const main = document.getElementById('main-content');
+  const el   = document.getElementById(snap.id);
+  if (!el || el === document.activeElement || !main || !main.contains(el)) return;
   el.focus({ preventScroll: true });
   if (snap.start != null) { try { el.setSelectionRange(snap.start, snap.end); } catch {} }
 }
