@@ -231,16 +231,17 @@ guard tech — who should record data but not administer the band.
   view the field chart and its spot map), all `settings/*` docs and the org's
   director/staff memberships (to resolve mark authors).
 - **Can write:** entries (attendance + marks), rehearsal *update* only (edit,
-  end, reopen — **not** start, **not** delete), song `statuses` (field-restricted), the
+  end — **not** start, reopen or delete), song `statuses` (field-restricted), the
   `students/{num}.songStatuses` mirror (field-restricted), `settings/public`
   (staff clients run the same publisher as directors so the student portal
   stays fresh when only staff are recording), and `settings/drill.activeId`
   (switch the school-wide active drill to view any show while recording).
 - **Cannot touch:** the org doc (it holds both invite codes — reading it would
   let staff escalate to director), `settings/presets` writes, roster
-  management, **starting a rehearsal** (scheduling the band is a director call;
-  staff record within a rehearsal a director created), song/rehearsal
-  deletion, **drill and show writes** (add/delete/
+  management, **starting or reopening a rehearsal** (scheduling the band is a
+  director call; staff record within a rehearsal a director opened — the rules
+  reject a staff update that flips `ended` back to false, including one that
+  just drops the field), song/rehearsal deletion, **drill and show writes** (add/delete/
   rename or change spot assignments — the label→student map lives on the show
   doc, which only directors write), student/invite codes, member management.
   Directors remove staff from Band Settings like co-directors.

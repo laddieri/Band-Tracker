@@ -625,8 +625,11 @@ async function endRehearsal(rid) {
   render();
 }
 
+// Reopening an ended rehearsal is director-only, like starting one — the rules
+// reject a staff update that flips `ended` back to false.
 function reopenRehearsal(rid) {
   closeModal();
+  if (!STATE.isAdmin) { showToast('Only directors can reopen a rehearsal.'); return; }
   const r = STATE.rehearsals.find(r => r.id === rid);
   if (!r) return;
   const currentActive = getActiveRehearsal();

@@ -83,7 +83,7 @@ service cloud.firestore {
 
     // ── Per-org data (subcollections) ─────────────────────────────────────────
     // Writes: directors of the org (staff get narrower, recording-only writes —
-    // entries, rehearsal create/update, song statuses, the songStatuses mirror
+    // entries, rehearsal updates, song statuses, the songStatuses mirror
     // and settings/public). Reads are scoped per collection:
     // students only ever see their own records plus the director-published
     // settings/public snapshot — never the raw roster, other students' marks,
@@ -140,13 +140,20 @@ service cloud.firestore {
       }
 
       // Rehearsal metadata (dates/labels) is schedule info — safe for members.
-      // Scheduling the band is a director call: staff can edit/end/reopen an
+      // Scheduling the band is a director call: staff can edit and end an
       // existing rehearsal (e.g. a sectional they run) but cannot create one,
-      // and cannot delete one.
+      // reopen an ended one, or delete one.
       match /rehearsals/{doc} {
         allow read:   if canRead();
         allow write:  if canWrite();
-        allow update: if isStaffOf(orgId);
+        allow update: if isStaffOf(orgId) && !reopensRehearsal();
+
+        // An ended rehearsal going back to open — clearing `ended` counts,
+        // hence the default in the get(). Directors only.
+        function reopensRehearsal() {
+          return resource.data.get('ended', false) == true
+                 && request.resource.data.get('ended', false) == false;
+        }
       }
 
       // A student may read only their own entries. Student clients must query
