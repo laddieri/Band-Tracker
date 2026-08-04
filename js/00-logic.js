@@ -491,6 +491,123 @@ function filterAndSortStudents(students, f, scoreMap) {
 
 // ── Seasons ───────────────────────────────────────────────────────────────────
 
+// ── Re-uploading a drill file: carrying spots across a relabel ───────────────
+// Two parses of the same drill can name the same physical performer
+// differently — the .3da CAST label fix below did exactly that to files
+// imported before it — which would leave every student standing at someone
+// else's dot. Both parses describe the same bodies in the same formations, so
+// pair performers by WHERE THEY STAND and carry the spot map across that
+// pairing.
+
+// Pair old→new performer labels by position. Pages are matched by set count
+// (falling back to list order), and a constant whole-field offset between the
+// parses is measured from the first shared set and removed first — the .3da X
+// calibration fix shifted every dot 8 steps. A pair is accepted only when the
+// two are each other's closest match AND agree at EVERY shared set within `tol`
+// steps, so two genuinely different drills pair almost nothing and the caller
+// can tell from `matched`/`total`.
+function drillPositionPairs(oldPages, newPages, tol = 0.25) {
+  const oldP = Array.isArray(oldPages) ? oldPages : [];
+  const newP = Array.isArray(newPages) ? newPages : [];
+  const none = { pairs: {}, matched: 0, total: 0, offsetX: 0, offsetY: 0 };
+  if (!oldP.length || !newP.length) return none;
+
+  const byCount = {};
+  oldP.forEach(pg => { if (pg && byCount[pg.count] === undefined) byCount[pg.count] = pg; });
+  let pagePairs = [];
+  newP.forEach(pg => { const o = pg && byCount[pg.count]; if (o) pagePairs.push([o, pg]); });
+  if (!pagePairs.length) {
+    const n = Math.min(oldP.length, newP.length);
+    for (let i = 0; i < n; i++) pagePairs.push([oldP[i], newP[i]]);
+  }
+  // Only sets where both parses list the same number of performers are usable.
+  pagePairs = pagePairs.filter(([o, n]) => {
+    const a = (o && o.performers) || [], b = (n && n.performers) || [];
+    return a.length && a.length === b.length;
+  });
+  if (!pagePairs.length) return none;
+
+  const mean = (arr, f) => arr.reduce((t, p) => t + f(p), 0) / arr.length;
+  const [o0, n0] = pagePairs[0];
+  const offsetX = mean(n0.performers, p => p.stepsX) - mean(o0.performers, p => p.stepsX);
+  const offsetY = mean(n0.performers, p => p.stepsY) - mean(o0.performers, p => p.stepsY);
+
+  // Each label's trajectory across the shared sets. A label missing from a set
+  // — or listed twice in one — can't be paired safely, so it's dropped.
+  const tracks = (which, dx, dy) => {
+    const t = {}, bad = new Set();
+    pagePairs.forEach((pp, i) => {
+      pp[which].performers.forEach(p => {
+        const a = (t[p.label] = t[p.label] || []);
+        if (a.length !== i) { bad.add(p.label); return; }
+        a.push([p.stepsX + dx, p.stepsY + dy]);
+      });
+    });
+    bad.forEach(k => delete t[k]);
+    Object.keys(t).forEach(k => { if (t[k].length !== pagePairs.length) delete t[k]; });
+    return t;
+  };
+  const oldT = tracks(0, offsetX, offsetY), newT = tracks(1, 0, 0);
+
+  const dev = (a, b) => {
+    let m = 0;
+    for (let i = 0; i < a.length; i++) {
+      m = Math.max(m, Math.abs(a[i][0] - b[i][0]), Math.abs(a[i][1] - b[i][1]));
+      if (m > tol) return Infinity;
+    }
+    return m;
+  };
+  const bestOld = {}, bestNew = {};
+  const oldLabels = Object.keys(oldT), newLabels = Object.keys(newT);
+  oldLabels.forEach(ol => newLabels.forEach(nl => {
+    const d = dev(oldT[ol], newT[nl]);
+    if (d === Infinity) return;
+    if (!bestOld[ol] || d < bestOld[ol].d) bestOld[ol] = { lbl: nl, d };
+    if (!bestNew[nl] || d < bestNew[nl].d) bestNew[nl] = { lbl: ol, d };
+  }));
+
+  const pairs = {};
+  let matched = 0;
+  oldLabels.forEach(ol => {
+    const b = bestOld[ol];
+    if (b && bestNew[b.lbl] && bestNew[b.lbl].lbl === ol) { pairs[ol] = b.lbl; matched++; }
+  });
+  return { pairs, matched, total: oldLabels.length, offsetX, offsetY };
+}
+
+// Carry a label→student spot map from an old parse of a drill onto a new one,
+// keeping every student on the same physical dot. Returns the rewritten mapping
+// plus the list of moves, so the caller can show a director exactly which
+// numbers change before saving; `matched`/`total` let the caller reject a
+// pairing that clearly isn't the same drill. Assignments whose label couldn't be
+// paired keep their old label (unless something else moved into it) and are
+// reported in `unmatched` rather than silently dropped.
+function drillRelabelMapping(oldPages, newPages, mapping) {
+  const pos = drillPositionPairs(oldPages, newPages);
+  const src = mapping || {};
+  const next = {}, moves = [], unmatched = [];
+  Object.keys(src).forEach(lbl => {
+    const to = pos.pairs[lbl];
+    if (!to) { if (drillSpotNums(src[lbl]).length) unmatched.push(lbl); return; }
+    next[to] = src[lbl];
+    if (to !== lbl) moves.push({ from: lbl, to, nums: drillSpotNums(src[lbl]) });
+  });
+  Object.keys(src).forEach(lbl => {
+    if (!pos.pairs[lbl] && !Object.prototype.hasOwnProperty.call(next, lbl)) next[lbl] = src[lbl];
+  });
+  const rank = l => { const p = drillSpotLabelParts(l); return [p.section, p.rank]; };
+  moves.sort((a, b) => {
+    const [as, ar] = rank(a.from), [bs, br] = rank(b.from);
+    return as === bs ? ar - br : as.localeCompare(bs);
+  });
+  return {
+    mapping: next, moves, unmatched,
+    matched: pos.matched, total: pos.total,
+    offsetX: pos.offsetX, offsetY: pos.offsetY,
+    changed: moves.length > 0,
+  };
+}
+
 // Suggest a season label for a date, e.g. '2026-07-01' → '2026-27'. Marching
 // seasons straddle calendar years like school years; June onward counts as the
 // start of the next school year (summer band camp belongs to the fall season).
@@ -522,12 +639,18 @@ function suggestSeasonLabel(dateStr) {
 //     bytes 0-1   = performer index 1..N (stable across frames)
 //     bytes 2-5   = X (signed, big-endian) · bytes 6-9 = Y (signed, big-endian)
 //     bytes 10-13 = a word whose low byte is the section symbol (ASCII)
-//   Positions are signed: 625 units = 1 step. Calibrated against a known
-//   pregame block on the viewer's field model (front hash at stepsY 28): its
-//   front-west corner "M1" sits on the east 30 (stepsX 112) eight steps in
-//   front of the front hash (stepsY 20), with 4-step spacing extending NE —
-//   which fixes the west goal at raw X -55000 and the front sideline at raw
-//   Y +26250, and lands the whole show inside the field.
+//   A CAST block ahead of the PAGE block names every performer: [u16 count]
+//   then one record per performer of [u16 index][lenstr number][lenstr extra],
+//   where a "lenstr" is [u16 len][ASCII] and len counts its own 2 bytes. That
+//   number is the drill writer's own label ("M1" is symbol M + number 1), which
+//   does NOT follow field order — see _pywareAssembleDrill.
+//   Positions are signed and measured from the CENTER of the field (the 50, on
+//   the 50/50 line): 625 units = 1 marching step, i.e. 1000 units = 1 yard, as
+//   the file's own field description states in yards (BORD -50 -26.25 50 26.25,
+//   a VTMJ yard-line major every 5, HZHS hashes at ±8.75). So the west goal
+//   line sits at raw X -50000 and the front sideline at raw Y +26250 (26.25 yd
+//   = 42 steps), which puts the front hash at stepsY 28. An earlier guess of
+//   -55000 for the west goal shifted every performer 8 steps (5 yards) east.
 //   NOTE: this is a different beast from the *encrypted* newer .3dj/.3dz, which
 //   stores positions in an unreadable payload (PYJAVA/PG15) and is rejected in
 //   the .3dj branch below.
@@ -539,7 +662,7 @@ const _PY_WESTGOAL = 23168; // .3dj grid X at the west goal line
 const _PY_FRONT_Y  = 37808; // .3dj grid Y at the (default) front sideline
 const _PY_UNIT     = 120;   // .3dj grid units per marching step
 
-const _PY3DA_WESTGOAL = -55000; // .3da raw X at the west goal line
+const _PY3DA_WESTGOAL = -50000; // .3da raw X at the west goal line
 const _PY3DA_FRONT_Y  = 26250;  // .3da raw Y at the (default) front sideline
 const _PY3DA_UNIT     = 625;    // .3da raw units per marching step
 
@@ -562,23 +685,50 @@ function _hasMarker(u8, str) { return _indexOfMarker(u8, str) >= 0; }
 // from a file's own set table when it has one; otherwise sets are detected
 // geometrically. frameNotes (optional): per-frame instruction text (the page's
 // Pyware text box) keyed by frame index; a frame that carries text is always
-// treated as a marked set and its text rides along on that page. Shared by both
+// treated as a marked set and its text rides along on that page. namesByPid
+// (optional): the file's own performer numbers keyed by stable id — when the
+// file names its performers, those names win over derived ranks. Shared by both
 // the .3dj and .3da parsers.
-function _pywareAssembleDrill(rawFrames, N, setCountsHint, frameNotes) {
+function _pywareAssembleDrill(rawFrames, N, setCountsHint, frameNotes, namesByPid) {
   if (!rawFrames.length) throw new Error('No performer position data found in this file.');
 
-  // Assign each performer a fixed drill label from the FIRST frame — section
-  // letter + front-to-back rank within that section (so "A1" is the front-most
-  // of column A, matching Pyware) — bound to the stable id so a label always
-  // means the same physical performer across every set.
-  const labelOf = {}, sectionOf = {}, bySec = {};
-  rawFrames[0].forEach(p => { (bySec[p.section] = bySec[p.section] || []).push(p); });
-  Object.values(bySec).forEach(arr => {
-    arr.sort((a, b) => a.stepsY - b.stepsY).forEach((p, idx) => {
-      labelOf[p.pid]   = p.section + (idx + 1);
-      sectionOf[p.pid] = p.section;
+  const labelOf = {}, sectionOf = {};
+  rawFrames[0].forEach(p => { sectionOf[p.pid] = p.section; });
+
+  // Prefer the labels the drill writer actually assigned, when the file carries
+  // them (the .3da CAST block). Pyware numbers performers by the designer's own
+  // scheme — inside one column of a block they may run 1, 4, 3, 2 — so deriving
+  // a label from field position renames people (dots land on the wrong
+  // performer). A file name is only the number; the section symbol prefixes it
+  // unless the name already starts with a letter.
+  let named = false;
+  if (namesByPid) {
+    const seen = new Set();
+    named = rawFrames[0].every(p => {
+      const nm = String(namesByPid[p.pid] == null ? '' : namesByPid[p.pid]).trim();
+      if (!nm) return false;
+      const lbl = (/^[A-Za-z]/.test(nm) ? nm : p.section + nm).toUpperCase();
+      if (seen.has(lbl)) return false; // ambiguous labels are worse than derived ones
+      seen.add(lbl);
+      labelOf[p.pid] = lbl;
+      return true;
     });
-  });
+    if (!named) for (const k in labelOf) delete labelOf[k];
+  }
+
+  // Fallback (every .3dj, and any .3da without a usable CAST block): section
+  // letter + front-to-back rank within that section, so "A1" is the front-most
+  // of column A. Either way the label is bound to the stable id, so it always
+  // means the same physical performer across every set.
+  if (!named) {
+    const bySec = {};
+    rawFrames[0].forEach(p => { (bySec[p.section] = bySec[p.section] || []).push(p); });
+    Object.values(bySec).forEach(arr => {
+      arr.sort((a, b) => a.stepsY - b.stepsY).forEach((p, idx) => {
+        labelOf[p.pid] = p.section + (idx + 1);
+      });
+    });
+  }
 
   const allFrames = rawFrames.map(f => f.map(p => ({
     label:   labelOf[p.pid]   || p.section,
@@ -742,6 +892,8 @@ function _parsePyware3da(u8, view) {
   if (!N || N > 2000)
     throw new Error('No performer position data found in this file.');
 
+  const names = _pyware3daCast(u8, view, p, N);
+
   const REC = 14, start = p + 12;
   const idxAt = o => (u8[o] << 8) | u8[o + 1];
   // A frame is N records with indices 1..N. Frames are separated by a short,
@@ -779,7 +931,46 @@ function _parsePyware3da(u8, view) {
     frameNotes.push(_pyware3daPageNote(u8, recEnd, o, N));
   }
 
-  return _pywareAssembleDrill(rawFrames, N, undefined, frameNotes);
+  return _pywareAssembleDrill(rawFrames, N, undefined, frameNotes, names);
+}
+
+// The .3da CAST block: the drill writer's own performer numbers, keyed by the
+// performer index the position records use. Layout is
+//   'CAST' [u32 blockLen][u16 count] then count records of
+//   [u16 index][lenstr number][lenstr extra]
+// where a lenstr is [u16 len][ASCII] and len counts its own 2 bytes (so len 2
+// is an empty string). Returns { [index]: number } or null when the file has no
+// CAST block, or one we can't read end-to-end — the caller then falls back to
+// deriving labels from field position. Everything is validated (count matches
+// the performer count, records consume exactly blockLen, indices are in range
+// and unique) so a coincidental 'CAST' in the payload can't produce garbage.
+function _pyware3daCast(u8, view, pageOffset, N) {
+  for (let c = _indexOfMarker(u8, 'CAST'); c >= 0 && c < pageOffset;
+       c = _indexOfMarker(u8, 'CAST', c + 1)) {
+    if (c + 10 > u8.length) break;
+    const end = c + 8 + view.getUint32(c + 4, false);
+    if (end > u8.length || end > pageOffset) continue;
+    if (view.getUint16(c + 8, false) !== N) continue;
+
+    const names = {};
+    let o = c + 10, ok = true;
+    for (let i = 0; i < N && ok; i++) {
+      if (o + 2 > end) { ok = false; break; }
+      const idx = view.getUint16(o, false); o += 2;
+      if (idx < 1 || idx > N || names[idx] !== undefined) { ok = false; break; }
+      let s = '';
+      for (let f = 0; f < 2 && ok; f++) {          // the number, then the extra field
+        if (o + 2 > end) { ok = false; break; }
+        const len = view.getUint16(o, false);
+        if (len < 2 || o + len > end) { ok = false; break; }
+        if (f === 0) for (let k = o + 2; k < o + len; k++) s += String.fromCharCode(u8[k]);
+        o += len;
+      }
+      names[idx] = s;
+    }
+    if (ok && o === end) return names;
+  }
+  return null;
 }
 
 // The page's instruction text (its Pyware text box) from a .3da inter-frame
@@ -817,8 +1008,10 @@ if (typeof module !== 'undefined' && module.exports) {
     parseCSVLine, parseCSV, COL_ALIASES, normalizeGrade, detectCols,
     csvCell, buildStudentCodesCsv,
     DRILL_LABEL_ALIASES, drillSpotNums, drillSpotStripOthers, drillSpotLabelParts, applyDrillSpotCsv,
+    drillPositionPairs, drillRelabelMapping,
     suggestSeasonLabel,
     normInstrument, instrOrder, GRADE_LEVELS, filterAndSortStudents,
     _hasMarker, _indexOfMarker, _parsePywareFile, _pywareAssembleDrill, _pyware3daPageNote,
+    _pyware3daCast,
   };
 }

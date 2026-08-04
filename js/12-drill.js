@@ -34,6 +34,7 @@ function _drillFileInput() {
 // Import a brand-new drill file into the library (always the file dialog).
 function drillAddFile() {
   if (!STATE.isAdmin) return;
+  _drillPendingReplace = null; // a cancelled replace must not hijack this import
   _drillFileInput().click();
 }
 
@@ -88,6 +89,12 @@ function _onDrillFileLoaded(file) {
   reader.onload = e => {
     try {
       const parsed = _parsePywareFile(e.target.result);
+      if (_drillPendingReplace) { // re-upload of an existing drill, not a new one
+        const { drillId } = _drillPendingReplace;
+        _drillPendingReplace = null;
+        _drillReplaceFileLoaded(drillId, file, parsed);
+        return;
+      }
       // Remember where import began so we can return there after the chooser
       // (which replaces whatever modal was open).
       const origin = document.getElementById('drill-library-modal') ? 'library'
@@ -250,6 +257,134 @@ function _showDrillImportError(err) {
     <div class="modal-actions">
       <button class="btn btn-primary" onclick="closeModal()">OK</button>
     </div>`);
+}
+
+// ── Replacing a drill's file (re-upload) ─────────────────────────────────────
+// Re-importing the same drill from Pyware — after a parser fix, or an edit in
+// Pyware — would otherwise mean re-entering every spot by hand: the new parse
+// can name the same performers differently, so keeping the map by label leaves
+// students standing on other people's dots. Instead pair the two parses by
+// POSITION (drillRelabelMapping in js/00-logic.js) and move each student's spot
+// with the performer they were actually on. Director-only.
+
+let _drillPendingReplace = null; // { drillId } while the file dialog is open
+let _drillPendingRelabel = null; // { drillId, file, parsed, res } awaiting confirmation
+
+function drillReplaceFilePrompt(id) {
+  if (!STATE.isAdmin || !STATE.drills[id]) return;
+  _drillPendingReplace = { drillId: id };
+  _drillFileInput().click();
+}
+
+// A replacement file has parsed. Nothing assigned yet ⇒ just swap it in.
+// Otherwise fetch the parse being replaced and work out where each spot moved.
+function _drillReplaceFileLoaded(drillId, file, parsed) {
+  const d = STATE.drills[drillId];
+  if (!d) return;
+  const show     = d.showId ? STATE.shows[d.showId] : null;
+  const mapping  = (show ? show.mapping : d.mapping) || {};
+  const assigned = Object.keys(mapping).some(k => drillSpotNums(mapping[k]).length);
+  if (!assigned) { _drillReplaceCommit(drillId, file, parsed, null); return; }
+
+  orgCol('drills').doc(drillId).collection('data').doc('main').get().then(snap => {
+    const oldPages = (snap.exists && snap.data().pages) || [];
+    const res = drillRelabelMapping(oldPages, parsed.pages, mapping);
+    // Only trust a pairing that covers nearly the whole band — less than that
+    // means this file isn't a re-export of the drill it would replace, and
+    // guessing would scatter the spot map.
+    if (!res.total || res.matched < res.total * 0.9) { _drillReplaceUnmatched(drillId, file, parsed); return; }
+    // Labels line up, or only empty spots moved: nothing to ask about.
+    if (!res.changed || !res.moves.some(m => m.nums.length)) {
+      _drillReplaceCommit(drillId, file, parsed, res.changed ? res.mapping : null);
+      return;
+    }
+    _drillPendingRelabel = { drillId, file, parsed, res };
+    _showDrillRelabelModal();
+  }).catch(e => {
+    console.error('drill replace: could not read the current positions:', e);
+    showToast('Could not read this drill’s current positions. Try again.');
+  });
+}
+
+// The replacement doesn't line up with the drill it would replace. Say so —
+// replacing anyway is fine, but the spot numbers stay put and the old positions
+// (the only way to move them later) are gone once it's written.
+function _drillReplaceUnmatched(drillId, file, parsed) {
+  _drillPendingRelabel = { drillId, file, parsed, res: null };
+  openModal(`
+    <div class="modal-title">This looks like a different drill</div>
+    <p>The performers in <strong>${esc(file.name)}</strong> don’t stand where the current file’s performers stand, so the app can’t tell which spot is which.</p>
+    <p>You can still replace the file, but the spot assignments will keep their current letters &amp; numbers — check them afterward.</p>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="_drillRelabelCancel()">Cancel</button>
+      <button class="btn btn-primary" onclick="_drillRelabelConfirm(false)">Replace anyway</button>
+    </div>`);
+}
+
+// Show the director exactly which numbers change before anything is written.
+function _showDrillRelabelModal() {
+  const p = _drillPendingRelabel;
+  if (!p || !p.res) return;
+  const moved = p.res.moves.filter(m => m.nums.length);
+  const names = nums => nums.map(n => STATE.students[n]?.name || `#${n}`).join(' / ');
+  const rows = moved.slice(0, 8).map(m => `
+    <div class="drill-relabel-row">
+      <span class="drill-relabel-who">${esc(names(m.nums))}</span>
+      <span class="drill-relabel-move">${esc(m.from)} → <strong>${esc(m.to)}</strong></span>
+    </div>`).join('');
+  const more = moved.length > 8 ? `<div class="drill-relabel-more">…and ${moved.length - 8} more</div>` : '';
+  const off  = Math.abs(p.res.offsetX) > 0.01 || Math.abs(p.res.offsetY) > 0.01;
+  openModal(`
+    <div class="modal-title">This file numbers the spots differently</div>
+    <p>The new file gives ${moved.length} assigned spot${moved.length !== 1 ? 's' : ''} a different letter &amp; number${off ? ', and puts the whole drill in a slightly different place on the field' : ''}. Everyone can keep the dot they’re actually standing on — their spot number just changes to match the new file.</p>
+    <div class="drill-relabel-list">${rows}${more}</div>
+    <div class="modal-actions" style="flex-direction:column;gap:8px;margin-top:14px">
+      <button class="btn btn-primary btn-full" onclick="_drillRelabelConfirm(true)">Keep everyone on their dot</button>
+      <button class="btn btn-secondary btn-full" onclick="_drillRelabelConfirm(false)">Keep the spot numbers instead</button>
+      <button class="btn btn-secondary btn-full" onclick="_drillRelabelCancel()">Cancel</button>
+    </div>`);
+}
+
+function _drillRelabelCancel() {
+  _drillPendingRelabel = null;
+  closeModal();
+  showDrillLibraryModal();
+}
+
+function _drillRelabelConfirm(carry) {
+  const p = _drillPendingRelabel;
+  if (!p) return;
+  _drillPendingRelabel = null;
+  _drillReplaceCommit(p.drillId, p.file, p.parsed, (carry && p.res) ? p.res.mapping : null);
+}
+
+// Write the new payload over the drill's old one (its name, show and facing are
+// the director's, so they stay), plus the carried-over spot map when asked for.
+function _drillReplaceCommit(drillId, file, parsed, newMapping) {
+  const d = STATE.drills[drillId];
+  if (!d) return;
+  const meta = {
+    fileName:       file.name,
+    setCount:       parsed.pages.length,
+    performerCount: parsed.pages[0]?.performers?.length || 0,
+  };
+  const ref = orgCol('drills').doc(drillId);
+  ref.update(meta)
+    .then(() => ref.collection('data').doc('main').set({ sections: parsed.sections, pages: parsed.pages }))
+    .catch(err => { console.error(err); showToast('Could not save the drill file.'); });
+  if (newMapping) _drillSaveMappingFor(drillId, newMapping);
+
+  Object.assign(d, meta); // optimistic; the drills listener will confirm
+  if (STATE.activeDrillId === drillId) {
+    _drillData = parsed.sections; _drillPages = parsed.pages;
+    _activeDrillLoadedId = drillId;
+    _drillCurrentSet = 0; _drillTraceLabel = null; _drillSelLabel = null;
+    _drillSearchQuery = ''; _drillTraceSets = []; _drillSelectMode = false;
+    if (typeof _drillPlayStop === 'function') _drillPlayStop();
+  }
+  closeModal();
+  showToast(newMapping ? 'File replaced — everyone kept their dot.' : 'Drill file replaced.');
+  if (_view === 'drill') render(); else showDrillLibraryModal();
 }
 
 // One-time migration: the old single drill lived in settings/drill itself. Move
@@ -1182,17 +1317,23 @@ function drillMappingSetSection(idx) {
 // set-merge) so clearing a spot actually removes it — set with merge deep-merges
 // maps and would keep cleared keys. A small write that never touches the roster.
 function _saveActiveMapping(mapping) {
-  const show = _activeShow();
+  if (STATE.activeDrillId) _drillSaveMappingFor(STATE.activeDrillId, mapping);
+}
+
+// Same, for any drill by id (the replace-file flow touches a drill that may not
+// be the active one).
+function _drillSaveMappingFor(drillId, mapping) {
+  const drill = drillId ? STATE.drills[drillId] : null;
+  if (!drill) return;
+  const show = drill.showId ? STATE.shows[drill.showId] : null;
   if (show) {
     show.mapping = mapping; // optimistic; the shows listener will confirm
-    orgCol('shows').doc(show.id).update({ mapping })
+    orgCol('shows').doc(drill.showId).update({ mapping })
       .catch(e => _toastSaveError(e, 'The spot assignment'));
     return;
   }
-  const id = STATE.activeDrillId, drill = id ? STATE.drills[id] : null;
-  if (!drill) return;
   drill.mapping = mapping; // optimistic; the drills listener will confirm
-  orgCol('drills').doc(id).update({ mapping })
+  orgCol('drills').doc(drillId).update({ mapping })
     .catch(e => _toastSaveError(e, 'The spot assignment'));
 }
 
@@ -2006,6 +2147,7 @@ function _drillLibRowHtml(id) {
         <div class="drill-lib-sub">${esc(sub)}</div>
       </button>
       ${STATE.isAdmin ? `
+      <button class="drill-lib-act" onclick="drillReplaceFilePrompt('${esc(id)}')" title="Replace file (re-upload)" aria-label="Replace file">⟳</button>
       <button class="drill-lib-act" onclick="drillMoveToShowPrompt('${esc(id)}')" title="Move to another show" aria-label="Move to another show">⇄</button>
       <button class="drill-lib-act" onclick="drillRenamePrompt('${esc(id)}')" title="Rename" aria-label="Rename">✎</button>
       <button class="drill-lib-act drill-lib-act--danger" onclick="drillDeletePrompt('${esc(id)}')" title="Delete" aria-label="Delete">🗑</button>` : ''}

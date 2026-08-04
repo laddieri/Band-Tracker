@@ -118,6 +118,20 @@ re-entry.
   importer already re-places each mentioned student at a single spot). Shared
   spots (2+ students at ONE label) are still allowed — the rule only forbids one
   student holding two different labels.
+- **Replacing a drill's file** (`drillReplaceFilePrompt` → `_drillReplaceCommit`
+  in js/12-drill.js, director-only) re-uploads a file over an existing drill,
+  keeping its name, show and facing. The catch: a new parse can legitimately
+  give the same physical performer a different label — the `.3da` CAST label fix
+  did exactly that to files imported before it — so carrying the map across by
+  label would leave every student on someone else's dot. Instead the two parses
+  are paired by POSITION (`drillPositionPairs` / `drillRelabelMapping` in
+  js/00-logic.js): pages match on set count, a constant whole-field offset is
+  measured and removed (the same fix moved every dot 8 steps west), and a pair is
+  accepted only when the two performers are each other's nearest match at EVERY
+  shared set. The director confirms the moves before anything is written; a
+  pairing that covers less than 90% of the band is treated as "not this drill"
+  and the map is left alone. Assignments that can't be paired keep their old
+  label instead of being dropped.
 - **Unassigned view.** The Drill tab shows the director a pill of how many
   roster students have no spot in the active show, opening a full list
   (`_drillUnassignedNums` / `showDrillUnassignedModal`), computed from the
