@@ -34,6 +34,8 @@ function navigate(view, params = {}, _fromHistory = false) {
   if (_view === 'song' && view !== 'song') {
     _songFilter           = _mkFilter('name', 'asc');
     _songHidePassedFilter = false;
+    _songGroupMode        = false;
+    _songGroup            = new Set();
   }
   if (_view === 'leaderboard' && view !== 'leaderboard') {
     _lbFilter = _mkFilter('score', 'desc');
@@ -75,6 +77,8 @@ function navigate(view, params = {}, _fromHistory = false) {
 
 let _activeNum  = null;
 let _songHidePassedFilter    = false;
+let _songGroupMode           = false;     // song page: building a group pass-off list
+let _songGroup               = new Set(); // student numbers (strings) in the group list
 let _songCatCollapsed        = new Set(); // category names that are currently collapsed
 let _dashRid        = null; // null = all rehearsals
 let _activeRid      = null; // which open rehearsal is currently being marked

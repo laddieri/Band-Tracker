@@ -262,7 +262,11 @@ function viewSong(sid) {
       <div class="inst-filter-row" style="padding-top:4px">
         <button class="inst-chip ${_songHidePassedFilter ? 'inst-active' : ''}"
                 onclick="toggleSongHidePassed('${esc(sid)}')">Not Passed Only</button>
+        <button class="inst-chip ${_songGroupMode ? 'inst-active' : ''}"
+                onclick="toggleSongGroupMode('${esc(sid)}')">👥 Group Pass-Off</button>
       </div>
+
+      ${_songGroupMode ? `<div class="song-group-bar">${_songGroupBarInner(sid)}</div>` : ''}
 
       <div id="song-student-list">
         ${songStudentRows(sid, students, statuses)}
@@ -289,8 +293,11 @@ function songStudentRows(sid, students, statuses) {
     const status    = getStatus(s.number);
     const meta      = getMeta(s.number);
     const failNote  = status === 'failed' ? (statuses[String(s.number)]?.note || '') : '';
+    const inGroup   = _songGroupMode && _songGroup.has(String(s.number));
     return `
-      <div class="song-stu-row">
+      <div class="song-stu-row ${_songGroupMode ? 'song-stu-groupable' : ''} ${inGroup ? 'song-stu-in-group' : ''}"
+           ${_songGroupMode ? `onclick="toggleSongGroupMember('${esc(sid)}','${esc(s.number)}')" aria-pressed="${inGroup}"` : ''}>
+        ${_songGroupMode ? `<span class="song-group-check ${inGroup ? 'song-group-check-on' : ''}" aria-hidden="true">${inGroup ? '✓' : '+'}</span>` : ''}
         <div class="song-stu-info">
           <span class="song-stu-name song-stu-name-link" onclick="navigate('student',{num:'${esc(s.number)}'});event.stopPropagation()">${esc(s.name || `#${s.number}`)}</span>
           <span class="song-stu-status ${status === 'passed' ? 'sss-pass' : status === 'failed' ? 'sss-fail' : 'sss-na'}">
@@ -300,13 +307,145 @@ function songStudentRows(sid, students, statuses) {
           ${failNote ? `<span class="song-stu-fail-note">${esc(failNote)}</span>` : ''}
         </div>
         <div class="song-stu-btns">
-          <button class="ssb ${status === 'passed' ? 'ssb-on-pass' : 'ssb-pass'}"
-                  onclick="setSongStatus('${esc(sid)}','${esc(s.number)}','passed')">✓</button>
-          <button class="ssb ${status === 'failed' ? 'ssb-on-fail' : 'ssb-fail'}"
-                  onclick="setSongStatus('${esc(sid)}','${esc(s.number)}','failed')">✗</button>
+          <button class="ssb ${status === 'passed' ? 'ssb-on-pass' : 'ssb-pass'}" aria-label="Mark passed"
+                  onclick="event.stopPropagation();setSongStatus('${esc(sid)}','${esc(s.number)}','passed')">✓</button>
+          <button class="ssb ${status === 'failed' ? 'ssb-on-fail' : 'ssb-fail'}" aria-label="Mark failed"
+                  onclick="event.stopPropagation();setSongStatus('${esc(sid)}','${esc(s.number)}','failed')">✗</button>
         </div>
       </div>`;
   }).join('');
+}
+
+// ── Group pass-off ────────────────────────────────────────────────────────────
+// Directors often listen to several students play a song together. Group mode
+// lets them build a list while the group plays (using the normal search/filter
+// tools), then mark the whole list passed or failed in one tap. The per-row
+// ✓/✗ buttons keep working the whole time, so one or two students who fail out
+// of the group can still be marked individually.
+
+function _songGroupBarInner(sid) {
+  const nums = [..._songGroup].filter(n => STATE.students[n]);
+  if (!nums.length)
+    return `<div class="song-group-hint">Tap students below to build a group, then pass or fail everyone at once.</div>`;
+  const chips = nums
+    .map(n => ({ n, name: STATE.students[n]?.name || `#${n}` }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(({ n, name }) => `
+      <button class="song-group-chip" aria-label="Remove ${esc(name)} from group"
+              onclick="toggleSongGroupMember('${esc(sid)}','${esc(n)}')">${esc(name)}<span class="song-group-chip-x">×</span></button>`)
+    .join('');
+  return `
+    <div class="song-group-count">${nums.length} in group</div>
+    <div class="song-group-chips">${chips}</div>
+    <div class="song-group-actions">
+      <button class="btn btn-secondary btn-sm" onclick="songGroupClear('${esc(sid)}')">Clear</button>
+      <button class="btn btn-mistake btn-sm"   onclick="songGroupFailAll('${esc(sid)}')">✗ Fail All</button>
+      <button class="btn btn-success btn-sm"   onclick="songGroupPassAll('${esc(sid)}')">✓ Pass All</button>
+    </div>`;
+}
+
+// Full re-render of the song view (header counts, group bar and list all
+// change together). User-initiated taps only, so a direct render is fine.
+function _refreshSongView(sid) {
+  const mc = document.getElementById('main-content');
+  if (!mc) return;
+  const st = mc.scrollTop;
+  mc.innerHTML = viewSong(sid);
+  mc.scrollTop = st;
+}
+
+function toggleSongGroupMode(sid) {
+  _songGroupMode = !_songGroupMode;
+  if (!_songGroupMode) _songGroup = new Set();
+  _refreshSongView(sid);
+}
+
+function toggleSongGroupMember(sid, num) {
+  num = String(num);
+  if (_songGroup.has(num)) _songGroup.delete(num);
+  else _songGroup.add(num);
+  _refreshSongView(sid);
+}
+
+function songGroupClear(sid) {
+  _songGroup = new Set();
+  _refreshSongView(sid);
+}
+
+function songGroupPassAll(sid) {
+  const song = STATE.songs.find(s => s.id === sid);
+  const nums = [..._songGroup].filter(n => STATE.students[n]);
+  if (!song || !nums.length) return;
+  const names = nums.map(n => STATE.students[n]?.name || `#${n}`).sort((a, b) => a.localeCompare(b));
+  showConfirmModal(
+    `Pass ${nums.length} student${nums.length !== 1 ? 's' : ''}?`,
+    `Mark <strong>${esc(song.title)}</strong> as passed for:<br>${names.map(esc).join(', ')}`,
+    () => _applyGroupSongStatus(sid, nums, 'passed'),
+    '✓ Pass All', 'btn-success'
+  );
+}
+
+function songGroupFailAll(sid) {
+  const song = STATE.songs.find(s => s.id === sid);
+  const nums = [..._songGroup].filter(n => STATE.students[n]);
+  if (!song || !nums.length) return;
+  const names = nums.map(n => STATE.students[n]?.name || `#${n}`).sort((a, b) => a.localeCompare(b));
+  openModal(`
+    <div class="modal-title">✗ Fail ${nums.length} student${nums.length !== 1 ? 's' : ''}
+      <div style="font-size:0.78rem;font-weight:400;color:var(--text-muted);margin-top:2px">${names.map(esc).join(', ')}</div>
+    </div>
+    <div class="form-label" style="margin-bottom:6px">
+      What to work on?
+      <span style="font-weight:400;color:var(--text-muted)"> (optional)</span>
+    </div>
+    <textarea class="form-textarea" id="group-fail-note-input" rows="3"
+              placeholder="e.g. Bars 12–16, entrance timing…"
+              maxlength="200" style="resize:none"></textarea>
+    <p style="font-size:0.8rem;color:var(--text-muted);margin:8px 0 0">
+      The same note is saved for everyone in the group, and students will see it in their portal.
+    </p>
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-mistake"   onclick="confirmSongGroupFail('${esc(sid)}')">✗ Fail All</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('group-fail-note-input')?.focus(), 60);
+}
+
+function confirmSongGroupFail(sid) {
+  const note = document.getElementById('group-fail-note-input')?.value.trim() || '';
+  closeModal();
+  _applyGroupSongStatus(sid, [..._songGroup], 'failed', note);
+}
+
+// Batch version of _applySongStatus: one merged write to the song doc plus a
+// batched write of every student's songStatuses mirror (songs are
+// director-only, so the portal reads results from the student's own doc —
+// keep both in sync, same as the single-student path).
+function _applyGroupSongStatus(sid, nums, status, note = '') {
+  const song = STATE.songs.find(s => s.id === sid);
+  if (!song) return;
+  if (!song.statuses) song.statuses = {};
+  const valid = nums.map(String).filter(n => STATE.students[n]);
+  if (!valid.length) return;
+
+  const now = Date.now();
+  const statusMap = {};
+  const batch = db.batch();
+  valid.forEach(n => {
+    const entry = { status, note: note || '', updatedAt: now, updatedBy: STATE.user?.email || '' };
+    song.statuses[n] = entry;
+    statusMap[n] = entry;
+    batch.set(orgCol('students').doc(n), {
+      songStatuses: { [sid]: { status, note: note || '', updatedAt: now } }
+    }, { merge: true });
+  });
+  orgCol('songs').doc(sid).set({ statuses: statusMap }, { merge: true });
+  batch.commit().catch(() => {});
+
+  _songGroup = new Set();
+  _refreshSongView(sid);
+  showToast(`${valid.length} student${valid.length !== 1 ? 's' : ''} marked ${status === 'passed' ? 'passed' : 'failed'}.`);
 }
 
 function toggleSongHidePassed(sid) {
