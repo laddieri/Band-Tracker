@@ -436,12 +436,18 @@ describe('suggestSeasonLabel', () => {
 // frame k, written into the inter-frame header that precedes frame k+1 as
 // [u16 blockLen][text] just before the next frame's [u16 N] — exactly how real
 // .3da files carry each page's Pyware text box.
-function build3da(frames, N, notes = []) {
+// `cast` (optional) is the drill writer's performer numbers in index order,
+// written ahead of the PAGE block as the real CAST block:
+// 'CAST'[u32 blockLen][u16 N] then [u16 index][lenstr number][lenstr extra] per
+// performer, where a lenstr is [u16 len][ASCII] and len counts its own 2 bytes.
+function build3da(frames, N, notes = [], cast = null) {
   const REC = 14;
   const hdrSize = fi => (fi > 0 && notes[fi - 1]) ? (2 + notes[fi - 1].length + 2) : (fi > 0 ? 4 : 0);
   let interTotal = 0;
   for (let fi = 1; fi < frames.length; fi++) interTotal += hdrSize(fi);
-  const size = 6 /*3DAP+2*/ + 4 /*PAGE*/ + 8 /*hdr*/ +
+  const castBody = cast ? 2 + cast.reduce((t, nm) => t + 2 + (2 + String(nm).length) + 2, 0) : 0;
+  const castSize = cast ? 8 + castBody : 0;
+  const size = 6 /*3DAP+2*/ + castSize + 4 /*PAGE*/ + 8 /*hdr*/ +
     frames.length * N * REC + interTotal + 4 /*END */;
   const ab = new ArrayBuffer(size);
   const dv = new DataView(ab);
@@ -449,6 +455,17 @@ function build3da(frames, N, notes = []) {
   let o = 0;
   const putStr = s => { for (const ch of s) u8[o++] = ch.charCodeAt(0); };
   putStr('3DAP'); u8[o++] = 0x01; u8[o++] = 0x00;
+  if (cast) {
+    putStr('CAST');
+    dv.setUint32(o, castBody, false); o += 4;
+    dv.setUint16(o, N, false); o += 2;
+    cast.forEach((nm, i) => {
+      const s = String(nm);
+      dv.setUint16(o, i + 1, false); o += 2;
+      dv.setUint16(o, 2 + s.length, false); o += 2; putStr(s);
+      dv.setUint16(o, 2, false); o += 2; // the empty trailing field
+    });
+  }
   putStr('PAGE');
   dv.setUint16(o, 9, false); o += 2;
   dv.setUint16(o, 0, false); o += 2;
@@ -474,10 +491,11 @@ function build3da(frames, N, notes = []) {
 
 describe('Pyware .3da parser', () => {
   it('reads performer positions and maps raw units to field steps', () => {
-    // west goal at raw X -55000, front sideline at raw Y +26250, 625 units/step.
+    // Raw .3da coordinates are centered on the 50 at 1000 units per yard (625
+    // per step): west goal at raw X -50000, front sideline at raw Y +26250.
     const frame = [
-      { x: -55000, y: 26250, sym: 'A' }, // -> stepsX 0,  stepsY 0  (west goal, front sideline)
-      { x: -5000,  y: 8750,  sym: 'A' }, // -> stepsX 80, stepsY 28 (50-yd line, front hash)
+      { x: -50000, y: 26250, sym: 'A' }, // -> stepsX 0,  stepsY 0  (west goal, front sideline)
+      { x: 0,      y: 8750,  sym: 'A' }, // -> stepsX 80, stepsY 28 (50-yd line, front hash)
     ];
     const { pages, sections } = L._parsePywareFile(build3da([frame], 2));
     assert.strictEqual(pages.length, 1);
@@ -502,6 +520,52 @@ describe('Pyware .3da parser', () => {
       { letter: 'A', performers: ['A1', 'A2'] },
       { letter: 'B', performers: ['B1'] },
     ]);
+  });
+
+  it("uses the file's own performer numbers (CAST) instead of field order", () => {
+    // A real pregame block: one column of four M's front-to-back, whose drill
+    // numbers run 1, 4, 3, 2 — NOT the order they stand in. Deriving labels from
+    // position would rename every one of them.
+    const frame = [
+      { x: 15000, y: 13750, sym: 'M' },
+      { x: 15000, y: 11250, sym: 'M' },
+      { x: 15000, y: 8750,  sym: 'M' },
+      { x: 15000, y: 6250,  sym: 'M' },
+    ];
+    const { pages, sections } = L._parsePywareFile(build3da([frame], 4, [], ['1', '4', '3', '2']));
+    const frontToBack = pages[0].performers.slice().sort((a, b) => a.stepsY - b.stepsY);
+    assert.deepStrictEqual(frontToBack.map(p => p.label), ['M1', 'M4', 'M3', 'M2']);
+    // The section list is still ordered by number, not by field position.
+    assert.deepStrictEqual(sections, [{ letter: 'M', performers: ['M1', 'M2', 'M3', 'M4'] }]);
+  });
+
+  it('keeps a CAST label bound to the same performer as the drill moves', () => {
+    const f0 = [{ x: 0, y: 2500, sym: 'A' }, { x: 0, y: 0, sym: 'A' }];
+    const f1 = [{ x: 0, y: 0, sym: 'A' }, { x: 0, y: 2500, sym: 'A' }]; // the two swap places
+    const { pages } = L._parsePywareFile(build3da([f0, f1, f1], 2, ['', 'set 2'], ['7', '3']));
+    const at = c => pages.find(p => p.count === c).performers.map(p => p.label);
+    assert.deepStrictEqual(at(0), ['A7', 'A3']);
+    assert.deepStrictEqual(at(1), ['A7', 'A3']); // record order is the stable performer order
+  });
+
+  it('falls back to front-to-back ranks when CAST names collide', () => {
+    // Two performers in one section sharing a number can't be told apart, so the
+    // derived labels are safer than ambiguous ones.
+    const frame = [
+      { x: 0, y: 2500, sym: 'A' },
+      { x: 0, y: 0,    sym: 'A' },
+    ];
+    const { pages } = L._parsePywareFile(build3da([frame], 2, [], ['2', '2']));
+    const frontToBack = pages[0].performers.slice().sort((a, b) => a.stepsY - b.stepsY);
+    assert.deepStrictEqual(frontToBack.map(p => p.label), ['A1', 'A2']);
+  });
+
+  it('ignores a CAST block whose performer count does not match', () => {
+    const frame = [{ x: 0, y: 2500, sym: 'A' }, { x: 0, y: 0, sym: 'A' }];
+    const ab = build3da([frame], 2, [], ['5', '9']);
+    new DataView(ab).setUint16(10, 3, false); // CAST claims 3 performers
+    const labels = L._parsePywareFile(ab).pages[0].performers.map(p => p.label).sort();
+    assert.deepStrictEqual(labels, ['A1', 'A2']);
   });
 
   it("reads a set's Pyware instruction text (page note), preserving line breaks", () => {
