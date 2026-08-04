@@ -695,6 +695,92 @@ describe('applyDrillSpotCsv (per-drill spot CSV, merge by student)', () => {
   });
 });
 
+// ── Carrying spot assignments across a re-uploaded drill file ────────────────
+
+describe('drillRelabelMapping', () => {
+  // A column of four performers. `labels` names them front-to-back; `dx` shifts
+  // the whole formation (the .3da calibration fix moved every dot 8 steps).
+  const col = (labels, dx = 0) => labels.map((label, i) => ({
+    label, section: label[0], stepsX: 100 + dx, stepsY: 20 + i * 4,
+  }));
+  const pagesOf = (...frames) => frames.map((performers, i) => ({ count: i * 16, performers }));
+
+  it('moves each spot to the label the new file gives that performer', () => {
+    // Same four bodies, same dots: the old parse numbered them by field order,
+    // the new one by the file's own numbers (1, 4, 3, 2), 8 steps west.
+    const oldPages = pagesOf(col(['M1', 'M2', 'M3', 'M4'], 8));
+    const newPages = pagesOf(col(['M1', 'M4', 'M3', 'M2']));
+    const res = L.drillRelabelMapping(oldPages, newPages, { M1: '10', M2: '20', M3: '30', M4: '40' });
+    assert.strictEqual(res.matched, 4);
+    assert.strictEqual(res.offsetX, -8);
+    // The student who was 2nd from the front is still 2nd from the front.
+    assert.deepStrictEqual(res.mapping, { M1: '10', M4: '20', M3: '30', M2: '40' });
+    assert.deepStrictEqual(res.moves.map(m => `${m.from}->${m.to}`), ['M2->M4', 'M4->M2']);
+    assert.strictEqual(res.changed, true);
+  });
+
+  it('leaves an unchanged mapping alone', () => {
+    const p = pagesOf(col(['M1', 'M2', 'M3', 'M4']));
+    const res = L.drillRelabelMapping(p, p, { M1: '10', M3: '30' });
+    assert.strictEqual(res.changed, false);
+    assert.deepStrictEqual(res.mapping, { M1: '10', M3: '30' });
+  });
+
+  it('carries shared spots and explicitly cleared ones', () => {
+    const oldPages = pagesOf(col(['A1', 'A2', 'A3', 'A4']));
+    const newPages = pagesOf(col(['A4', 'A3', 'A2', 'A1']));
+    const res = L.drillRelabelMapping(oldPages, newPages, { A1: ['10', '11'], A2: [], A3: '30' });
+    assert.deepStrictEqual(res.mapping, { A4: ['10', '11'], A3: [], A2: '30' });
+    // A cleared spot moves too, but isn't reported as a student who changed number.
+    assert.deepStrictEqual(res.moves.filter(m => m.nums.length).map(m => m.to), ['A4', 'A2']);
+  });
+
+  it('uses every shared set to tell performers on the same dot apart', () => {
+    // Two performers stacked at set 1, splitting apart at set 2.
+    const stacked = labels => [
+      { label: labels[0], section: 'B', stepsX: 40, stepsY: 10 },
+      { label: labels[1], section: 'B', stepsX: 40, stepsY: 10 },
+    ];
+    const split = labels => [
+      { label: labels[0], section: 'B', stepsX: 30, stepsY: 10 },
+      { label: labels[1], section: 'B', stepsX: 50, stepsY: 10 },
+    ];
+    const oldPages = pagesOf(stacked(['B1', 'B2']), split(['B1', 'B2']));
+    const newPages = pagesOf(stacked(['B9', 'B7']), split(['B9', 'B7']));
+    const res = L.drillRelabelMapping(oldPages, newPages, { B1: '10', B2: '20' });
+    assert.deepStrictEqual(res.mapping, { B9: '10', B7: '20' });
+  });
+
+  it('pairs almost nothing when the two files are different drills', () => {
+    const oldPages = pagesOf(col(['M1', 'M2', 'M3', 'M4']));
+    const newPages = pagesOf([
+      { label: 'M1', section: 'M', stepsX: 12, stepsY: 60 },
+      { label: 'M2', section: 'M', stepsX: 44, stepsY: 3  },
+      { label: 'M3', section: 'M', stepsX: 81, stepsY: 77 },
+      { label: 'M4', section: 'M', stepsX: 20, stepsY: 41 },
+    ]);
+    const res = L.drillRelabelMapping(oldPages, newPages, { M1: '10' });
+    assert.ok(res.matched < res.total * 0.9, 'the caller can reject this pairing');
+  });
+
+  it('keeps an unpairable assignment rather than dropping it', () => {
+    const oldPages = pagesOf(col(['M1', 'M2', 'M3', 'M4']));
+    const newPages = pagesOf(col(['M1', 'M2', 'M3', 'M4']));
+    // "Z9" isn't in either parse (a stale spot from an older file).
+    const res = L.drillRelabelMapping(oldPages, newPages, { M1: '10', Z9: '99' });
+    assert.strictEqual(res.mapping.Z9, '99');
+    assert.deepStrictEqual(res.unmatched, ['Z9']);
+  });
+
+  it('survives a missing or empty old payload without inventing pairs', () => {
+    const newPages = pagesOf(col(['M1', 'M2', 'M3', 'M4']));
+    const res = L.drillRelabelMapping([], newPages, { M1: '10' });
+    assert.strictEqual(res.matched, 0);
+    assert.strictEqual(res.changed, false);
+    assert.deepStrictEqual(res.mapping, { M1: '10' }); // nothing lost
+  });
+});
+
 describe('Pyware file format dispatch', () => {
   const buf = bytes => new Uint8Array(bytes).buffer;
   const strBytes = s => [...s].map(c => c.charCodeAt(0));

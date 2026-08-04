@@ -491,6 +491,123 @@ function filterAndSortStudents(students, f, scoreMap) {
 
 // ── Seasons ───────────────────────────────────────────────────────────────────
 
+// ── Re-uploading a drill file: carrying spots across a relabel ───────────────
+// Two parses of the same drill can name the same physical performer
+// differently — the .3da CAST label fix below did exactly that to files
+// imported before it — which would leave every student standing at someone
+// else's dot. Both parses describe the same bodies in the same formations, so
+// pair performers by WHERE THEY STAND and carry the spot map across that
+// pairing.
+
+// Pair old→new performer labels by position. Pages are matched by set count
+// (falling back to list order), and a constant whole-field offset between the
+// parses is measured from the first shared set and removed first — the .3da X
+// calibration fix shifted every dot 8 steps. A pair is accepted only when the
+// two are each other's closest match AND agree at EVERY shared set within `tol`
+// steps, so two genuinely different drills pair almost nothing and the caller
+// can tell from `matched`/`total`.
+function drillPositionPairs(oldPages, newPages, tol = 0.25) {
+  const oldP = Array.isArray(oldPages) ? oldPages : [];
+  const newP = Array.isArray(newPages) ? newPages : [];
+  const none = { pairs: {}, matched: 0, total: 0, offsetX: 0, offsetY: 0 };
+  if (!oldP.length || !newP.length) return none;
+
+  const byCount = {};
+  oldP.forEach(pg => { if (pg && byCount[pg.count] === undefined) byCount[pg.count] = pg; });
+  let pagePairs = [];
+  newP.forEach(pg => { const o = pg && byCount[pg.count]; if (o) pagePairs.push([o, pg]); });
+  if (!pagePairs.length) {
+    const n = Math.min(oldP.length, newP.length);
+    for (let i = 0; i < n; i++) pagePairs.push([oldP[i], newP[i]]);
+  }
+  // Only sets where both parses list the same number of performers are usable.
+  pagePairs = pagePairs.filter(([o, n]) => {
+    const a = (o && o.performers) || [], b = (n && n.performers) || [];
+    return a.length && a.length === b.length;
+  });
+  if (!pagePairs.length) return none;
+
+  const mean = (arr, f) => arr.reduce((t, p) => t + f(p), 0) / arr.length;
+  const [o0, n0] = pagePairs[0];
+  const offsetX = mean(n0.performers, p => p.stepsX) - mean(o0.performers, p => p.stepsX);
+  const offsetY = mean(n0.performers, p => p.stepsY) - mean(o0.performers, p => p.stepsY);
+
+  // Each label's trajectory across the shared sets. A label missing from a set
+  // — or listed twice in one — can't be paired safely, so it's dropped.
+  const tracks = (which, dx, dy) => {
+    const t = {}, bad = new Set();
+    pagePairs.forEach((pp, i) => {
+      pp[which].performers.forEach(p => {
+        const a = (t[p.label] = t[p.label] || []);
+        if (a.length !== i) { bad.add(p.label); return; }
+        a.push([p.stepsX + dx, p.stepsY + dy]);
+      });
+    });
+    bad.forEach(k => delete t[k]);
+    Object.keys(t).forEach(k => { if (t[k].length !== pagePairs.length) delete t[k]; });
+    return t;
+  };
+  const oldT = tracks(0, offsetX, offsetY), newT = tracks(1, 0, 0);
+
+  const dev = (a, b) => {
+    let m = 0;
+    for (let i = 0; i < a.length; i++) {
+      m = Math.max(m, Math.abs(a[i][0] - b[i][0]), Math.abs(a[i][1] - b[i][1]));
+      if (m > tol) return Infinity;
+    }
+    return m;
+  };
+  const bestOld = {}, bestNew = {};
+  const oldLabels = Object.keys(oldT), newLabels = Object.keys(newT);
+  oldLabels.forEach(ol => newLabels.forEach(nl => {
+    const d = dev(oldT[ol], newT[nl]);
+    if (d === Infinity) return;
+    if (!bestOld[ol] || d < bestOld[ol].d) bestOld[ol] = { lbl: nl, d };
+    if (!bestNew[nl] || d < bestNew[nl].d) bestNew[nl] = { lbl: ol, d };
+  }));
+
+  const pairs = {};
+  let matched = 0;
+  oldLabels.forEach(ol => {
+    const b = bestOld[ol];
+    if (b && bestNew[b.lbl] && bestNew[b.lbl].lbl === ol) { pairs[ol] = b.lbl; matched++; }
+  });
+  return { pairs, matched, total: oldLabels.length, offsetX, offsetY };
+}
+
+// Carry a label→student spot map from an old parse of a drill onto a new one,
+// keeping every student on the same physical dot. Returns the rewritten mapping
+// plus the list of moves, so the caller can show a director exactly which
+// numbers change before saving; `matched`/`total` let the caller reject a
+// pairing that clearly isn't the same drill. Assignments whose label couldn't be
+// paired keep their old label (unless something else moved into it) and are
+// reported in `unmatched` rather than silently dropped.
+function drillRelabelMapping(oldPages, newPages, mapping) {
+  const pos = drillPositionPairs(oldPages, newPages);
+  const src = mapping || {};
+  const next = {}, moves = [], unmatched = [];
+  Object.keys(src).forEach(lbl => {
+    const to = pos.pairs[lbl];
+    if (!to) { if (drillSpotNums(src[lbl]).length) unmatched.push(lbl); return; }
+    next[to] = src[lbl];
+    if (to !== lbl) moves.push({ from: lbl, to, nums: drillSpotNums(src[lbl]) });
+  });
+  Object.keys(src).forEach(lbl => {
+    if (!pos.pairs[lbl] && !Object.prototype.hasOwnProperty.call(next, lbl)) next[lbl] = src[lbl];
+  });
+  const rank = l => { const p = drillSpotLabelParts(l); return [p.section, p.rank]; };
+  moves.sort((a, b) => {
+    const [as, ar] = rank(a.from), [bs, br] = rank(b.from);
+    return as === bs ? ar - br : as.localeCompare(bs);
+  });
+  return {
+    mapping: next, moves, unmatched,
+    matched: pos.matched, total: pos.total,
+    offsetX: pos.offsetX, offsetY: pos.offsetY,
+    changed: moves.length > 0,
+  };
+}
+
 // Suggest a season label for a date, e.g. '2026-07-01' → '2026-27'. Marching
 // seasons straddle calendar years like school years; June onward counts as the
 // start of the next school year (summer band camp belongs to the fall season).
@@ -891,6 +1008,7 @@ if (typeof module !== 'undefined' && module.exports) {
     parseCSVLine, parseCSV, COL_ALIASES, normalizeGrade, detectCols,
     csvCell, buildStudentCodesCsv,
     DRILL_LABEL_ALIASES, drillSpotNums, drillSpotStripOthers, drillSpotLabelParts, applyDrillSpotCsv,
+    drillPositionPairs, drillRelabelMapping,
     suggestSeasonLabel,
     normInstrument, instrOrder, GRADE_LEVELS, filterAndSortStudents,
     _hasMarker, _indexOfMarker, _parsePywareFile, _pywareAssembleDrill, _pyware3daPageNote,
