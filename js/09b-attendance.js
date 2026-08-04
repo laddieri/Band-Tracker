@@ -184,7 +184,10 @@ function _renderAttendanceChart() {
     const entries = STATE.entries[r.id] || {};
     const absent = Object.values(entries).filter(e => e.attendance === 'absent').length;
     const late   = Object.values(entries).filter(e => e.attendance === 'late').length;
-    return { label: fmtDate(r.date).replace(/\/\d{4}$/, ''), absent, late };
+    const [, m, d] = r.date.split('-').map(Number);
+    // Axis labels must stay short ("8/4") or they collide once a season fills
+    // up; fmtDate's long form is kept for the point tooltips.
+    return { label: `${m}/${d}`, full: fmtDate(r.date), absent, late };
   });
 
   if (pts.length < 2) return '';
@@ -207,21 +210,34 @@ function _renderAttendanceChart() {
             <text x="${PL-4}" y="${y+4}" text-anchor="end" font-size="9" fill="var(--text-muted)">${v}</text>`;
   }).join('');
 
+  // Dots crowd into a solid band once the season fills up — shrink them so the
+  // trend line stays readable.
+  const dotR = pts.length > 16 ? 2 : pts.length > 10 ? 2.5 : 3;
+
   const makePolyline = (color, key) => {
     const points = pts.map((p, i) => `${toX(i).toFixed(1)},${toY(p[key]).toFixed(1)}`).join(' ');
     const dots = pts.map((p, i) =>
-      `<circle cx="${toX(i).toFixed(1)}" cy="${toY(p[key]).toFixed(1)}" r="3" fill="${color}">
-        <title>${p.label}: ${p[key]} ${key}</title>
+      `<circle cx="${toX(i).toFixed(1)}" cy="${toY(p[key]).toFixed(1)}" r="${dotR}" fill="${color}">
+        <title>${p.full}: ${p[key]} ${key}</title>
       </circle>`
     ).join('');
     return `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` + dots;
   };
 
+  // Show every Nth date, where N is whatever keeps ~32 viewBox units between
+  // labels (about the width of "12/14" at font-size 9, plus a gap). Stepping
+  // back from the last point guarantees the most recent rehearsal is labelled.
+  const labelStep = Math.max(1, Math.ceil(32 / xStep));
+  const last      = pts.length - 1;
   const xLabels = pts.map((p, i) => {
-    if (pts.length <= 8 || i === 0 || i === pts.length - 1 || i % Math.ceil(pts.length / 6) === 0) {
-      return `<text x="${toX(i).toFixed(1)}" y="${H-4}" text-anchor="middle" font-size="9" fill="var(--text-muted)">${p.label}</text>`;
-    }
-    return '';
+    const stepped = (last - i) % labelStep === 0;
+    // The first point is always worth labelling, but skip it when a stepped
+    // label lands close enough to overlap it.
+    const isFirst = i === 0 && (last % labelStep) * xStep >= 32;
+    if (!stepped && !isFirst) return '';
+    // Anchor the end labels inward so they don't spill out of the card.
+    const anchor = i === 0 ? 'start' : i === last ? 'end' : 'middle';
+    return `<text x="${toX(i).toFixed(1)}" y="${H-4}" text-anchor="${anchor}" font-size="9" fill="var(--text-muted)">${p.label}</text>`;
   }).join('');
 
   return `
