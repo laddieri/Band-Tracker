@@ -279,6 +279,41 @@ function _restoreFocus(snap) {
   if (snap.start != null) { try { el.setSelectionRange(snap.start, snap.end); } catch {} }
 }
 
+// Firestore snapshots can land at any moment — including the echo of this
+// client's own debounced note saves — and each one re-renders the whole view.
+// If a field in the view is focused when that happens, the mobile keyboard
+// slams shut as the field is destroyed, and the focus-restore net above pops
+// it back open: to the user the keyboard opens and closes on its own. So
+// data-driven re-renders go through renderFromData(), which parks the render
+// while an editable field has focus and flushes it once focus moves on. STATE
+// is current the whole time — only the DOM update waits.
+let _renderDeferred = false;
+
+function _editableHasFocus() {
+  const el = document.activeElement;
+  if (!el) return false;
+  if (el.tagName === 'TEXTAREA' || el.isContentEditable) return true;
+  if (el.tagName !== 'INPUT') return false;
+  // Only controls that raise the on-screen keyboard (or a native picker)
+  // defer; checkboxes, radios and buttons don't hold a keyboard open.
+  return !['checkbox', 'radio', 'button', 'submit', 'reset', 'range', 'color', 'file'].includes(el.type);
+}
+
+function renderFromData() {
+  if (_editableHasFocus()) { _renderDeferred = true; return; }
+  render();
+}
+
+// Flush a parked render once focus settles somewhere non-editable. The small
+// delay lets focus hop between fields (e.g. PIN 1 → PIN 2) without a render
+// sneaking in mid-hop.
+document.addEventListener('focusout', () => {
+  if (!_renderDeferred) return;
+  setTimeout(() => {
+    if (_renderDeferred && !_editableHasFocus()) { _renderDeferred = false; render(); }
+  }, 120);
+}, true);
+
 // Note: no focus restore here on purpose. This path runs when the user taps a
 // sort/filter control, and re-focusing the search box would pop the keyboard
 // back up over the filter panel they just opened. Typing goes through

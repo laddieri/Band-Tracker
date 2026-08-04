@@ -79,7 +79,7 @@ function _drillLoadPayload(id) {
     _drillFileName = meta.name || meta.fileName || null;
     _drillCurrentSet = 0; _drillTraceLabel = null; _drillSelLabel = null; _drillSearchQuery = ''; _drillTraceSets = []; _drillSelectMode = false; if (typeof _drillPlayStop === "function") _drillPlayStop();
     _activeDrillLoadedId = id;
-    render();
+    renderFromData();
   }).catch(e => console.error('drill payload load failed:', e));
 }
 

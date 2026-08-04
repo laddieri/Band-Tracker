@@ -14,6 +14,7 @@ function render() {
   // without this the field being typed in is replaced and the mobile keyboard
   // closes. Restored at the end of the render.
   const focusSnap = _captureFocus();
+  _renderDeferred = false; // a full render supersedes any parked data render
 
   // Apply the band's custom primary color (no-op when unset / already applied).
   applyBandColor(STATE.bandColor);
