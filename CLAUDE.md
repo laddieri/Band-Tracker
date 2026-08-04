@@ -78,6 +78,19 @@ app doesn't show it" is never a justification. Full model:
   bespoke error UI use their own try/catch. Director listeners also feed the
   header "Saving…" pill from `hasPendingWrites` (`_notePendingWrites()` in
   `js/02-data.js`).
+- **Never call `render()` from a Firestore listener or any other code that can
+  fire while the user is mid-interaction** (snapshot callbacks, async loads,
+  timers) — use `renderFromData()` (`js/03-router.js`) instead. A direct render
+  replaces the focused field, so on mobile the keyboard slams shut and the
+  focus-restore net pops it back open — "the keyboard opens and closes by
+  itself" (regressed and fixed in PR #282). `renderFromData()` parks the
+  render while an editable field is focused and flushes it on focusout; STATE
+  stays current the whole time, only the DOM update waits. Direct `render()`
+  is fine in user-initiated paths (taps, navigation). Enforced in
+  `js/02-data.js` by `tests/check-render-calls.js` (part of
+  `npm run check:static`): the rare genuinely-immediate render there carries a
+  `// direct-render-ok: <why>` tag. Apply the same discipline to listeners
+  added in other files (e.g. the drill payload load in `js/12-drill.js`).
 - Entry docs are keyed `{rehearsalId}_{studentNumber}` and must always carry
   `studentNumber` as a **string** (student queries filter on it) plus the
   rehearsal's season via `..._seasonStampFor(rid)` (listeners filter
@@ -99,9 +112,12 @@ app doesn't show it" is never a justification. Full model:
 - `node --check` on every JS file — CI runs this on every PR (`syntax.yml`).
 - `npm run check:static` — dependency-free consistency checks, also in
   `syntax.yml`: `tests/check-precache.js` (every index.html asset is in the
-  `sw.js` PRECACHE and every entry exists) and `tests/check-handlers.js`
+  `sw.js` PRECACHE and every entry exists), `tests/check-handlers.js`
   (every inline `on*=` handler calls a defined top-level global — catches
-  renamed/misspelled functions that would only fail at tap time).
+  renamed/misspelled functions that would only fail at tap time) and
+  `tests/check-render-calls.js` (no untagged direct `render()` in
+  `js/02-data.js` — listeners must use `renderFromData()`, see the mobile
+  keyboard note above).
 - `npm run test:unit` — unit tests for the pure logic in `js/00-logic.js`
   (scoring, published stats, auto marks, pseudonyms, CSV parsing, and the
   Pyware `.3dj`/`.3da` drill-file parser). Also runs in CI on every PR. Keep
