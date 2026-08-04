@@ -237,18 +237,20 @@ describe('staff role (recording access, no admin control)', () => {
     await assertSucceeds(staff().doc('orgs/a/entries/r1_7').set(
       { rehearsalId: 'r1', studentNumber: '7', attendance: 'late', updatedBy: 'staffA' }, { merge: true }));
   });
-  it('staff can edit and end a rehearsal but NOT create or delete one', async () => {
+  it('staff can edit a rehearsal but NOT create or delete one', async () => {
     await assertSucceeds(staff().doc('orgs/a/rehearsals/r1').set({ label: 'Renamed' }, { merge: true }));
-    await assertSucceeds(staff().doc('orgs/a/rehearsals/r1').set({ ended: true }, { merge: true }));
+    await assertSucceeds(staff().doc('orgs/a/rehearsals/r1').set({ attendanceSubmitted: true }, { merge: true }));
     await assertFails(staff().doc('orgs/a/rehearsals/r2').set({ date: '2026-06-02', label: 'Percussion sectional' }));
     await assertFails(staff().doc('orgs/a/rehearsals/r1').delete());
   });
-  it('staff CANNOT reopen an ended rehearsal', async () => {
+  it('staff CANNOT end or reopen a rehearsal', async () => {
+    await assertFails(staff().doc('orgs/a/rehearsals/r1').set({ ended: true }, { merge: true }));
     await assertFails(staff().doc('orgs/a/rehearsals/rEnded').set({ ended: false }, { merge: true }));
-    // Dropping the flag is the same thing — it must not be a way around the rule.
+    // Dropping the flag reopens implicitly — it must not be a way around the rule.
     await assertFails(staff().doc('orgs/a/rehearsals/rEnded').set({ date: '2026-06-03' }));
-    // Other edits to an ended rehearsal are still fine, and a director may reopen.
+    // Other edits to an ended rehearsal are still fine, and a director may do both.
     await assertSucceeds(staff().doc('orgs/a/rehearsals/rEnded').set({ label: 'Renamed' }, { merge: true }));
+    await assertSucceeds(director('dirA').doc('orgs/a/rehearsals/r1').set({ ended: true }, { merge: true }));
     await assertSucceeds(director('dirA').doc('orgs/a/rehearsals/rEnded').set({ ended: false }, { merge: true }));
   });
   it('staff can record song results (statuses only)', async () => {

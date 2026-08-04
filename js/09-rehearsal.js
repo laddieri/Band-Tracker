@@ -142,8 +142,9 @@ function _rhCardHtml(r) {
                   ✏️ Student Feedback
                 </button>` : ''}
               </div>` : ''}
+              ${STATE.isAdmin ? `
               <button class="btn btn-sm btn-danger btn-full" style="margin-top:8px"
-                onclick="confirmEndRehearsal('${esc(r.id)}')">End Rehearsal</button>` : ''}
+                onclick="confirmEndRehearsal('${esc(r.id)}')">End Rehearsal</button>` : ''}` : ''}
             </div>`;
         }
         return `

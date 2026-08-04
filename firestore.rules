@@ -140,19 +140,19 @@ service cloud.firestore {
       }
 
       // Rehearsal metadata (dates/labels) is schedule info — safe for members.
-      // Scheduling the band is a director call: staff can edit and end an
-      // existing rehearsal (e.g. a sectional they run) but cannot create one,
-      // reopen an ended one, or delete one.
+      // Opening and closing a rehearsal is a director call: staff can edit an
+      // existing one (label, date, plan segments, attendanceSubmitted) but
+      // cannot create one, delete one, or move it between open and ended.
       match /rehearsals/{doc} {
         allow read:   if canRead();
         allow write:  if canWrite();
-        allow update: if isStaffOf(orgId) && !reopensRehearsal();
+        allow update: if isStaffOf(orgId) && !changesEnded();
 
-        // An ended rehearsal going back to open — clearing `ended` counts,
-        // hence the default in the get(). Directors only.
-        function reopensRehearsal() {
-          return resource.data.get('ended', false) == true
-                 && request.resource.data.get('ended', false) == false;
+        // Any move of the open/ended flag — ending, reopening, or dropping the
+        // field to reopen implicitly, hence the default in the get()s.
+        function changesEnded() {
+          return resource.data.get('ended', false)
+              != request.resource.data.get('ended', false);
         }
       }
 

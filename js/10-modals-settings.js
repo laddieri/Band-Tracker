@@ -554,7 +554,10 @@ function saveRehearsalEdit(rid) {
   render();
 }
 
+// Ending a rehearsal, like starting or reopening one, is director-only — the
+// rules reject any staff update that moves the `ended` flag.
 function confirmEndRehearsal(rid) {
+  if (!STATE.isAdmin) { showToast('Only directors can end a rehearsal.'); return; }
   const r = DB.getRehearsals().find(r => r.id === rid);
   if (!r) return;
   const endMarks = _getAutoMarks().filter(m => m.when === 'end');
@@ -579,6 +582,7 @@ function confirmEndRehearsal(rid) {
 
 async function endRehearsal(rid) {
   closeModal();
+  if (!STATE.isAdmin) { showToast('Only directors can end a rehearsal.'); return; }
   const r = STATE.rehearsals.find(r => r.id === rid);
   if (!r) return;
   const entries  = STATE.entries[rid] || {};
