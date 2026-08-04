@@ -658,27 +658,40 @@ function buildStudentCodeSheetHTML(students) {
   const bandName = STATE.bandName || 'Band Tracker';
   const urlShort = _appSignInUrl().replace(/^https?:\/\//, '').replace(/\/$/, '');
 
-  const slips = students.map(s => {
-    const detail = [
-      hasField('instrument') ? normInstrument(s.instrument) : '',
-      `#${s.number}`,
-    ].filter(Boolean).join(' · ');
-    return `
+  // The slip is written to the student, so it carries only what means something
+  // to them: their name, their instrument and their code. Roster numbers are a
+  // director's filing system — they stay in the CSV, off the slip.
+  const slips = students.map(s => `
       <div class="slip">
         <div class="slip-band">${esc(bandName)}</div>
         <div class="slip-name">${esc(s.name || `Student #${s.number}`)}</div>
-        <div class="slip-detail">${esc(detail)}</div>
+        ${hasField('instrument') && normInstrument(s.instrument)
+          ? `<div class="slip-detail">${esc(normInstrument(s.instrument))}</div>` : ''}
         <div class="slip-code-label">Your sign-in code</div>
         <div class="slip-code">${esc(String(s.studentCode).toUpperCase())}</div>
+        <div class="slip-section">First time — set your PIN</div>
         <ol class="slip-steps">
           <li>Go to <strong>${esc(urlShort)}</strong></li>
           <li>Tap <strong>Student Sign-In</strong></li>
           <li>Enter the code above</li>
           <li>Choose a 6-digit PIN you'll remember</li>
         </ol>
-        <div class="slip-foot">Keep this code private — it signs you in to your own progress.</div>
-      </div>`;
-  }).join('');
+        <div class="slip-note">
+          <strong>Keep this code to yourself until you've set your PIN</strong> — until then,
+          anyone holding it could claim your account.
+        </div>
+        <div class="slip-note">
+          After that your code is your <strong>username</strong> and your PIN is your
+          <strong>password</strong> — you'll need both every time you sign in, so don't lose either.
+        </div>
+        <div class="slip-section">Keep it one tap away</div>
+        <div class="slip-note">
+          Add it to your phone's home screen and it opens like an app.
+          <strong>iPhone:</strong> in Safari, tap the Share button, then <em>Add to Home Screen</em>.
+          <strong>Android:</strong> in Chrome, tap the &#8942; menu, then <em>Install app</em>
+          (or <em>Add to Home screen</em>).
+        </div>
+      </div>`).join('');
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -697,8 +710,9 @@ function buildStudentCodeSheetHTML(students) {
   .slip-detail { font-size: 11px; color: #6b7280; margin-bottom: 10px; }
   .slip-code-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #6b7280; }
   .slip-code { font-family: 'SFMono-Regular', Menlo, Consolas, monospace; font-size: 22px; font-weight: 700; letter-spacing: .12em; margin: 2px 0 10px; }
-  .slip-steps { font-size: 11px; line-height: 1.55; padding-left: 16px; color: #374151; }
-  .slip-foot { font-size: 9.5px; color: #9ca3af; margin-top: 8px; }
+  .slip-section { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #6b7280; margin: 10px 0 4px; }
+  .slip-steps { font-size: 11px; line-height: 1.5; padding-left: 16px; color: #374151; }
+  .slip-note { font-size: 10px; line-height: 1.45; color: #4b5563; margin-top: 8px; }
   @media print {
     body { padding: 10px; }
     @page { margin: 1cm; }
