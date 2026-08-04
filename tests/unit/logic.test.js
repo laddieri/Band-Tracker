@@ -314,6 +314,43 @@ describe('CSV parsing', () => {
   });
 });
 
+// ── Student code export (CSV) ─────────────────────────────────────────────────
+
+describe('buildStudentCodesCsv', () => {
+  const roster = [
+    { number: '7',  name: 'Riley Ames',  instrument: '12 Trumpet', studentCode: 'ab3k9xzq' },
+    { number: '42', name: 'Smith, Sam',  instrument: 'Flute' }, // no code yet
+  ];
+
+  it('writes a header plus one row per student, codes upper-cased', () => {
+    assert.deepStrictEqual(L.buildStudentCodesCsv(roster).split('\n'), [
+      'Student Number,Name,Instrument,Student Code',
+      '7,Riley Ames,Trumpet,AB3K9XZQ',
+      '42,"Smith, Sam",Flute,',
+    ]);
+  });
+
+  it('drops the instrument column when the field is off', () => {
+    assert.deepStrictEqual(L.buildStudentCodesCsv(roster, { includeInstrument: false }).split('\n'), [
+      'Student Number,Name,Student Code',
+      '7,Riley Ames,AB3K9XZQ',
+      '42,"Smith, Sam",',
+    ]);
+  });
+
+  it('keeps a header-only file for an empty selection', () => {
+    assert.strictEqual(L.buildStudentCodesCsv([]), 'Student Number,Name,Instrument,Student Code');
+  });
+
+  it('quotes cells containing commas, quotes or newlines', () => {
+    assert.strictEqual(L.csvCell('plain'), 'plain');
+    assert.strictEqual(L.csvCell('a,b'), '"a,b"');
+    assert.strictEqual(L.csvCell('say "hi"'), '"say ""hi"""');
+    assert.strictEqual(L.csvCell('one\ntwo'), '"one\ntwo"');
+    assert.strictEqual(L.csvCell(null), '');
+  });
+});
+
 // ── Filter + sort engine ──────────────────────────────────────────────────────
 
 describe('filterAndSortStudents', () => {

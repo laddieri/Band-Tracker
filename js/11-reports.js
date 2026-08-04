@@ -74,12 +74,7 @@ function exportAttendanceReport() {
   closeModal();
   if (!rehearsals.length) { showToast('No rehearsals in that period.'); return; }
 
-  const html = buildAttendanceReportHTML(rehearsals, periodLabel);
-  const win  = window.open('', '_blank');
-  if (!win) { showToast('Allow pop-ups to export PDF.'); return; }
-  win.document.write(html);
-  win.document.close();
-  win.onload = () => { win.focus(); win.print(); };
+  _printHtmlDocument(buildAttendanceReportHTML(rehearsals, periodLabel));
 }
 
 function buildAttendanceReportHTML(rehearsals, periodLabel) {

@@ -265,6 +265,29 @@ function detectCols(headers, customFields = []) {
   return map;
 }
 
+// ── CSV output ────────────────────────────────────────────────────────────────
+
+// A CSV cell, quoted if it contains a comma, quote or newline.
+function csvCell(v) {
+  const s = String(v ?? '');
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+// The shareable roster of sign-in codes: one row per student, sorted by the
+// caller. Students without a code get an empty cell so the gaps are obvious in
+// a spreadsheet. Director-only data — the download wrapper in js/06-roster.js
+// gates on STATE.isAdmin.
+function buildStudentCodesCsv(students, { includeInstrument = true } = {}) {
+  const header = ['Student Number', 'Name', ...(includeInstrument ? ['Instrument'] : []), 'Student Code'];
+  const rows = students.map(s => [
+    s.number,
+    s.name || '',
+    ...(includeInstrument ? [normInstrument(s.instrument)] : []),
+    (s.studentCode || '').toUpperCase(),
+  ].map(csvCell).join(','));
+  return [header.join(','), ...rows].join('\n');
+}
+
 // ── Per-drill spot assignments (CSV) ─────────────────────────────────────────
 // A drill's spot map links each performer label ("A1", "M1") to a student
 // number, per show. Bulk-assigned from a two-column CSV (label + student
@@ -792,6 +815,7 @@ if (typeof module !== 'undefined' && module.exports) {
     lbWeights, scoreStudentsCore, buildPublicStats,
     checkAutoMarkCondition, computeAutoMarkEvents,
     parseCSVLine, parseCSV, COL_ALIASES, normalizeGrade, detectCols,
+    csvCell, buildStudentCodesCsv,
     DRILL_LABEL_ALIASES, drillSpotNums, drillSpotStripOthers, drillSpotLabelParts, applyDrillSpotCsv,
     suggestSeasonLabel,
     normInstrument, instrOrder, GRADE_LEVELS, filterAndSortStudents,
