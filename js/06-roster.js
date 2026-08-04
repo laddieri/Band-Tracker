@@ -649,6 +649,7 @@ function showExportCodesModal() {
     <p class="form-hint" style="margin:0 0 16px">
       Name${hasField('instrument') ? ', instrument' : ''} and sign-in code for each student.
       Print the slips to cut apart and hand out, or download the CSV for a spreadsheet or mail merge.
+      Slips print ${hasField('instrument') ? 'by instrument, then ' : ''}alphabetically by last name.
     </p>
     ${narrowing ? `
       <div class="form-label" style="margin-bottom:8px">Who to include</div>
@@ -697,9 +698,13 @@ function downloadStudentCodesCsv() {
     buildStudentCodesCsv(students, { includeInstrument: hasField('instrument') }));
 }
 
+// Slips come off the printer in the order they'll be handed out: instrument by
+// instrument (score order), alphabetical by last name inside each. The CSV
+// stays name-alphabetical — a spreadsheet can re-sort itself.
 function printStudentCodeSheet() {
   if (!STATE.isAdmin) return;
-  const withCode = _exportCodeStudents().filter(s => s.studentCode);
+  const withCode = _exportCodeStudents().filter(s => s.studentCode)
+    .sort(compareStudentsByInstrumentThenLastName);
   if (!withCode.length) {
     showToast('No student in that selection has a code yet.');
     return;

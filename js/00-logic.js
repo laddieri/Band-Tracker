@@ -498,6 +498,41 @@ function instrOrder(name) {
   return _INSTR_IDX.get((normInstrument(name) || '').toLowerCase()) ?? _SCORE_ORDER.length;
 }
 
+// Generational suffixes that must not be mistaken for a surname. A lone letter
+// (a last initial, "Alex V") is left alone — dropping it would lose the only
+// sorting signal there is.
+const _NAME_SUFFIXES = new Set(['jr', 'sr', 'ii', 'iii', 'iv']);
+
+// Surname for alphabetizing. Handles both shapes a roster import can carry:
+// "Last, First" (comma wins) and "First Middle Last". Returns lowercase, or ''
+// when there's no name to go on.
+function studentLastName(name) {
+  const n = (name || '').trim();
+  if (!n) return '';
+  if (n.includes(',')) return n.slice(0, n.indexOf(',')).trim().toLowerCase();
+  const parts = n.split(/\s+/);
+  while (parts.length > 1 && _NAME_SUFFIXES.has(parts[parts.length - 1].toLowerCase().replace(/\./g, ''))) {
+    parts.pop();
+  }
+  return parts[parts.length - 1].toLowerCase();
+}
+
+// Hand-out order for the printed code slips: score order by instrument, then
+// alphabetical by last name. Within one score rank we also sort on the
+// instrument's own name so same-rank instruments (Alto vs Tenor Sax, snares vs
+// pit) come off the printer in one stack per instrument. Students with no
+// instrument recorded sort to the very end.
+function compareStudentsByInstrumentThenLastName(a, b) {
+  const ia = normInstrument(a.instrument), ib = normInstrument(b.instrument);
+  const ra = ia ? instrOrder(ia) : Number.MAX_SAFE_INTEGER;
+  const rb = ib ? instrOrder(ib) : Number.MAX_SAFE_INTEGER;
+  if (ra !== rb) return ra - rb;
+  return ia.toLowerCase().localeCompare(ib.toLowerCase())
+    || studentLastName(a.name).localeCompare(studentLastName(b.name))
+    || (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase())
+    || String(a.number).localeCompare(String(b.number));
+}
+
 const GRADE_LEVELS = ['8th','9th','10th','11th','12th'];
 
 // The engine behind every filterable list view (roster, tracker, attendance,
@@ -1078,6 +1113,7 @@ if (typeof module !== 'undefined' && module.exports) {
     drillPositionPairs, drillRelabelMapping,
     suggestSeasonLabel,
     normInstrument, instrOrder, GRADE_LEVELS, filterAndSortStudents,
+    studentLastName, compareStudentsByInstrumentThenLastName,
     _hasMarker, _indexOfMarker, _parsePywareFile, _pywareAssembleDrill, _pyware3daPageNote,
     _pyware3daCast,
   };

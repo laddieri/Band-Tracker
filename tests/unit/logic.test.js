@@ -399,6 +399,68 @@ describe('filterAndSortStudents', () => {
   });
 });
 
+// ── Printed code-slip order ───────────────────────────────────────────────────
+
+describe('studentLastName', () => {
+  it('takes the last word of "First Last"', () => {
+    assert.strictEqual(L.studentLastName('Ana Diaz'), 'diaz');
+    assert.strictEqual(L.studentLastName('Cass Q. Miller'), 'miller');
+  });
+  it('takes the part before the comma of "Last, First"', () => {
+    assert.strictEqual(L.studentLastName('Diaz, Ana'), 'diaz');
+  });
+  it('skips generational suffixes but keeps a lone last initial', () => {
+    assert.strictEqual(L.studentLastName('Sam Boone Jr.'), 'boone');
+    assert.strictEqual(L.studentLastName('Sam Boone III'), 'boone');
+    assert.strictEqual(L.studentLastName('Alex V'), 'v');
+  });
+  it('handles a missing or single-word name', () => {
+    assert.strictEqual(L.studentLastName(''), '');
+    assert.strictEqual(L.studentLastName(undefined), '');
+    assert.strictEqual(L.studentLastName('Prince'), 'prince');
+  });
+});
+
+describe('compareStudentsByInstrumentThenLastName', () => {
+  const sort = pool => [...pool].sort(L.compareStudentsByInstrumentThenLastName).map(s => s.name);
+
+  it('orders by instrument score order, then last name', () => {
+    const pool = [
+      { number: '1', name: 'Cass Adams',  instrument: 'Tuba' },
+      { number: '2', name: 'Ana Zimmer',  instrument: '12 Flute' },
+      { number: '3', name: 'Blake Young', instrument: 'Trumpet' },
+      { number: '4', name: 'Dana Baker',  instrument: 'Trumpet' },
+    ];
+    assert.deepStrictEqual(sort(pool), ['Ana Zimmer', 'Dana Baker', 'Blake Young', 'Cass Adams']);
+  });
+  it('groups same-rank instruments by their own name', () => {
+    const pool = [
+      { number: '1', name: 'Ana Adams',  instrument: 'Tenor Sax' },
+      { number: '2', name: 'Blake Cole', instrument: 'Alto Sax' },
+      { number: '3', name: 'Cass Bell',  instrument: 'Tenor Sax' },
+    ];
+    assert.deepStrictEqual(sort(pool), ['Blake Cole', 'Ana Adams', 'Cass Bell']);
+  });
+  it('sends students with no instrument to the end', () => {
+    const pool = [
+      { number: '1', name: 'Ana Adams',  instrument: '' },
+      { number: '2', name: 'Blake Cole', instrument: 'Kazoo' }, // unknown, but recorded
+      { number: '3', name: 'Cass Bell',  instrument: 'Tuba' },
+    ];
+    assert.deepStrictEqual(sort(pool), ['Cass Bell', 'Blake Cole', 'Ana Adams']);
+  });
+  it('falls back to full name then number for identical last names', () => {
+    const pool = [
+      { number: '9', name: 'Sam Bell', instrument: 'Tuba' },
+      { number: '2', name: 'Sam Bell', instrument: 'Tuba' },
+      { number: '5', name: 'Ana Bell', instrument: 'Tuba' },
+    ];
+    assert.deepStrictEqual(
+      [...pool].sort(L.compareStudentsByInstrumentThenLastName).map(s => s.number),
+      ['5', '2', '9']);
+  });
+});
+
 // ── Seasons ───────────────────────────────────────────────────────────────────
 
 describe('suggestSeasonLabel', () => {
