@@ -3550,15 +3550,18 @@ html, body {
 .drill-info-pop {
   position:absolute; top:6px; left:6px; right:6px; z-index:6; max-width:360px;
   background:rgba(18,26,18,.96); color:#fff; border:1px solid rgba(255,255,255,.18);
-  border-radius:var(--r-sm); padding:8px 56px 9px 11px; box-shadow:0 4px 16px rgba(0,0,0,.45);
+  border-radius:var(--r-sm); padding:8px 11px 9px 11px; box-shadow:0 4px 16px rgba(0,0,0,.45);
   pointer-events:auto;
 }
-.drill-info-pop-top { position:absolute; top:6px; right:6px; display:flex; gap:5px; }
+/* Only the header lines clear the ⋯/✕ cluster — keeping that gutter off the
+   panel itself leaves the student rows below the full width for their marks. */
+.drill-info-pop-name, .drill-info-pop-meta, .drill-info-pop-coord { padding-right:88px; }
+.drill-info-pop-top { position:absolute; top:6px; right:6px; display:flex; gap:6px; }
 .drill-info-pop-x, .drill-info-pop-edit {
-  width:22px; height:22px; border:none;
-  background:rgba(255,255,255,.14); color:#fff; border-radius:50%; cursor:pointer; font-size:.7rem; line-height:1;
+  width:38px; height:38px; border:none;
+  background:rgba(255,255,255,.14); color:#fff; border-radius:50%; cursor:pointer; font-size:1.05rem; line-height:1;
 }
-.drill-info-pop-edit { font-size:.9rem; }
+.drill-info-pop-edit { font-size:1.35rem; }
 .drill-info-pop-edit.is-on { background:#ffd23f; color:#0f172a; }
 .drill-info-pop-name { font-weight:700; font-size:.92rem; }
 .drill-info-pop-meta { font-size:.72rem; color:#c8d4c8; margin-top:1px; }
