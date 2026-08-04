@@ -311,7 +311,11 @@ function _deleteStudent(num) {
 
 // ── Modals: Rehearsals ────────────────────────────────────────────────────────
 
+// Starting a rehearsal is director-only: staff record attendance and marks
+// within a rehearsal a director scheduled (firestore.rules blocks the create,
+// these guards keep the client honest if a stale view still offers the button).
 function showNewRehearsalModal() {
+  if (!STATE.isAdmin) { showToast('Only directors can start a rehearsal.'); return; }
   openModal(`
     <div class="modal-title">New Rehearsal</div>
     <div class="form-group">
@@ -332,6 +336,7 @@ function showNewRehearsalModal() {
 }
 
 function saveNewRehearsal() {
+  if (!STATE.isAdmin) { showToast('Only directors can start a rehearsal.'); return; }
   const date = document.getElementById('m-date').value;
   if (!date) { showToast('Date is required'); return; }
   const id = genId();

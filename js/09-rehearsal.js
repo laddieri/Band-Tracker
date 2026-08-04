@@ -21,12 +21,16 @@ function viewRehearsals() {
       <div class="empty-state">
         <div class="empty-icon">📋</div>
         <p>No rehearsals yet.</p>
-        <p>Tap <strong>+</strong> above or use the Home tab.</p>
+        <p>${STATE.isAdmin
+              ? 'Tap <strong>+</strong> above or use the Home tab.'
+              : 'A director needs to start one before you can record.'}</p>
       </div>`;
   }
 
   const hasOpen = rehearsals.some(r => !r.ended);
-  const startBtn = canRecord() && !hasOpen
+  // Starting a rehearsal is director-only (staff record within one — see
+  // firestore.rules and the staff section in docs/DATA_MODEL.md).
+  const startBtn = STATE.isAdmin && !hasOpen
     ? `<button class="start-rehearsal-btn" onclick="showNewRehearsalModal()">+ Start a New Rehearsal</button>`
     : '';
 

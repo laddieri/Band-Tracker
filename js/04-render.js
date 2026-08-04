@@ -185,10 +185,11 @@ function render() {
     case 'rehearsals': {
       // Hide header + when the in-content "Start a New Rehearsal" button is visible
       // (admin, has rehearsals, none currently open). Keep it when list is empty or a rehearsal is open.
+      // Creating a rehearsal is director-only — staff record within one.
       const _hasOpen = STATE.rehearsals.some(r => !r.ended);
       const _hasAny  = STATE.rehearsals.length > 0;
       title.textContent = 'Rehearsals';
-      actions.innerHTML = (canRecord() && (!_hasAny || _hasOpen) ? addBtn('showNewRehearsalModal()') : '') + userBtn();
+      actions.innerHTML = (STATE.isAdmin && (!_hasAny || _hasOpen) ? addBtn('showNewRehearsalModal()') : '') + userBtn();
       main.innerHTML = viewRehearsals();
       break;
     }

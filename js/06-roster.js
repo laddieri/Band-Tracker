@@ -21,16 +21,19 @@ function viewHome() {
                onclick="navigate('rehearsal',{rid:'${esc(todayR.id)}'})">
                Continue Today's Rehearsal →
              </button>`
-        : `<button class="btn btn-full btn-lg" style="background:white;color:var(--primary);margin-bottom:10px"
+        : STATE.isAdmin
+        ? `<button class="btn btn-full btn-lg" style="background:white;color:var(--primary);margin-bottom:10px"
                onclick="startToday()">
                Start Today's Rehearsal
              </button>`
+        : ''
       }
+      ${STATE.isAdmin ? `
       <button class="btn btn-full btn-lg"
         style="background:rgba(255,255,255,.15);color:white;border:2px solid rgba(255,255,255,.4);"
         onclick="showNewRehearsalModal()">
         New Rehearsal for Another Date
-      </button>
+      </button>` : ''}
     </div>
 
     ${recent.length ? `
@@ -69,6 +72,7 @@ function viewHome() {
 }
 
 function startToday() {
+  if (!STATE.isAdmin) { showToast('Only directors can start a rehearsal.'); return; }
   const id = genId();
   const r  = { id, date: today(), label: '', ...(STATE.activeSeason ? { season: STATE.activeSeason } : {}) };
   STATE.rehearsals.unshift(r);

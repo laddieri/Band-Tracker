@@ -140,12 +140,13 @@ service cloud.firestore {
       }
 
       // Rehearsal metadata (dates/labels) is schedule info — safe for members.
-      // Staff can start/edit/end rehearsals (e.g. a sectional they run) but
-      // not delete them.
+      // Scheduling the band is a director call: staff can edit/end/reopen an
+      // existing rehearsal (e.g. a sectional they run) but cannot create one,
+      // and cannot delete one.
       match /rehearsals/{doc} {
         allow read:   if canRead();
         allow write:  if canWrite();
-        allow create, update: if isStaffOf(orgId);
+        allow update: if isStaffOf(orgId);
       }
 
       // A student may read only their own entries. Student clients must query

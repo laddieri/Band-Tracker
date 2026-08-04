@@ -236,9 +236,9 @@ describe('staff role (recording access, no admin control)', () => {
     await assertSucceeds(staff().doc('orgs/a/entries/r1_7').set(
       { rehearsalId: 'r1', studentNumber: '7', attendance: 'late', updatedBy: 'staffA' }, { merge: true }));
   });
-  it('staff can create and update rehearsals but NOT delete them', async () => {
-    await assertSucceeds(staff().doc('orgs/a/rehearsals/r2').set({ date: '2026-06-02', label: 'Percussion sectional' }));
+  it('staff can update rehearsals but NOT create or delete them', async () => {
     await assertSucceeds(staff().doc('orgs/a/rehearsals/r1').set({ ended: true }, { merge: true }));
+    await assertFails(staff().doc('orgs/a/rehearsals/r2').set({ date: '2026-06-02', label: 'Percussion sectional' }));
     await assertFails(staff().doc('orgs/a/rehearsals/r1').delete());
   });
   it('staff can record song results (statuses only)', async () => {
