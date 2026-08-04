@@ -204,6 +204,17 @@ service cloud.firestore {
         allow read:  if canRecord();
         allow write: if canWrite();
       }
+
+      // Spot-assignment history: one doc per show logging who held each field
+      // spot and when ({ name, events:[{label, num, action, at, by}] }), so
+      // directors can see every spot a student has marched. Director-ONLY both
+      // ways — unlike shows, staff can't read it: assignment history is roster
+      // management, not something needed to record marks, and events carry
+      // director uids. Kept when its show is deleted (the history outlives the
+      // production).
+      match /spotHistory/{showId} {
+        allow read, write: if canWrite();
+      }
     }
 
     // ── Membership ────────────────────────────────────────────────────────────

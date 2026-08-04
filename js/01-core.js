@@ -212,6 +212,9 @@ const STATE = {
   // drill only. activeDrillId is the school-wide selected drill (settings/drill).
   drills:                     {},
   activeDrillId:              null,
+  // Director-only spot-assignment history: showId → { name, events } (see
+  // _spotHistoryRecord in js/12-drill.js). Staff/students can't read it.
+  spotHistory:                {},
   // Per-feature student portal visibility (independent of whether the feature is
   // enabled for directors). Default true = visible; false = hidden from portal.
   portalVisible: { attendance: true, marks: true, songs: true, stats: true },
