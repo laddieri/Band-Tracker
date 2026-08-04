@@ -53,7 +53,7 @@ function showStudentSongProgress(num) {
     const status   = entry?.status || 'not_attempted';
     const failNote = status === 'failed' ? (entry?.note || '') : '';
     const when     = (status !== 'not_attempted' && entry?.updatedAt)
-      ? `${status === 'passed' ? 'Passed' : 'Failed'} ${fmtDateTime(entry.updatedAt)}` : '';
+      ? `${status === 'passed' ? 'Passed' : 'Try Again'} ${fmtDateTime(entry.updatedAt)}` : '';
     return `
     <div class="ssp-song-row">
       <div class="ssp-song-info">
@@ -64,8 +64,8 @@ function showStudentSongProgress(num) {
       <div class="ssp-song-btns">
         <button class="ssb ${status === 'passed' ? 'ssb-on-pass' : 'ssb-pass'}"
                 onclick="sspSetSongStatus('${esc(song.id)}','${esc(String(num))}','passed')">✓</button>
-        <button class="ssb ${status === 'failed' ? 'ssb-on-fail' : 'ssb-fail'}"
-                onclick="sspSetSongStatus('${esc(song.id)}','${esc(String(num))}','failed')">✗</button>
+        <button class="ssb ${status === 'failed' ? 'ssb-on-fail' : 'ssb-fail'}" aria-label="Mark try again"
+                onclick="sspSetSongStatus('${esc(song.id)}','${esc(String(num))}','failed')">↻</button>
       </div>
     </div>`;
   };
@@ -143,7 +143,7 @@ function viewSongs() {
       <div class="song-row-right">
         <div class="song-prog-wrap">
           <div class="song-prog-bar"><div class="song-prog-fill" style="width:${pct}%"></div></div>
-          <div class="song-prog-lbl">${passed}✓ ${failed > 0 ? `${failed}✗ ` : ''}/ ${total}</div>
+          <div class="song-prog-lbl">${passed}✓ ${failed > 0 ? `${failed}↻ ` : ''}/ ${total}</div>
         </div>
       </div>
     </div>`;
@@ -254,7 +254,7 @@ function viewSong(sid) {
 
       <div class="song-stats-row">
         <div class="song-stat song-stat-pass"><div class="song-stat-val">${passed}</div><div class="song-stat-lbl">Passed</div></div>
-        <div class="song-stat song-stat-fail"><div class="song-stat-val">${failed}</div><div class="song-stat-lbl">Failed</div></div>
+        <div class="song-stat song-stat-fail"><div class="song-stat-val">${failed}</div><div class="song-stat-lbl">Try Again</div></div>
         <div class="song-stat song-stat-na">  <div class="song-stat-val">${notAtt}</div><div class="song-stat-lbl">Not Attempted</div></div>
       </div>
 
@@ -301,7 +301,7 @@ function songStudentRows(sid, students, statuses) {
         <div class="song-stu-info">
           <span class="song-stu-name song-stu-name-link" onclick="navigate('student',{num:'${esc(s.number)}'});event.stopPropagation()">${esc(s.name || `#${s.number}`)}</span>
           <span class="song-stu-status ${status === 'passed' ? 'sss-pass' : status === 'failed' ? 'sss-fail' : 'sss-na'}">
-            ${status === 'passed' ? '✓ Passed' : status === 'failed' ? '✗ Failed' : '— Not Attempted'}
+            ${status === 'passed' ? '✓ Passed' : status === 'failed' ? '↻ Try Again' : '— Not Attempted'}
           </span>
           ${meta ? `<span class="song-stu-meta">${esc(meta)}</span>` : ''}
           ${failNote ? `<span class="song-stu-fail-note">${esc(failNote)}</span>` : ''}
@@ -309,8 +309,8 @@ function songStudentRows(sid, students, statuses) {
         <div class="song-stu-btns">
           <button class="ssb ${status === 'passed' ? 'ssb-on-pass' : 'ssb-pass'}" aria-label="Mark passed"
                   onclick="event.stopPropagation();setSongStatus('${esc(sid)}','${esc(s.number)}','passed')">✓</button>
-          <button class="ssb ${status === 'failed' ? 'ssb-on-fail' : 'ssb-fail'}" aria-label="Mark failed"
-                  onclick="event.stopPropagation();setSongStatus('${esc(sid)}','${esc(s.number)}','failed')">✗</button>
+          <button class="ssb ${status === 'failed' ? 'ssb-on-fail' : 'ssb-fail'}" aria-label="Mark try again"
+                  onclick="event.stopPropagation();setSongStatus('${esc(sid)}','${esc(s.number)}','failed')">↻</button>
         </div>
       </div>`;
   }).join('');
@@ -326,7 +326,7 @@ function songStudentRows(sid, students, statuses) {
 function _songGroupBarInner(sid) {
   const nums = [..._songGroup].filter(n => STATE.students[n]);
   if (!nums.length)
-    return `<div class="song-group-hint">Tap students below to build a group, then pass or fail everyone at once.</div>`;
+    return `<div class="song-group-hint">Tap students below to build a group, then pass everyone or mark them all to try again.</div>`;
   const chips = nums
     .map(n => ({ n, name: STATE.students[n]?.name || `#${n}` }))
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -339,7 +339,7 @@ function _songGroupBarInner(sid) {
     <div class="song-group-chips">${chips}</div>
     <div class="song-group-actions">
       <button class="btn btn-secondary btn-sm" onclick="songGroupClear('${esc(sid)}')">Clear</button>
-      <button class="btn btn-mistake btn-sm"   onclick="songGroupFailAll('${esc(sid)}')">✗ Fail All</button>
+      <button class="btn btn-mistake btn-sm"   onclick="songGroupFailAll('${esc(sid)}')">↻ Try Again All</button>
       <button class="btn btn-success btn-sm"   onclick="songGroupPassAll('${esc(sid)}')">✓ Pass All</button>
     </div>`;
 }
@@ -391,7 +391,7 @@ function songGroupFailAll(sid) {
   if (!song || !nums.length) return;
   const names = nums.map(n => STATE.students[n]?.name || `#${n}`).sort((a, b) => a.localeCompare(b));
   openModal(`
-    <div class="modal-title">✗ Fail ${nums.length} student${nums.length !== 1 ? 's' : ''}
+    <div class="modal-title">↻ Try Again — ${nums.length} student${nums.length !== 1 ? 's' : ''}
       <div style="font-size:0.78rem;font-weight:400;color:var(--text-muted);margin-top:2px">${names.map(esc).join(', ')}</div>
     </div>
     <div class="form-label" style="margin-bottom:6px">
@@ -406,7 +406,7 @@ function songGroupFailAll(sid) {
     </p>
     <div class="modal-actions" style="margin-top:12px">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-mistake"   onclick="confirmSongGroupFail('${esc(sid)}')">✗ Fail All</button>
+      <button class="btn btn-mistake"   onclick="confirmSongGroupFail('${esc(sid)}')">↻ Try Again All</button>
     </div>
   `);
   setTimeout(() => document.getElementById('group-fail-note-input')?.focus(), 60);
@@ -445,7 +445,7 @@ function _applyGroupSongStatus(sid, nums, status, note = '') {
 
   _songGroup = new Set();
   _refreshSongView(sid);
-  showToast(`${valid.length} student${valid.length !== 1 ? 's' : ''} marked ${status === 'passed' ? 'passed' : 'failed'}.`);
+  showToast(`${valid.length} student${valid.length !== 1 ? 's' : ''} marked ${status === 'passed' ? 'passed' : 'try again'}.`);
 }
 
 function toggleSongHidePassed(sid) {
@@ -494,8 +494,8 @@ function setSongStatus(sid, num, newStatus) {
     const s = STATE.students[String(num)];
     const name = s?.name || `#${num}`;
     showConfirmModal(
-      `Remove failed mark for ${name}?`,
-      `This will unmark "${esc(song.title)}" as failed and reset it to Not Attempted.`,
+      `Remove try-again mark for ${name}?`,
+      `This will clear the try-again mark on "${esc(song.title)}" and reset it to Not Attempted.`,
       () => _applySongStatus(sid, num, song, status),
       'Remove', 'btn-danger'
     );
@@ -516,7 +516,7 @@ function showSongFailNoteModal(sid, num, song) {
   const name = s?.name || `#${num}`;
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">✗ Failed
+    <div class="modal-title">↻ Try Again
       <div style="font-size:0.78rem;font-weight:400;color:var(--text-muted);margin-top:2px">${esc(name)}</div>
     </div>
     <div class="form-label" style="margin-bottom:6px">
@@ -528,7 +528,7 @@ function showSongFailNoteModal(sid, num, song) {
               maxlength="200" style="resize:none"></textarea>
     <div class="modal-actions" style="margin-top:12px">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-mistake"   onclick="confirmSongFail('${esc(sid)}','${esc(String(num))}')">✗ Fail</button>
+      <button class="btn btn-mistake"   onclick="confirmSongFail('${esc(sid)}','${esc(String(num))}')">↻ Try Again</button>
     </div>
   `);
   setTimeout(() => document.getElementById('fail-note-input')?.focus(), 60);
@@ -551,7 +551,7 @@ function confirmSongFail(sid, num) {
       </p>
       <div class="modal-actions">
         <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-mistake"   onclick="_applyPendingSongFail()">✗ Fail &amp; Share</button>
+        <button class="btn btn-mistake"   onclick="_applyPendingSongFail()">↻ Try Again &amp; Share</button>
       </div>
     `);
   } else {
@@ -1092,7 +1092,7 @@ function viewStudentPortal(previewMode = false) {
               const status   = entry?.status || 'not_attempted';
               const failNote = status === 'failed' ? (entry?.note || '') : '';
               const when     = (status !== 'not_attempted' && entry?.updatedAt)
-                ? `${status === 'passed' ? 'Passed' : 'Failed'} ${fmtDateTime(entry.updatedAt)}` : '';
+                ? `${status === 'passed' ? 'Passed' : 'Try Again'} ${fmtDateTime(entry.updatedAt)}` : '';
               const overdue  = song.dueDate && song.dueDate < today() && status !== 'passed';
               return `
               <div class="portal-song-row">
@@ -1103,7 +1103,7 @@ function viewStudentPortal(previewMode = false) {
                   ${failNote ? `<div class="portal-song-fail-note">📝 ${esc(failNote)}</div>` : ''}
                 </div>
                 <span class="portal-song-status ${status === 'passed' ? 'pss-pass' : status === 'failed' ? 'pss-fail' : 'pss-na'}">
-                  ${status === 'passed' ? '✓ Passed' : status === 'failed' ? '✗ Failed' : '— Not Attempted'}
+                  ${status === 'passed' ? '✓ Passed' : status === 'failed' ? '↻ Try Again' : '— Not Attempted'}
                 </span>
               </div>`;
             };

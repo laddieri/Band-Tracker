@@ -628,7 +628,7 @@ function showBrandSettingsModal() {
       ${[
         ['attendance', 'Attendance', 'Track who’s absent, late, or present'],
         ['marks',      'Marks / Student Feedback', 'Log positive and mistake marks during rehearsals'],
-        ['songs',      'Songs', 'Music memorization with pass/fail tracking'],
+        ['songs',      'Songs', 'Music memorization with pass / try-again tracking'],
         ['stats',      'Stats / Leaderboard', 'Rankings built from marks (needs Marks on)'],
         ['drill',      'Drill / Field Chart', 'View Pyware field charts (directors & staff; students never see them)', true],
       ].map(([key, label, desc, adminOnly]) => {
@@ -1010,7 +1010,7 @@ function showNewSeasonModal() {
         style="margin-top:3px;width:18px;height:18px;flex-shrink:0">
       <span style="font-size:.88rem">
         <span style="font-weight:600">Reset song progress</span>
-        <span style="display:block;font-size:.75rem;color:var(--text-muted)">Permanently clears every student's pass/fail results (keeps the song list)</span>
+        <span style="display:block;font-size:.75rem;color:var(--text-muted)">Permanently clears every student's song results (keeps the song list)</span>
       </span>
     </label>
     <label style="display:flex;align-items:flex-start;gap:10px;padding:6px 0 12px;cursor:pointer">
