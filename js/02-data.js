@@ -97,7 +97,7 @@ async function startListeners() {
       STATE.loading = false;
       render();
     } else if (!STATE.loading) {
-      render();
+      renderFromData();
     }
   }
 
@@ -165,7 +165,7 @@ async function startListeners() {
     ...(STATE.isAdmin ? [
       db.collection('orgs').doc(STATE.orgId).onSnapshot(doc => {
         STATE.org = doc.exists ? { id: doc.id, ...doc.data() } : null;
-        if (!STATE.loading) render();
+        if (!STATE.loading) renderFromData();
       }),
     ] : []),
 
@@ -224,7 +224,7 @@ async function startListeners() {
           { merge: true }
         )).catch(e => console.error('drill data migration failed:', e));
       }
-      if (!STATE.loading) render();
+      if (!STATE.loading) renderFromData();
       schedulePublishPublicStats();
     }, err => {
       console.error('settings/presets listener error:', err);
@@ -276,7 +276,7 @@ async function startListeners() {
         snap.docs.forEach(d => { STATE.drills[d.id] = { id: d.id, ...d.data() }; });
         _migrateDrillShows(); // director-only: group ungrouped drills into shows
         _drillSyncActive();
-        if (!STATE.loading) render();
+        if (!STATE.loading) renderFromData();
       }, err => console.error('drills listener error:', err)),
 
       // Shows group drills that share one spot map (see js/12-drill.js). Directors
@@ -286,7 +286,7 @@ async function startListeners() {
         STATE.shows = {};
         snap.docs.forEach(d => { STATE.shows[d.id] = { id: d.id, ...d.data() }; });
         _syncStudentSpotsMirror(); // director-only: publish spots onto student docs
-        if (!STATE.loading) render();
+        if (!STATE.loading) renderFromData();
       }, err => console.error('shows listener error:', err)),
 
       // School-wide active-drill pointer. Also performs the one-time migration of
@@ -296,7 +296,7 @@ async function startListeners() {
         if (STATE.isAdmin && d.drillSections?.length && d.drillPages?.length) { _migrateLegacyDrill(d); return; }
         STATE.activeDrillId = d.activeId || null;
         _drillSyncActive();
-        if (!STATE.loading) render();
+        if (!STATE.loading) renderFromData();
       }, err => console.error('active-drill listener error:', err)),
     ] : []),
 
@@ -309,7 +309,7 @@ async function startListeners() {
       .onSnapshot(snap => {
         STATE.dirNames = {};
         snap.docs.forEach(d => { STATE.dirNames[d.id] = d.data().email || ''; });
-        if (!STATE.loading) render();
+        if (!STATE.loading) renderFromData();
       }, err => console.error('directors listener error:', err))
   ];
 
@@ -392,7 +392,7 @@ function studentListeners() {
       STATE.loading = false;
       render();
     } else if (!STATE.loading) {
-      render();
+      renderFromData();
     }
   }
 
@@ -596,7 +596,10 @@ async function _recordAuthLoss() {
     } catch {}
   };
   _persist();
-  if (!STATE.user) render(); // show the note immediately, before the slow probes
+  // renderFromData, not render: this fires while the login screen is up, and a
+  // full render mid-typing would rebuild the form (closing the keyboard and
+  // re-firing the wizard's autofocus).
+  if (!STATE.user) renderFromData(); // show the note immediately, before the slow probes
 
   // Enrich with the slower probes, each capped by a timeout so a hang turns
   // into data ("timeout"/"FAILED:timeout") instead of losing the whole entry.
@@ -616,7 +619,7 @@ async function _recordAuthLoss() {
   } else { diag.appCheck = 'off'; }
   _persist();
   console.warn('Unexpected sign-out diagnostics:', diag);
-  if (!STATE.user) render();
+  if (!STATE.user) renderFromData();
 }
 
 auth.onAuthStateChanged(user => {
