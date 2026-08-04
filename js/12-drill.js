@@ -1584,8 +1584,8 @@ function _drillInfoPanelHtml() {
       const ent = (STATE.entries[reh.id] || {})[num] || {};
       const pos = ent.positives || 0, mis = ent.mistakes || 0;
       marks = `
-        <button class="btn drill-mark-btn drill-mark-pos" onclick="drillQuickMark('${esc(num)}','positive')" title="Positive">✓${pos ? ` <span class="drill-mark-ct">${pos}</span>` : ''}</button>
-        <button class="btn drill-mark-btn drill-mark-neg" onclick="drillQuickMark('${esc(num)}','mistake')" title="Mistake">✗${mis ? ` <span class="drill-mark-ct">${mis}</span>` : ''}</button>`;
+        <button class="btn drill-mark-btn drill-mark-pos" onclick="drillQuickMark('${esc(num)}','positive')" title="Positive" aria-label="Add positive mark for ${esc(name)}">✓${pos ? ` <span class="drill-mark-ct">${pos}</span>` : ''}</button>
+        <button class="btn drill-mark-btn drill-mark-neg" onclick="drillQuickMark('${esc(num)}','mistake')" title="Mistake" aria-label="Add mistake for ${esc(name)}">✗${mis ? ` <span class="drill-mark-ct">${mis}</span>` : ''}</button>`;
     }
     return `
       <div class="drill-info-stu">
