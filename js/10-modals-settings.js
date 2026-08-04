@@ -311,7 +311,11 @@ function _deleteStudent(num) {
 
 // ── Modals: Rehearsals ────────────────────────────────────────────────────────
 
+// Starting a rehearsal is director-only: staff record attendance and marks
+// within a rehearsal a director scheduled (firestore.rules blocks the create,
+// these guards keep the client honest if a stale view still offers the button).
 function showNewRehearsalModal() {
+  if (!STATE.isAdmin) { showToast('Only directors can start a rehearsal.'); return; }
   openModal(`
     <div class="modal-title">New Rehearsal</div>
     <div class="form-group">
@@ -332,6 +336,7 @@ function showNewRehearsalModal() {
 }
 
 function saveNewRehearsal() {
+  if (!STATE.isAdmin) { showToast('Only directors can start a rehearsal.'); return; }
   const date = document.getElementById('m-date').value;
   if (!date) { showToast('Date is required'); return; }
   const id = genId();
@@ -549,7 +554,10 @@ function saveRehearsalEdit(rid) {
   render();
 }
 
+// Ending a rehearsal, like starting or reopening one, is director-only — the
+// rules reject any staff update that moves the `ended` flag.
 function confirmEndRehearsal(rid) {
+  if (!STATE.isAdmin) { showToast('Only directors can end a rehearsal.'); return; }
   const r = DB.getRehearsals().find(r => r.id === rid);
   if (!r) return;
   const endMarks = _getAutoMarks().filter(m => m.when === 'end');
@@ -574,6 +582,7 @@ function confirmEndRehearsal(rid) {
 
 async function endRehearsal(rid) {
   closeModal();
+  if (!STATE.isAdmin) { showToast('Only directors can end a rehearsal.'); return; }
   const r = STATE.rehearsals.find(r => r.id === rid);
   if (!r) return;
   const entries  = STATE.entries[rid] || {};
@@ -620,8 +629,11 @@ async function endRehearsal(rid) {
   render();
 }
 
+// Reopening an ended rehearsal is director-only, like starting one — the rules
+// reject a staff update that flips `ended` back to false.
 function reopenRehearsal(rid) {
   closeModal();
+  if (!STATE.isAdmin) { showToast('Only directors can reopen a rehearsal.'); return; }
   const r = STATE.rehearsals.find(r => r.id === rid);
   if (!r) return;
   const currentActive = getActiveRehearsal();

@@ -21,12 +21,16 @@ function viewRehearsals() {
       <div class="empty-state">
         <div class="empty-icon">📋</div>
         <p>No rehearsals yet.</p>
-        <p>Tap <strong>+</strong> above or use the Home tab.</p>
+        <p>${STATE.isAdmin
+              ? 'Tap <strong>+</strong> above or use the Home tab.'
+              : 'A director needs to start one before you can record.'}</p>
       </div>`;
   }
 
   const hasOpen = rehearsals.some(r => !r.ended);
-  const startBtn = canRecord() && !hasOpen
+  // Starting a rehearsal is director-only (staff record within one — see
+  // firestore.rules and the staff section in docs/DATA_MODEL.md).
+  const startBtn = STATE.isAdmin && !hasOpen
     ? `<button class="start-rehearsal-btn" onclick="showNewRehearsalModal()">+ Start a New Rehearsal</button>`
     : '';
 
@@ -89,15 +93,15 @@ function _rhCardHtml(r) {
         const stateCls = ended ? 'rh-card-ended' : 'rh-card-open';
         const activeR  = getActiveRehearsal();
         const isActive = !ended && activeR && activeR.id === r.id;
-        // Staff can edit/plan/reopen a rehearsal (rules allow update) but not
-        // delete one — deletion is director-only, so hide that item for staff.
+        // Staff can edit/plan a rehearsal (rules allow update) but not reopen
+        // or delete one — both are director-only, so hide those items for staff.
         const menuBtn = canRecord() ? `
           <div class="rh-card-menu-wrap">
             <button class="rh-card-menu-btn" onclick="event.stopPropagation();toggleRhMenu('${esc(r.id)}')" aria-label="More options">⋯</button>
             <div class="rh-card-menu-list hidden" id="rh-menu-${esc(r.id)}" onclick="event.stopPropagation()">
               <button class="rh-card-menu-item" onclick="event.stopPropagation();toggleRhMenu('${esc(r.id)}');showRehearsalEditModal('${esc(r.id)}')">Edit Rehearsal</button>
               <button class="rh-card-menu-item" onclick="event.stopPropagation();toggleRhMenu('${esc(r.id)}');showRehearsalPlanModal('${esc(r.id)}')">Rehearsal Plan</button>
-              ${ended ? `<button class="rh-card-menu-item" onclick="event.stopPropagation();toggleRhMenu('${esc(r.id)}');reopenRehearsal('${esc(r.id)}')">Reopen Rehearsal</button>` : ''}
+              ${ended && STATE.isAdmin ? `<button class="rh-card-menu-item" onclick="event.stopPropagation();toggleRhMenu('${esc(r.id)}');reopenRehearsal('${esc(r.id)}')">Reopen Rehearsal</button>` : ''}
               ${STATE.isAdmin ? `<button class="rh-card-menu-item rh-menu-danger" onclick="event.stopPropagation();toggleRhMenu('${esc(r.id)}');confirmDeleteRehearsal('${esc(r.id)}')">Delete Rehearsal</button>` : ''}
             </div>
           </div>` : '';
@@ -138,8 +142,9 @@ function _rhCardHtml(r) {
                   ✏️ Student Feedback
                 </button>` : ''}
               </div>` : ''}
+              ${STATE.isAdmin ? `
               <button class="btn btn-sm btn-danger btn-full" style="margin-top:8px"
-                onclick="confirmEndRehearsal('${esc(r.id)}')">End Rehearsal</button>` : ''}
+                onclick="confirmEndRehearsal('${esc(r.id)}')">End Rehearsal</button>` : ''}` : ''}
             </div>`;
         }
         return `

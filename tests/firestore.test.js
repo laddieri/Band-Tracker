@@ -60,6 +60,7 @@ async function seed() {
     await db.doc('orgs/a/settings/presets').set({ bandName: 'Org A', pseudonymSalt: 's3cret' });
     await db.doc('orgs/a/settings/public').set({ bandName: 'Org A' });
     await db.doc('orgs/a/rehearsals/r1').set({ date: '2026-06-01', label: 'Sectionals' });
+    await db.doc('orgs/a/rehearsals/rEnded').set({ date: '2026-06-03', label: 'Done', ended: true });
     await db.doc('orgs/a/entries/r1_42').set({ rehearsalId: 'r1', studentNumber: '42', attendance: 'present' });
     await db.doc('orgs/a/entries/r1_7').set({ rehearsalId: 'r1', studentNumber: '7', mistakes: 2 });
     await db.doc('orgs/a/songs/s1').set({ title: 'Anthem', statuses: { 7: { status: 'failed', note: 'bars 12-16' } } });
@@ -236,10 +237,21 @@ describe('staff role (recording access, no admin control)', () => {
     await assertSucceeds(staff().doc('orgs/a/entries/r1_7').set(
       { rehearsalId: 'r1', studentNumber: '7', attendance: 'late', updatedBy: 'staffA' }, { merge: true }));
   });
-  it('staff can create and update rehearsals but NOT delete them', async () => {
-    await assertSucceeds(staff().doc('orgs/a/rehearsals/r2').set({ date: '2026-06-02', label: 'Percussion sectional' }));
-    await assertSucceeds(staff().doc('orgs/a/rehearsals/r1').set({ ended: true }, { merge: true }));
+  it('staff can edit a rehearsal but NOT create or delete one', async () => {
+    await assertSucceeds(staff().doc('orgs/a/rehearsals/r1').set({ label: 'Renamed' }, { merge: true }));
+    await assertSucceeds(staff().doc('orgs/a/rehearsals/r1').set({ attendanceSubmitted: true }, { merge: true }));
+    await assertFails(staff().doc('orgs/a/rehearsals/r2').set({ date: '2026-06-02', label: 'Percussion sectional' }));
     await assertFails(staff().doc('orgs/a/rehearsals/r1').delete());
+  });
+  it('staff CANNOT end or reopen a rehearsal', async () => {
+    await assertFails(staff().doc('orgs/a/rehearsals/r1').set({ ended: true }, { merge: true }));
+    await assertFails(staff().doc('orgs/a/rehearsals/rEnded').set({ ended: false }, { merge: true }));
+    // Dropping the flag reopens implicitly — it must not be a way around the rule.
+    await assertFails(staff().doc('orgs/a/rehearsals/rEnded').set({ date: '2026-06-03' }));
+    // Other edits to an ended rehearsal are still fine, and a director may do both.
+    await assertSucceeds(staff().doc('orgs/a/rehearsals/rEnded').set({ label: 'Renamed' }, { merge: true }));
+    await assertSucceeds(director('dirA').doc('orgs/a/rehearsals/r1').set({ ended: true }, { merge: true }));
+    await assertSucceeds(director('dirA').doc('orgs/a/rehearsals/rEnded').set({ ended: false }, { merge: true }));
   });
   it('staff can record song results (statuses only)', async () => {
     await assertSucceeds(staff().doc('orgs/a/songs/s1').get());
