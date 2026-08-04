@@ -2470,6 +2470,81 @@ html, body {
 .ssb-on-pass  { background: var(--success); color: white; border-color: var(--success); }
 .ssb-on-fail  { background: var(--danger);  color: white; border-color: var(--danger); }
 
+/* ── Song group pass-off ─────────────────────────────────────────────────────── */
+
+.song-group-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--surface);
+  border: 1px solid var(--primary);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  margin: 8px 0 4px;
+  box-shadow: var(--shadow-md);
+}
+.song-group-hint {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.song-group-count {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.song-group-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.song-group-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-family: inherit;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: var(--primary-bg);
+  color: var(--primary);
+  border: 1px solid var(--primary);
+  cursor: pointer;
+}
+.song-group-chip-x { font-weight: 800; opacity: .7; }
+.song-group-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.song-stu-groupable { cursor: pointer; }
+.song-stu-in-group  { background: var(--primary-bg); }
+/* Let the highlight reach the card edge instead of stopping at the text */
+.song-stu-groupable { margin: 0 -8px; padding-left: 8px; padding-right: 8px; border-radius: var(--r-sm); }
+.song-group-check {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 800;
+  flex-shrink: 0;
+  border: 2px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+}
+.song-group-check-on {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
 /* ── Student roster page song rows ──────────────────────────────────────────── */
 
 .stu-song-row {
