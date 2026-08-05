@@ -220,6 +220,50 @@ describe('rehearsalScopeLabel', () => {
   });
 });
 
+// ── Rehearsal ordering ────────────────────────────────────────────────────────
+
+describe('compareRehearsalsDesc', () => {
+  const sorted = list => [...list].sort(L.compareRehearsalsDesc).map(r => r.id);
+
+  it('puts the most recent date first', () => {
+    const list = [
+      { id: 'a', date: '2026-03-01' },
+      { id: 'b', date: '2026-03-14' },
+      { id: 'c', date: '2026-02-28' },
+    ];
+    assert.deepStrictEqual(sorted(list), ['b', 'a', 'c']);
+  });
+
+  it('orders same-date rehearsals by start time, latest first', () => {
+    const list = [
+      { id: 'morning', date: '2026-03-01', startedAt: 1_700_000_000_000 },
+      { id: 'evening', date: '2026-03-01', startedAt: 1_700_000_900_000 },
+      { id: 'noon',    date: '2026-03-01', startedAt: 1_700_000_400_000 },
+    ];
+    assert.deepStrictEqual(sorted(list), ['evening', 'noon', 'morning']);
+  });
+
+  it('sorts rehearsals with no startedAt after timed ones on the same date', () => {
+    const list = [
+      { id: 'legacy', date: '2026-03-01' },
+      { id: 'timed',  date: '2026-03-01', startedAt: 1_700_000_000_000 },
+    ];
+    assert.deepStrictEqual(sorted(list), ['timed', 'legacy']);
+  });
+
+  it('falls back to the (time-prefixed) id so the order is stable', () => {
+    const older = 'kzz1abcde', newer = 'kzz2abcde'; // genId(): base36 Date.now() + random
+    const list = [{ id: older, date: '2026-03-01' }, { id: newer, date: '2026-03-01' }];
+    assert.deepStrictEqual(sorted(list), [newer, older]);
+    assert.strictEqual(L.compareRehearsalsDesc(list[0], list[0]), 0);
+  });
+
+  it('tolerates missing dates', () => {
+    const list = [{ id: 'a' }, { id: 'b', date: '2026-03-01' }];
+    assert.deepStrictEqual(sorted(list), ['b', 'a']);
+  });
+});
+
 // ── Memorization exclusions ───────────────────────────────────────────────────
 
 describe('isMemorizationExcluded', () => {

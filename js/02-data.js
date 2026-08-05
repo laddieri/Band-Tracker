@@ -121,7 +121,7 @@ async function startListeners() {
         if (!snap.docChanges().length && !STATE.loading) return; // metadata-only
         STATE.rehearsals = snap.docs
           .map(d => ({ ...d.data(), id: d.id }))
-          .sort((a, b) => b.date.localeCompare(a.date));
+          .sort(compareRehearsalsDesc);
         tick('rehearsals');
         schedulePublishPublicStats();
       }),
@@ -425,7 +425,7 @@ function studentListeners() {
       rehQ.onSnapshot(snap => {
         STATE.rehearsals = snap.docs
           .map(d => ({ ...d.data(), id: d.id }))
-          .sort((a, b) => b.date.localeCompare(a.date));
+          .sort(compareRehearsalsDesc);
         tick('rehearsals');
       }, err => {
         console.error('rehearsals listener error:', err);

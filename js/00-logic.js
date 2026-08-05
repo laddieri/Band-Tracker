@@ -73,6 +73,24 @@ function rehearsalScopeLabel(scope) {
   return parts.join(', ');
 }
 
+// ── Rehearsal ordering ────────────────────────────────────────────────────────
+
+// Newest-first order for every rehearsal list: by date, then — for rehearsals
+// sharing a date — by the time the rehearsal was started (`startedAt`, epoch
+// ms, stamped at creation), then by id so the order is stable. Rehearsals
+// created before `startedAt` existed fall back to the id, which genId() builds
+// from a base36 `Date.now()` prefix, so their relative order still tracks
+// creation time. Use this everywhere rehearsals are sorted (the Firestore
+// listeners, the local optimistic insert, the list view).
+function compareRehearsalsDesc(a, b) {
+  const byDate = String(b?.date || '').localeCompare(String(a?.date || ''));
+  if (byDate) return byDate;
+  const ta = Number(a?.startedAt) || 0;
+  const tb = Number(b?.startedAt) || 0;
+  if (ta !== tb) return tb - ta;
+  return String(b?.id || '').localeCompare(String(a?.id || ''));
+}
+
 // ── Memorization exclusions ───────────────────────────────────────────────────
 
 // Whether a student is excluded from song memorization. `exclusions` is a flat
@@ -1102,7 +1120,7 @@ function _pyware3daPageNote(u8, gapStart, gapEnd, N) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     FAKE_ADJECTIVES, FAKE_ANIMALS, _strHash, pseudonymFor,
-    rehearsalIncludesStudent, rehearsalScopeLabel,
+    rehearsalIncludesStudent, rehearsalScopeLabel, compareRehearsalsDesc,
     isMemorizationExcluded,
     lbWeights, scoreStudentsCore, buildPublicStats,
     checkAutoMarkCondition, computeAutoMarkEvents,

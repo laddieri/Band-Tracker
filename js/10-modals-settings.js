@@ -340,12 +340,15 @@ function saveNewRehearsal() {
   const date = document.getElementById('m-date').value;
   if (!date) { showToast('Date is required'); return; }
   const id = genId();
+  // `startedAt` (epoch ms) is the wall-clock time the rehearsal was started —
+  // shown on the rehearsal card and used to order same-day rehearsals.
   const r  = { id, date, label: document.getElementById('m-label').value.trim(),
+               startedAt: Date.now(),
                ...(STATE.activeSeason ? { season: STATE.activeSeason } : {}) };
   const scope = _readRehearsalScope();
   if (scope) r.scope = scope;
   STATE.rehearsals.unshift(r);
-  STATE.rehearsals.sort((a,b) => b.date.localeCompare(a.date));
+  STATE.rehearsals.sort(compareRehearsalsDesc);
   orgCol('rehearsals').doc(id).set(r);
   closeModal();
   _activeRid = id;

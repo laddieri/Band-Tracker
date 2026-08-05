@@ -15,7 +15,7 @@ function rehearsalStudents(rOrId) {
 // ── View: Rehearsals List ─────────────────────────────────────────────────────
 
 function viewRehearsals() {
-  const rehearsals = [...DB.getRehearsals()].sort((a,b)=>b.date.localeCompare(a.date));
+  const rehearsals = [...DB.getRehearsals()].sort(compareRehearsalsDesc);
   if (!rehearsals.length) {
     return `
       <div class="empty-state">
@@ -93,6 +93,10 @@ function _rhCardHtml(r) {
         const stateCls = ended ? 'rh-card-ended' : 'rh-card-open';
         const activeR  = getActiveRehearsal();
         const isActive = !ended && activeR && activeR.id === r.id;
+        // Rehearsals started before `startedAt` was stamped simply show no time.
+        const startedAt = r.startedAt ? fmtTime(r.startedAt) : '';
+        const timeLine  = startedAt
+          ? `<div class="rh-card-time">🕒 Started ${esc(startedAt)}</div>` : '';
         // Staff can edit/plan a rehearsal (rules allow update) but not reopen
         // or delete one — both are director-only, so hide those items for staff.
         const menuBtn = canRecord() ? `
@@ -111,6 +115,7 @@ function _rhCardHtml(r) {
               <div class="flex items-center justify-between">
                 <div>
                   <div class="font-bold">${fmtDate(r.date)}</div>
+                  ${timeLine}
                   ${r.label ? `<div class="text-muted text-sm mt-4">${esc(r.label)}</div>` : ''}
                   <div class="rh-status-row">
                     <span class="rh-badge rh-badge-open">Open</span>
@@ -152,6 +157,7 @@ function _rhCardHtml(r) {
             <div class="flex items-center justify-between">
               <div>
                 <div class="font-bold">${fmtDate(r.date)}</div>
+                ${timeLine}
                 ${r.label ? `<div class="text-muted text-sm mt-4">${esc(r.label)}</div>` : ''}
                 <div class="rh-status-row">
                   <span class="rh-badge rh-badge-ended">Ended</span>
