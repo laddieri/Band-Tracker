@@ -267,6 +267,7 @@ async function startListeners() {
       STATE.songs = snap.docs
         .map(d => ({ ...d.data(), id: d.id }))
         .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
+      _overlaySongStatusBuf(); // marks still coalescing locally (js/07-songs-portal.js)
       tick('songs');
       schedulePublishPublicStats();
     }, err => {

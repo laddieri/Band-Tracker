@@ -418,9 +418,10 @@ function confirmSongGroupFail(sid) {
   _applyGroupSongStatus(sid, [..._songGroup], 'failed', note);
 }
 
-// Batch version of _applySongStatus: one merged write to the song doc plus a
-// batched write of every student's songStatuses mirror (songs are
-// director-only, so the portal reads results from the student's own doc —
+// Batch version of _applySongStatus: every selected student lands in the
+// write coalescer below, so the whole group flushes as one merged song-doc
+// write plus one batched write of the students' songStatuses mirrors (songs
+// are director-only, so the portal reads results from the student's own doc —
 // keep both in sync, same as the single-student path).
 function _applyGroupSongStatus(sid, nums, status, note = '') {
   const song = STATE.songs.find(s => s.id === sid);
@@ -430,18 +431,11 @@ function _applyGroupSongStatus(sid, nums, status, note = '') {
   if (!valid.length) return;
 
   const now = Date.now();
-  const statusMap = {};
-  const batch = db.batch();
   valid.forEach(n => {
-    const entry = { status, note: note || '', updatedAt: now, updatedBy: STATE.user?.email || '' };
+    const entry = { status, note: note || '', updatedAt: now, updatedBy: STATE.user?.uid || '' };
     song.statuses[n] = entry;
-    statusMap[n] = entry;
-    batch.set(orgCol('students').doc(n), {
-      songStatuses: { [sid]: { status, note: note || '', updatedAt: now } }
-    }, { merge: true });
+    _bufferSongStatus(sid, n, entry);
   });
-  orgCol('songs').doc(sid).set({ statuses: statusMap }, { merge: true });
-  batch.commit().catch(() => {});
 
   _songGroup = new Set();
   _refreshSongView(sid);
@@ -571,22 +565,10 @@ function _applyPendingSongFail() {
 function _applySongStatus(sid, num, song, status, note = '') {
   if (status === 'not_attempted') {
     delete song.statuses[String(num)];
-    orgCol('songs').doc(sid).update({
-      [`statuses.${num}`]: firebase.firestore.FieldValue.delete()
-    }).catch(() => {
-      orgCol('songs').doc(sid).set({ statuses: song.statuses }, { merge: false });
-    });
-    // Keep the student's own mirror in sync — songs are director-only, so the
-    // portal reads results from songStatuses on the student's own doc.
-    orgCol('students').doc(String(num)).update({
-      [`songStatuses.${sid}`]: firebase.firestore.FieldValue.delete()
-    }).catch(() => {});
+    _bufferSongStatus(sid, num, null);
   } else {
-    song.statuses[String(num)] = { status, note: note || '', updatedAt: Date.now(), updatedBy: STATE.user?.email || '' };
-    orgCol('songs').doc(sid).set({ statuses: { [String(num)]: song.statuses[String(num)] } }, { merge: true });
-    orgCol('students').doc(String(num)).set({
-      songStatuses: { [sid]: { status, note: note || '', updatedAt: Date.now() } }
-    }, { merge: true }).catch(() => {});
+    song.statuses[String(num)] = { status, note: note || '', updatedAt: Date.now(), updatedBy: STATE.user?.uid || '' };
+    _bufferSongStatus(sid, num, song.statuses[String(num)]);
   }
 
   const listEl = document.getElementById('song-student-list');
@@ -606,6 +588,88 @@ function _applySongStatus(sid, num, song, status, note = '') {
     showStudentSongProgress(_sspContext);
   }
 }
+
+// ── Coalesced song-status writes ──────────────────────────────────────────────
+// All of a song's results live in ONE doc, and Firestore sustains only about
+// one write per second per doc — several people marking students one tap at a
+// time used to issue a write per tap, contending on that doc until everyone's
+// queue backed up (and burning daily write quota). Taps update STATE and the
+// screen immediately but the writes land here, and a short window later the
+// buffer flushes as one merged song-doc write per song plus one batched
+// mirror write covering every buffered student. A `null` entry clears the
+// mark. Clears go through set(…, {merge:true}) + FieldValue.delete() so a
+// missing doc can't reject the write — the old update() fallback rewrote the
+// whole statuses map from this client's possibly stale copy, which could
+// erase other recorders' concurrent marks.
+
+let _songStatusBuf   = {};   // sid → { studentNumber → entry | null }
+let _songFlushTimer  = null;
+const _SONG_FLUSH_MS = 2000;
+
+function _bufferSongStatus(sid, num, entry) {
+  (_songStatusBuf[sid] = _songStatusBuf[sid] || {})[String(num)] = entry;
+  // Buffered taps count as unsaved work so the header "Saving…" pill stays
+  // honest (see _notePendingWrites in js/02-data.js).
+  _notePendingWrites('songStatusBuf', true);
+  // Fixed-interval, not restarted per tap — continuous marking must not
+  // starve the flush.
+  if (!_songFlushTimer) _songFlushTimer = setTimeout(_flushSongStatusWrites, _SONG_FLUSH_MS);
+}
+
+function _flushSongStatusWrites() {
+  clearTimeout(_songFlushTimer);
+  _songFlushTimer = null;
+  const buf = _songStatusBuf;
+  _songStatusBuf = {};
+  _notePendingWrites('songStatusBuf', false);
+  const sids = Object.keys(buf);
+  if (!sids.length) return;
+
+  const gone = () => firebase.firestore.FieldValue.delete();
+  let batch = db.batch(), ops = 0;
+  const commit = () => { if (ops) { batch.commit(); batch = db.batch(); ops = 0; } };
+  sids.forEach(sid => {
+    const statuses = {};
+    Object.keys(buf[sid]).forEach(num => {
+      const e = buf[sid][num];
+      statuses[num] = e || gone();
+      // Mirror status/note/updatedAt only — the mirror is student-readable,
+      // so no updatedBy there.
+      batch.set(orgCol('students').doc(num), {
+        songStatuses: { [sid]: e ? { status: e.status, note: e.note, updatedAt: e.updatedAt } : gone() }
+      }, { merge: true });
+      if (++ops >= 400) commit(); // stay clear of the 500-op batch cap
+    });
+    orgCol('songs').doc(sid).set({ statuses }, { merge: true });
+  });
+  commit();
+  // No .catch on any write above: rejections surface through the global
+  // unhandledrejection toast (js/13-boot.js).
+}
+
+// Between a tap and its flush, a songs-listener snapshot rebuilds STATE.songs
+// without the buffered marks; the listener calls this to lay them back over
+// so the screen never shows a mark un-happening. Once flushed, the SDK's own
+// latency compensation covers the gap instead.
+function _overlaySongStatusBuf() {
+  Object.keys(_songStatusBuf).forEach(sid => {
+    const song = STATE.songs.find(s => s.id === sid);
+    if (!song) return;
+    if (!song.statuses) song.statuses = {};
+    Object.keys(_songStatusBuf[sid]).forEach(num => {
+      const e = _songStatusBuf[sid][num];
+      if (e) song.statuses[num] = e;
+      else delete song.statuses[num];
+    });
+  });
+}
+
+// A pocketed phone or closing tab must not sit on buffered marks — mobile
+// browsers freeze background pages, so flush the moment we lose the screen.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') _flushSongStatusWrites();
+});
+window.addEventListener('pagehide', () => _flushSongStatusWrites());
 
 function showConfirmModal(title, body, onConfirm, confirmLabel = 'Remove', confirmCls = 'btn-danger') {
   _pendingConfirm = onConfirm;

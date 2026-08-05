@@ -662,6 +662,13 @@ function _computeAutoMarkEvents(entry, r) {
   return computeAutoMarkEvents(entry, r, _getAutoMarks());
 }
 
+// Events deserialized from Firestore don't keep the field order
+// computeAutoMarkEvents produces, so compare with order-insensitive keys.
+function _sameEvents(a, b) {
+  const canon = ev => JSON.stringify(Object.keys(ev).sort().map(k => [k, ev[k]]));
+  return a.length === b.length && a.every((ev, i) => canon(ev) === canon(b[i]));
+}
+
 function _recalcAutoBonuses(rid, num) {
   const r = STATE.rehearsals.find(r => r.id === rid);
   if (!r?.attendanceSubmitted && !r?.ended) return;
@@ -670,6 +677,10 @@ function _recalcAutoBonuses(rid, num) {
 
   const events    = _computeAutoMarkEvents(entry, r);
   const positives = events.filter(e => e.type === 'positive').length;
+  // Recomputing an unchanged result is the common case — every attendance
+  // toggle lands here, and every director's submit fans out over the whole
+  // roster — so only write when the outcome actually differs.
+  if (positives === (entry.positives || 0) && _sameEvents(events, entry.events || [])) return;
   STATE.entries[rid][num] = { ...entry, events, positives };
   fsUpsertEntry(rid, num, {
     mistakes:  entry.mistakes || 0,

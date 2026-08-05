@@ -601,6 +601,10 @@ async function endRehearsal(rid) {
     autoCount += newAuto;
 
     const positives = events.filter(e => e.type === 'positive').length;
+    // A student whose entry doc exists and whose auto marks come out unchanged
+    // has nothing to save — skip the write. Students with no entry doc still
+    // get one (other views may rely on the doc existing after an end).
+    if (entries[num] && positives === (entry.positives || 0) && _sameEvents(events, entry.events || [])) continue;
     const docRef    = orgCol('entries').doc(`${rid}_${num}`);
     batch.set(docRef, {
       rehearsalId:   rid,

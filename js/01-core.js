@@ -154,6 +154,9 @@ if (navigator.storage?.persist) {
 let _userInitiatedSignOut = false;
 function userSignOut() {
   _userInitiatedSignOut = true;
+  // Don't strand coalescing song marks (js/07-songs-portal.js) behind a
+  // sign-out — hand them to the SDK while the credentials still exist.
+  try { _flushSongStatusWrites(); } catch (e) { console.error('song-status flush failed:', e); }
   try { localStorage.removeItem('bandLastAuth'); } catch {} // deliberate — don't flag as a loss
   try { auth.signOut(); } catch (e) { console.error('signOut failed:', e); }
 }
