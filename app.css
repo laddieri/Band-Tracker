@@ -419,6 +419,8 @@ html, body {
 .rh-card-open  { border-left-color: var(--primary); }
 .rh-card-ended { border-left-color: var(--border); }
 
+.rh-card-time { font-size: 0.76rem; color: var(--text-muted); margin-top: 2px; }
+
 .rh-status-row { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
 .rh-badge {
   display: inline-block;

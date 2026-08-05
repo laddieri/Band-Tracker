@@ -34,6 +34,11 @@ orgs/{orgId}                          # org metadata
   ├─ settings/drill                   # pointer: { activeId } — the school-wide active drill
   ├─ students/{studentNumber}         # was: /students/{studentNumber}
   ├─ rehearsals/{rehearsalId}         # was: /rehearsals/{rehearsalId}
+  │    (fields) date, label, season, scope?, ended?, attendanceSubmitted?,
+  │    startedAt                       # epoch ms the rehearsal was started —
+  │                                    #   shown on the card, breaks same-date
+  │                                    #   ties in compareRehearsalsDesc()
+  │                                    #   (absent on pre-existing rehearsals)
   ├─ entries/{rehearsalId}_{number}   # was: /entries/{...}
   ├─ songs/{songId}                   # was: /songs/{songId}
   ├─ drills/{drillId}                 # drill library (director-write, director+staff read): metadata
