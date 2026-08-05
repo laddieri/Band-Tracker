@@ -723,8 +723,12 @@ function showSubmitAttendanceModal(rid) {
 function submitAttendance(rid) {
   const r = STATE.rehearsals.find(r => r.id === rid);
   if (!r) return;
+  // Co-directors often submit within moments of each other; once the flag is
+  // set there's nothing left to write (the recalc below already skips
+  // students whose auto marks come out unchanged).
+  const already = !!r.attendanceSubmitted;
   r.attendanceSubmitted = true;
-  orgCol('rehearsals').doc(rid).set({ attendanceSubmitted: true }, { merge: true });
+  if (!already) orgCol('rehearsals').doc(rid).set({ attendanceSubmitted: true }, { merge: true });
   if (_getAutoMarks().some(m => m.when === 'start')) {
     rehearsalStudents(r).forEach(s => _recalcAutoBonuses(rid, String(s.number ?? s._id)));
   }
