@@ -291,7 +291,61 @@ function _restoreFocus(snap) {
 // data-driven re-renders go through renderFromData(), which parks the render
 // while an editable field has focus and flushes it once focus moves on. STATE
 // is current the whole time — only the DOM update waits.
+//
+// The same parking covers two more mid-interaction hazards (both hit hardest
+// on iOS, where every local write echoes straight back through its listener
+// as a full re-render moments after the tap that made it):
+//   • A finger on the screen, or a just-finished tap: replacing the DOM
+//     between touchstart and the browser's click dispatch retargets the tap
+//     at a dead node, so the click never fires ("taps don't register" while
+//     stepping through attendance by block — each tap's own write echo was
+//     rebuilding the view under the next tap).
+//   • An open rehearsal-card ⋯ menu: it's a .hidden class toggle, not STATE,
+//     so any re-render resets it shut while the user is aiming at Delete.
 let _renderDeferred = false;
+
+// Timestamps of the last pointer press/release anywhere. A tap is "busy" from
+// finger-down until shortly after finger-up — the settle window covers the
+// browser's touchend → click dispatch plus the write echo that follows a tap.
+let _ptrDownAt = 0, _ptrUpAt = 0;
+const _PTR_SETTLE_MS   = 350;
+const _PTR_HELD_MAX_MS = 10000; // self-heal if an up/cancel event was missed
+
+const _ptrEvts = window.PointerEvent
+  ? { down: ['pointerdown'], up: ['pointerup', 'pointercancel'] }
+  : { down: ['touchstart', 'mousedown'], up: ['touchend', 'touchcancel', 'mouseup'] };
+_ptrEvts.down.forEach(t => document.addEventListener(t, () => { _ptrDownAt = Date.now(); }, true));
+_ptrEvts.up.forEach(t => document.addEventListener(t, () => { _ptrUpAt = Date.now(); _scheduleRenderFlush(); }, true));
+
+function _pointerBusy() {
+  const now = Date.now();
+  if (_ptrDownAt > _ptrUpAt) return now - _ptrDownAt < _PTR_HELD_MAX_MS; // finger still down
+  return now - _ptrUpAt < _PTR_SETTLE_MS;
+}
+
+// Transient DOM-only UI that a re-render would silently reset.
+function _transientMenuOpen() {
+  return !!document.querySelector('.rh-card-menu-list:not(.hidden)');
+}
+
+// Retry net for renders parked on taps/menus (focus-parked renders are flushed
+// by the focusout listener below instead). Re-checks until the way is clear.
+let _renderFlushTimer = null;
+function _scheduleRenderFlush() {
+  if (!_renderDeferred || _renderFlushTimer) return;
+  _renderFlushTimer = setTimeout(() => {
+    _renderFlushTimer = null;
+    _tryFlushDeferredRender();
+  }, 400);
+}
+
+function _tryFlushDeferredRender() {
+  if (!_renderDeferred) return;
+  if (_editableHasFocus()) return; // focusout will bring us back here
+  if (_pointerBusy() || _transientMenuOpen()) { _scheduleRenderFlush(); return; }
+  _renderDeferred = false;
+  render();
+}
 
 function _editableHasFocus() {
   const el = document.activeElement;
@@ -307,7 +361,11 @@ function _editableHasFocus() {
 }
 
 function renderFromData() {
-  if (_editableHasFocus()) { _renderDeferred = true; return; }
+  if (_editableHasFocus() || _pointerBusy() || _transientMenuOpen()) {
+    _renderDeferred = true;
+    _scheduleRenderFlush(); // no-op net for the focus case (focusout flushes it)
+    return;
+  }
   render();
 }
 
@@ -316,9 +374,7 @@ function renderFromData() {
 // sneaking in mid-hop.
 document.addEventListener('focusout', () => {
   if (!_renderDeferred) return;
-  setTimeout(() => {
-    if (_renderDeferred && !_editableHasFocus()) { _renderDeferred = false; render(); }
-  }, 120);
+  setTimeout(_tryFlushDeferredRender, 120);
 }, true);
 
 // Note: no focus restore here on purpose. This path runs when the user taps a
