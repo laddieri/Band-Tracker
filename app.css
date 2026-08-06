@@ -3606,6 +3606,23 @@ html, body {
 .drill-info-stu-x { border:none; background:rgba(255,255,255,.14); color:#fff; width:22px; height:22px; border-radius:50%; cursor:pointer; font-size:.7rem; line-height:1; flex-shrink:0; }
 .drill-map-shared { flex:1; font-size:.82rem; color:var(--text); padding:6px 4px; }
 .drill-info-pop-actions { display:flex; gap:6px; margin-top:9px; flex-wrap:wrap; }
+/* Disambiguation chooser: shown when several dots sit under one tap (spots less
+   than ~2 steps apart overlap on screen). Floats at the tap point on top of
+   everything, including the fullscreen chart overlay. */
+.drill-dot-chooser {
+  position:fixed; z-index:100000; min-width:150px; max-width:240px;
+  background:rgba(18,26,18,.98); color:#fff; border:1px solid rgba(255,255,255,.18);
+  border-radius:var(--r-sm); padding:6px; box-shadow:0 6px 22px rgba(0,0,0,.5);
+}
+.drill-dot-chooser-head { font-size:.68rem; color:#c8d4c8; padding:2px 6px 5px; }
+.drill-dot-choice {
+  display:flex; align-items:baseline; gap:8px; width:100%; text-align:left;
+  background:none; border:none; color:#fff; cursor:pointer; padding:8px; border-radius:6px; min-height:40px;
+}
+.drill-dot-choice:hover, .drill-dot-choice:active { background:rgba(255,255,255,.12); }
+.drill-dot-choice-lbl { font-weight:700; font-size:.9rem; color:#ffd23f; flex-shrink:0; min-width:26px; }
+.drill-dot-choice-name { font-size:.82rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.drill-dot-choice-name--none { color:#9fb09f; font-style:italic; }
 .drill-info-marks-label { font-size:0.72rem; color:#c8d4c8; margin-top:9px; }
 .drill-info-marks { display:flex; gap:6px; margin-top:5px; }
 /* Sized for thumbs: these are tapped repeatedly on a phone held at arm's

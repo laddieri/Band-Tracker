@@ -719,13 +719,13 @@ function _drillFieldSvg(positions, opts = {}) {
     const sel     = selectMode && _drillChecked.has(p.label);
     const isTrace = traceLabel && p.label === traceLabel;
     const isFocus = focusLabel && p.label === focusLabel;
-    const tap     = selectMode ? `drillChartToggle('${esc(p.label)}')`
-                  : fsView     ? `drillFsTapPerf('${esc(p.label)}')`
-                  :              `drillShowPerfInfo('${esc(p.label)}')`;
     // Zoomed in, dots grow so the spot letter+number can be printed inside them.
     const baseR = _drillDotLabelsOn ? 5.4 : 3;
     const dotR  = (sel || isTrace || isFocus) ? (_drillDotLabelsOn ? 6.4 : 4.5) : baseR;
-    dots += `<circle cx="${sx}" cy="${sy}" r="7" fill="transparent" onclick="${tap}" style="cursor:pointer"/>`;
+    // Every tap target carries its label; the actual pick is resolved by which
+    // dot is NEAREST the finger (js/12-drill.js _drillResolveTap), not by paint
+    // order, so a dot within ~2 steps of another isn't left unreachable behind it.
+    dots += `<circle cx="${sx}" cy="${sy}" r="7" fill="transparent" data-drill-dot="${esc(p.label)}" onclick="_drillDotTap(event)" style="cursor:pointer"/>`;
     if (sel || isTrace) dots += `<circle cx="${sx}" cy="${sy}" r="${_drillDotLabelsOn ? '7.6' : '6.5'}" fill="none" stroke="${isTrace ? '#ffd23f' : '#fff'}" stroke-width="1.8"/>`;
     dots += `<circle cx="${sx}" cy="${sy}" r="${dotR}" fill="${isFocus ? '#ffd23f' : col}" pointer-events="none"/>`;
     if (_drillDotLabelsOn && !isFocus) {
@@ -1181,13 +1181,106 @@ function _drillOnMouseDown(e) {
   window.addEventListener('mouseup', up);
 }
 
-// Translate a tap in the fullscreen chart into a click on the dot under it.
+// Translate a tap on the zoomable chart (pinch/pan intercepts the browser's own
+// click) into a performer pick, resolved by nearest dot rather than paint order.
 function _drillFsTapAt(touch) {
   if (!touch) return;
-  const el = document.elementFromPoint(touch.clientX, touch.clientY);
-  if (el && el.closest && el.closest('.drill-fs-svg-wrap')) {
-    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+  const svg = _drillZoomWrap && _drillZoomWrap.querySelector('svg');
+  if (svg) _drillResolveTap(touch.clientX, touch.clientY, svg);
+}
+
+// ── Tap resolution: nearest dot, with a chooser for overlapping spots ──────────
+// The transparent tap circles are 7 steps wide, so any two dots within ~2 steps
+// overlap and — under the old "topmost element wins" click — the one drawn first
+// could never be tapped. Resolve instead by distance to each dot's on-screen
+// CENTRE (paint order is irrelevant), and when more than one dot sits under the
+// finger, offer a chooser instead of silently guessing.
+const _DRILL_TAP_PX   = 24; // a dot counts as tapped within this many screen px
+const _DRILL_AMBIG_PX = 12; // rivals this close to the nearest are "too close to call"
+
+// A dot's transparent circle was clicked (desktop) — resolve by finger position.
+function _drillDotTap(e) {
+  const svg = e && e.currentTarget && e.currentTarget.ownerSVGElement;
+  if (svg) _drillResolveTap(e.clientX, e.clientY, svg);
+}
+
+// Given a tap at (clientX, clientY) over `svg`, act on the nearest dot, or show a
+// chooser when several dots are effectively under the finger. getBoundingClientRect
+// gives each dot's true on-screen box (it already reflects the pan/zoom transform),
+// so this works identically at every zoom level — zooming in spreads the dots out
+// and the chooser stops appearing on its own.
+function _drillResolveTap(clientX, clientY, svg) {
+  _drillCloseDotChooser();
+  if (!svg) return;
+  const near = [];
+  svg.querySelectorAll('[data-drill-dot]').forEach(el => {
+    const r  = el.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const d  = Math.hypot(cx - clientX, cy - clientY);
+    if (d <= _DRILL_TAP_PX) near.push({ label: el.getAttribute('data-drill-dot'), d });
+  });
+  if (!near.length) return;
+  near.sort((a, b) => a.d - b.d);
+  // Rivals essentially as close as the nearest are ones the finger can't separate.
+  const rivals = near.filter(h => h.d <= near[0].d + _DRILL_AMBIG_PX).slice(0, 6);
+  if (rivals.length === 1) { _drillDotAction(near[0].label); return; }
+  _drillShowDotChooser(rivals.map(r => r.label), clientX, clientY);
+}
+
+// Do to a resolved label what a direct tap on it would have done — which depends
+// on the surface showing: fullscreen select (tracker) toggles it, fullscreen view
+// traces it, the inline Drill-tab stage opens its info panel.
+function _drillDotAction(label) {
+  const fs = document.getElementById('drill-chart-fs');
+  if (fs && !fs.classList.contains('hidden')) {
+    if (_drillChartSelect) drillChartToggle(label); else drillFsTapPerf(label);
+  } else if (document.getElementById('drill-chart-root')) {
+    drillChartToggle(label); // the non-fullscreen "Select from Drill" chart modal
+  } else {
+    drillShowPerfInfo(label);
   }
+}
+
+// A little menu of the overlapping performers, floated at the tap point (on the
+// body so it clears the fullscreen overlay). Dismisses on the next outside tap.
+function _drillShowDotChooser(labels, clientX, clientY) {
+  _drillCloseDotChooser();
+  const el = document.createElement('div');
+  el.className = 'drill-dot-chooser';
+  el.id = 'drill-dot-chooser';
+  el.innerHTML = `<div class="drill-dot-chooser-head">${labels.length} performers here</div>` +
+    labels.map(lbl => {
+      const names = _drillSpotNames(lbl);
+      return `<button class="drill-dot-choice" onclick="_drillDotChoose('${esc(lbl)}')">
+        <span class="drill-dot-choice-lbl">${esc(lbl)}</span>
+        <span class="drill-dot-choice-name${names ? '' : ' drill-dot-choice-name--none'}">${names ? esc(names) : 'Not mapped'}</span>
+      </button>`;
+    }).join('');
+  document.body.appendChild(el);
+  // Placed after append so its real size is known; flip away from the edges.
+  const w = el.offsetWidth, h = el.offsetHeight;
+  let L = clientX + 12, T = clientY + 12;
+  if (L + w > window.innerWidth  - 8) L = clientX - w - 12;
+  if (T + h > window.innerHeight - 8) T = clientY - h - 12;
+  el.style.left = Math.max(8, L) + 'px';
+  el.style.top  = Math.max(8, T) + 'px';
+  setTimeout(() => document.addEventListener('pointerdown', _drillDotChooserOutside, true), 0);
+}
+
+function _drillDotChooserOutside(e) {
+  if (e.target.closest && e.target.closest('.drill-dot-chooser')) return;
+  _drillCloseDotChooser();
+}
+
+function _drillCloseDotChooser() {
+  document.removeEventListener('pointerdown', _drillDotChooserOutside, true);
+  const el = document.getElementById('drill-dot-chooser');
+  if (el) el.remove();
+}
+
+function _drillDotChoose(label) {
+  _drillCloseDotChooser();
+  _drillDotAction(label);
 }
 
 function _drillChartFsKeydown(e) {
