@@ -676,10 +676,12 @@ function _drillFieldSvg(positions, opts = {}) {
     const major = yd % 10 === 0;
     lines += `<line x1="${sx}" y1="${MT}" x2="${sx}" y2="${MT+FH}" stroke="${major?P.major:P.minor}" stroke-width="${major?'0.8':'0.4'}"/>`;
     lines += `<line x1="${sx}" y1="${MT+FH}" x2="${sx}" y2="${(MT+FH+4).toFixed(1)}" stroke="${major?P.tickMaj:P.tickMin}" stroke-width="${major?'0.8':'0.5'}"/>`;
-    // Number every yard line (both sidelines). The 10-yard lines keep the
-    // larger number; the 5-yard lines in between get a slightly smaller one so
-    // the 10s still read as the primary anchors. Goal lines (0/100) stay blank.
-    if (yd > 0 && yd < 100) {
+    // Number the yard lines (both sidelines). The 10-yard lines are always
+    // labelled; the 5-yard lines in between are only labelled once zoomed in
+    // (_drillDotLabelsOn) — at full-field zoom they'd be too cramped — and get a
+    // slightly smaller number so the 10s stay the primary anchors. Goal lines
+    // (0/100) stay blank.
+    if (yd > 0 && yd < 100 && (major || _drillDotLabelsOn)) {
       const lbl = yd > 50 ? 100 - yd : yd;
       const fsz = major ? 8 : 6;
       lines += `<text x="${sx}" y="${MT-4}" text-anchor="middle" fill="${P.num}" font-size="${fsz}" font-family="sans-serif">${lbl}</text>`;
@@ -1045,13 +1047,18 @@ function _drillRenderFsAxis(wrap) {
   const toScreenX = v => _drillPanX + v * k * s;
 
   let html = '';
-  for (let yd = 10; yd <= 90; yd += 10) {
+  for (let yd = 5; yd <= 95; yd += 5) {
+    const major = yd % 10 === 0;
+    // 5-yard floating markers only once zoomed in far enough (same threshold as
+    // the on-field 5-yard numbers); the 10s always show while the ruler is up.
+    if (!major && !_drillDotLabelsOn) continue;
     const xs = toScreenX(ML + yd * 1.6 * SCALE);
     if (xs < 10 || xs > wW - 10) continue; // off-screen horizontally
     const lbl  = yd > 50 ? 100 - yd : yd;
     const left = `left:${xs.toFixed(1)}px`;
-    html += `<span class="drill-fs-axis-num drill-fs-axis-num--top" style="${left}">${lbl}</span>`;
-    html += `<span class="drill-fs-axis-num drill-fs-axis-num--bottom" style="${left}">${lbl}</span>`;
+    const cls  = major ? '' : ' drill-fs-axis-num--minor';
+    html += `<span class="drill-fs-axis-num drill-fs-axis-num--top${cls}" style="${left}">${lbl}</span>`;
+    html += `<span class="drill-fs-axis-num drill-fs-axis-num--bottom${cls}" style="${left}">${lbl}</span>`;
   }
   axis.innerHTML = html;
 }
