@@ -498,6 +498,14 @@ html, body {
 
 .att-chart-card { padding: 14px 16px 10px; }
 .att-chart-title { font-size: 0.85rem; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+.att-scale-group { display: inline-flex; border: 1px solid var(--border); border-radius: var(--r-sm); overflow: hidden; margin-bottom: 10px; }
+.att-scale-btn {
+  border: none; border-left: 1px solid var(--border); background: var(--surface); color: var(--text);
+  font-size: 0.75rem; font-weight: 600; padding: 5px 14px; cursor: pointer;
+}
+.att-scale-btn:first-child { border-left: none; }
+.att-scale-btn--on { background: var(--primary); color: #fff; }
+.att-chart-empty { padding: 22px 4px; text-align: center; color: var(--text-muted); font-size: 0.85rem; }
 .att-chart-readout {
   display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px;
   min-height: 26px; margin-bottom: 6px; font-size: 0.8rem;
