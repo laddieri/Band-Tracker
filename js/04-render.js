@@ -131,7 +131,12 @@ function render() {
     if (match === 'roster')         t.style.display = canRecord() ? '' : 'none';
     if (match === 'attendance-tab') t.style.display = featureOn('attendance') ? '' : 'none';
     if (match === 'songs')          t.style.display = featureOn('songs') ? '' : 'none';
-    if (match === 'leaderboard')    t.style.display = (canRecord() && featureOn('stats')) ? '' : 'none';
+    // The "Stats" tab is the Marching Leaderboard. Hide it for directors/staff
+    // when the leaderboard is turned off — the roster's per-metric sorts cover
+    // quick director lookups, and the toggle lives in Band Settings. Students
+    // still reach band stats from their portal, so this nav gate doesn't affect
+    // them (they don't use this bottom nav).
+    if (match === 'leaderboard')    t.style.display = (canRecord() && featureOn('stats') && STATE.marchingLeaderboardEnabled) ? '' : 'none';
     if (match === 'dashboard')      t.style.display = (canRecord() && featureOn('marks')) ? '' : 'none';
     if (match === 'drill')          t.style.display = (canRecord() && featureOn('drill')) ? '' : 'none';
   });
@@ -140,6 +145,13 @@ function render() {
   const curFeature = VIEW_FEATURE[_view];
   if (curFeature && !featureOn(curFeature)) {
     navigate(STATE.studentNum && !STATE.isAdmin ? '' : 'rehearsals');
+    return;
+  }
+  // A director/staff who turns the leaderboard off while viewing it lands on a
+  // now-hidden tab — bounce them to a safe view. (Students keep leaderboard
+  // access from their portal, so this only applies to recorders' nav.)
+  if (_view === 'leaderboard' && canRecord() && !STATE.marchingLeaderboardEnabled) {
+    navigate('rehearsals');
     return;
   }
 
