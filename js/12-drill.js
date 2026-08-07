@@ -716,6 +716,10 @@ function _drillFieldSvg(positions, opts = {}) {
     if (p.stepsX < -10 || p.stepsX > 170 || p.stepsY < -5 || p.stepsY > 90) continue; // safety
     const sx = fx(p.stepsX), sy = fy(p.stepsY);
     const col     = secColor[p.section] || '#888';
+    // A spot shared by 2+ students gets a distinct marker below so double-
+    // assigned dots are obvious at a glance.
+    const spotCount = drillStudentNumsByLabel(p.label).length;
+    const shared    = spotCount > 1;
     const sel     = selectMode && _drillChecked.has(p.label);
     const isTrace = traceLabel && p.label === traceLabel;
     const isFocus = focusLabel && p.label === focusLabel;
@@ -728,12 +732,28 @@ function _drillFieldSvg(positions, opts = {}) {
     dots += `<circle cx="${sx}" cy="${sy}" r="7" fill="transparent" data-drill-dot="${esc(p.label)}" onclick="_drillDotTap(event)" style="cursor:pointer"/>`;
     if (sel || isTrace) dots += `<circle cx="${sx}" cy="${sy}" r="${_drillDotLabelsOn ? '7.6' : '6.5'}" fill="none" stroke="${isTrace ? '#ffd23f' : '#fff'}" stroke-width="1.8"/>`;
     dots += `<circle cx="${sx}" cy="${sy}" r="${dotR}" fill="${isFocus ? '#ffd23f' : col}" pointer-events="none"/>`;
+    // Shared-spot ring: orange with a dark halo so it reads on both the green
+    // and white fields, and doesn't clash with the white select / gold trace
+    // rings. Sits just outside the dot; always drawn (independent of zoom).
+    if (shared) {
+      const rr = (dotR + 1.7).toFixed(1);
+      dots += `<circle cx="${sx}" cy="${sy}" r="${rr}" fill="none" stroke="#000" stroke-width="1.7" opacity="0.45" pointer-events="none"/>`
+           +  `<circle cx="${sx}" cy="${sy}" r="${rr}" fill="none" stroke="#ff8c1a" stroke-width="1" pointer-events="none"/>`;
+    }
     if (_drillDotLabelsOn && !isFocus) {
       // The spot label (letter + number) centered inside the dot. Shrinks a
       // touch for 3+ character labels (e.g. "A12") so it stays within the dot.
       const lt  = esc(p.label);
       const fsz = (p.label || '').length >= 3 ? 3.1 : 3.8;
       labels += `<text x="${sx}" y="${sy}" dy="0.34em" text-anchor="middle" font-size="${fsz}" font-weight="700" font-family="sans-serif" fill="#fff" pointer-events="none" style="paint-order:stroke;stroke:#000;stroke-width:0.7px;stroke-linejoin:round">${lt}</text>`;
+    }
+    // Zoomed in, a small orange badge on shared dots prints exactly how many
+    // students are on the spot (2, 3, …).
+    if (shared && _drillDotLabelsOn && !isFocus) {
+      const bx = (parseFloat(sx) + dotR * 0.95).toFixed(1);
+      const by = (parseFloat(sy) - dotR * 0.95).toFixed(1);
+      labels += `<circle cx="${bx}" cy="${by}" r="2.5" fill="#ff8c1a" stroke="#000" stroke-width="0.35" pointer-events="none"/>`
+             +  `<text x="${bx}" y="${by}" dy="0.34em" text-anchor="middle" font-size="3" font-weight="800" font-family="sans-serif" fill="#fff" pointer-events="none">${spotCount}</text>`;
     }
     if (isFocus) {
       // A tall, unmistakable callout drawn on top so you can always tell which
@@ -767,11 +787,22 @@ function _drillFieldSvg(positions, opts = {}) {
     </svg>`;
 }
 
+// True when any spot in the active map has more than one student on it.
+function _drillHasSharedSpots() {
+  const m = _activeDrillMapping();
+  return Object.keys(m).some(k => drillSpotNums(m[k]).length > 1);
+}
+
 function _drillLegendHtml() {
-  return (_drillData || []).map((sec, i) => {
+  const sections = (_drillData || []).map((sec, i) => {
     const c = _DRILL_COLORS[i % _DRILL_COLORS.length];
     return `<span class="drill-chart-leg-item"><svg width="10" height="10" style="flex-shrink:0"><circle cx="5" cy="5" r="4" fill="${c}"/></svg>${esc(sec.letter)}</span>`;
   }).join('');
+  // Key for the shared-spot ring, shown only when there's a shared spot to explain.
+  const shared = _drillHasSharedSpots()
+    ? `<span class="drill-chart-leg-item"><svg width="12" height="12" style="flex-shrink:0"><circle cx="6" cy="6" r="3.1" fill="#888"/><circle cx="6" cy="6" r="5" fill="none" stroke="#ff8c1a" stroke-width="1.4"/></svg>Shared spot</span>`
+    : '';
+  return sections + shared;
 }
 
 // Cycle text for the labels toggle button.
