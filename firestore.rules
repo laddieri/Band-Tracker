@@ -136,7 +136,7 @@ service cloud.firestore {
         allow read:   if canRecord() || (canRead() && myStudentNumber() == doc);
         allow write:  if canWrite();
         allow update: if isStaffOf(orgId)
-                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['songStatuses']);
+                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['songStatuses', 'taskStatuses']);
       }
 
       // Rehearsal metadata (dates/labels) is schedule info — safe for members.
@@ -171,6 +171,18 @@ service cloud.firestore {
       // songStatuses mirror on their own student doc. Staff record results
       // (the statuses map) but can't create/edit/delete the songs themselves.
       match /songs/{doc} {
+        allow read:   if canRecord();
+        allow write:  if canWrite();
+        allow update: if isStaffOf(orgId)
+                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['statuses']);
+      }
+
+      // Check-off tasks (forms, fees…) embed every student's done status, so
+      // they are director/staff-only — same shape as songs. Students get the
+      // task catalog + aggregate progress from settings/public and their own
+      // status from the taskStatuses mirror on their own student doc. Staff
+      // record completion (the statuses map) but can't create/edit/delete tasks.
+      match /tasks/{doc} {
         allow read:   if canRecord();
         allow write:  if canWrite();
         allow update: if isStaffOf(orgId)

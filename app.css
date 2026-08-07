@@ -2417,6 +2417,30 @@ html, body {
   gap: 8px;
   margin-bottom: 16px;
 }
+/* Task detail has two status boxes (Done / Not Done) rather than three. */
+.song-stats-row.task-2col { grid-template-columns: repeat(2, 1fr); }
+
+/* ── Tasks ─────────────────────────────────────────────────────────────────── */
+.task-desc { font-size: 0.9rem; color: var(--text); line-height: 1.5; margin: 4px 0 10px; white-space: pre-wrap; }
+.task-detail-meta { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px; }
+.task-applies-count { font-size: 0.85rem; color: var(--text-muted); margin-top: 12px; text-align: center; }
+.task-applies-count strong { color: var(--text); }
+/* Individual-student exception chips + search results in the task editor. */
+.task-ex-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  border: none; border-radius: 50px; padding: 4px 8px 4px 10px;
+  font-size: 0.78rem; font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.task-ex-include { background: var(--success-bg); color: var(--success); }
+.task-ex-exempt  { background: var(--danger-bg);  color: var(--danger); }
+.task-ex-results-list { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; }
+.task-ex-result-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 6px 4px 6px 10px; border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--surface);
+}
+.task-ex-result-name { font-size: 0.85rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-ex-result-btns { display: flex; gap: 6px; flex-shrink: 0; }
 .song-stat {
   background: var(--surface);
   border-radius: var(--r-sm);

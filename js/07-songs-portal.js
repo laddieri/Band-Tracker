@@ -1107,6 +1107,7 @@ function viewStudentPortal(previewMode = false) {
   // what the student sees.)
   const hist = DB.getStudentHistory(num).filter(h => !h.rehearsal.hiddenFromStudents);
   const mySongs   = _portalSongs(num);
+  const myTasks   = _portalTasks(num);
   const pseudonym = portalPseudonym(num);
   // Band-wide attendance, only rehearsals that have any attendance recorded.
   const bandAtt   = _portalBandAttendance().filter(r => (r.present || 0) + (r.late || 0) + (r.absent || 0) > 0);
@@ -1260,6 +1261,36 @@ function viewStudentPortal(previewMode = false) {
             }
             return html;
           })()}
+        </div>
+        </div>
+      ` : ''}
+
+      ${myTasks.length > 0 ? `
+        <div class="sec-card">
+        <div id="portal-sec-tasks-hdr" class="sec-hdr" onclick="toggleCollapse('portal-sec-tasks')">
+          <span class="section-title" style="margin:0">Forms &amp; Tasks</span>
+          <span class="sec-chevron">▾</span>
+        </div>
+        <div id="portal-sec-tasks" class="sec-collapsed">
+          <div class="portal-songs-list">
+          ${myTasks.map(task => {
+            const overdue = task.dueDate && task.dueDate < today() && !task.done;
+            return `
+            <div class="portal-song-row">
+              <div class="portal-song-info">
+                <div class="portal-song-title">${esc(task.title)}</div>
+                ${task.dueDate ? `<div class="portal-song-due ${overdue ? 'song-overdue' : ''}">Due ${fmtDate(task.dueDate)}</div>` : ''}
+              </div>
+              <div class="portal-song-right">
+                <span class="portal-song-status ${task.done ? 'pss-pass' : 'pss-na'}">${task.done ? '✓ Done' : '— Not done'}</span>
+                ${task.total ? `<div class="song-prog-wrap portal-song-prog" title="${task.bandDone} of ${task.total} done">
+                  <div class="song-prog-bar"><div class="song-prog-fill" style="width:${task.total ? Math.round(task.bandDone / task.total * 100) : 0}%"></div></div>
+                  <div class="song-prog-lbl">${task.bandDone} / ${task.total} done</div>
+                </div>` : ''}
+              </div>
+            </div>`;
+          }).join('')}
+          </div>
         </div>
         </div>
       ` : ''}

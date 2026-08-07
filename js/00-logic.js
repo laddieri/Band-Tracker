@@ -107,6 +107,37 @@ function isMemorizationExcluded(student, exclusions) {
   return (!!inst && set.has(inst)) || (!!sect && set.has(sect));
 }
 
+// ── Task applicability ────────────────────────────────────────────────────────
+// A "task" (e.g. turn in the handbook form) applies to a configurable set of
+// students, independent of song-memorization exclusions. `groups` selects by
+// instrument/section/grade (OR across categories, same instrument-number strip
+// as rehearsalIncludesStudent); empty groups match no one.
+function _taskMatchesGroups(student, groups) {
+  if (!student || !groups) return false;
+  const instruments = groups.instruments || [];
+  const sections    = groups.sections    || [];
+  const grades      = groups.grades      || [];
+  if (!instruments.length && !sections.length && !grades.length) return false;
+  const inst = String(student.instrument || '').replace(/^\d+\s*/, '').trim();
+  return instruments.includes(inst)
+      || sections.includes(String(student.section || ''))
+      || grades.includes(String(student.grade || ''));
+}
+
+// Whether a task applies to a student. Resolution order: an individual include
+// wins, then an individual exempt, then the group rule — `applyMode:'include'`
+// means only the chosen groups; anything else ('all', the default) means
+// everyone EXCEPT the chosen (exempt) groups. Pure: takes the task doc + a
+// student, touches no STATE.
+function taskAppliesToStudent(student, task) {
+  if (!student || !task) return false;
+  const num = String(student.number);
+  if ((task.includeStudents || []).map(String).includes(num)) return true;
+  if ((task.exemptStudents  || []).map(String).includes(num)) return false;
+  const inGroups = _taskMatchesGroups(student, task.groups);
+  return task.applyMode === 'include' ? inGroups : !inGroups;
+}
+
 // ── Leaderboard scoring ───────────────────────────────────────────────────────
 
 // Resolve stored weights to effective values (missing → defaults).
@@ -155,7 +186,7 @@ function scoreStudentsCore(students, entries, songs, weights, flags, salt) {
 //   flags: { songsOn, statsOn, marksOn, attendanceOn, countNegative,
 //            leaderboardEnabled }
 //   memExclusions: instrument/section names excluded from memorization
-function buildPublicStats({ students, entries, rehearsals, songs, weights, flags, salt, memExclusions }) {
+function buildPublicStats({ students, entries, rehearsals, songs, tasks, weights, flags, salt, memExclusions }) {
   const studentList = Object.values(students);
   // Song progress is measured over students who actually memorize music, so
   // excluded groups (e.g. majorettes) don't inflate the "remaining" counts.
@@ -203,6 +234,21 @@ function buildPublicStats({ students, entries, rehearsals, songs, weights, flags
     };
   });
 
+  // Task check-off progress: aggregate only (done of applicable), and only for
+  // tasks the director marked student-visible. Applicability is per task, so
+  // each row measures over the students that task actually applies to — a
+  // majorette shows up here for a form even though she's exempt from songs.
+  const taskRows = (flags.tasksOn ? (tasks || []) : [])
+    .filter(t => t.studentVisible !== false)
+    .map(task => {
+      const applicable = studentList.filter(s => taskAppliesToStudent(s, task));
+      const done = applicable.filter(s => task.statuses?.[String(s.number)]?.done).length;
+      return {
+        id: task.id, title: task.title || '', dueDate: task.dueDate || '',
+        done, total: applicable.length,
+      };
+    });
+
   // Pseudonymized ranking — published only while the leaderboard is enabled.
   // Rows carry the student number so each student can find their own row;
   // names and per-event details are never included.
@@ -212,7 +258,7 @@ function buildPublicStats({ students, entries, rehearsals, songs, weights, flags
         .map(({ docId, name, score }) => ({ num: docId, name, score }))
     : null;
 
-  return { rehearsals: rehearsalRows, songs: songRows, leaderboard };
+  return { rehearsals: rehearsalRows, songs: songRows, tasks: taskRows, leaderboard };
 }
 
 // ── Auto marks ────────────────────────────────────────────────────────────────
@@ -600,7 +646,7 @@ function filterAndSortStudents(students, f, scoreMap) {
       case 'instrument': va = instrOrder(a.instrument); vb = instrOrder(b.instrument); break;
       case 'section':    va = (a.section||'').toLowerCase();       vb = (b.section||'').toLowerCase(); break;
       case 'grade':      va = GRADE_LEVELS.indexOf(a.grade||'');   vb = GRADE_LEVELS.indexOf(b.grade||''); break;
-      case 'score': case 'positives': case 'mistakes': case 'passed': case 'missing': {
+      case 'score': case 'positives': case 'mistakes': case 'passed': case 'missing': case 'done': {
         va = scoreMap?.[a.number]?.[f.sortField] ?? -1;
         vb = scoreMap?.[b.number]?.[f.sortField] ?? -1;
         break;
@@ -1141,6 +1187,7 @@ if (typeof module !== 'undefined' && module.exports) {
     FAKE_ADJECTIVES, FAKE_ANIMALS, _strHash, pseudonymFor,
     rehearsalIncludesStudent, rehearsalScopeLabel, compareRehearsalsDesc,
     isMemorizationExcluded,
+    taskAppliesToStudent, _taskMatchesGroups,
     lbWeights, scoreStudentsCore, buildPublicStats,
     checkAutoMarkCondition, computeAutoMarkEvents,
     parseCSVLine, parseCSV, COL_ALIASES, normalizeGrade, detectCols,

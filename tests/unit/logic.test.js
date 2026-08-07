@@ -108,6 +108,43 @@ describe('scoreStudentsCore', () => {
 
 // ── Published stats (settings/public payload) ─────────────────────────────────
 
+describe('taskAppliesToStudent', () => {
+  const maj = { number: '7', instrument: 'Majorette', section: 'Aux' };
+  const tpt = { number: '3', instrument: 'Trumpet', section: 'Brass', grade: '9th' };
+  const sax = { number: '5', instrument: '2 Alto Sax', section: 'Woodwind', grade: '11th' };
+
+  it('applies to everyone by default (applyMode all, no groups)', () => {
+    const t = { applyMode: 'all', groups: {} };
+    assert.ok(L.taskAppliesToStudent(maj, t));
+    assert.ok(L.taskAppliesToStudent(tpt, t));
+  });
+  it('all mode exempts the chosen groups (a majorette still does a form)', () => {
+    const t = { applyMode: 'all', groups: { instruments: ['Majorette'] } };
+    assert.strictEqual(L.taskAppliesToStudent(maj, t), false);
+    assert.strictEqual(L.taskAppliesToStudent(tpt, t), true);
+  });
+  it('include mode applies ONLY to the chosen groups', () => {
+    const t = { applyMode: 'include', groups: { sections: ['Brass'] } };
+    assert.strictEqual(L.taskAppliesToStudent(tpt, t), true);
+    assert.strictEqual(L.taskAppliesToStudent(maj, t), false);
+  });
+  it('strips a leading instrument number when matching (like normInstrument)', () => {
+    const t = { applyMode: 'include', groups: { instruments: ['Alto Sax'] } };
+    assert.ok(L.taskAppliesToStudent(sax, t)); // '2 Alto Sax' → 'Alto Sax'
+  });
+  it('matches by grade', () => {
+    const t = { applyMode: 'include', groups: { grades: ['9th'] } };
+    assert.ok(L.taskAppliesToStudent(tpt, t));
+    assert.strictEqual(L.taskAppliesToStudent(sax, t), false);
+  });
+  it('individual overrides win: exempt removes an applying student, include adds an exempt-group one', () => {
+    const exempt = { applyMode: 'all', groups: {}, exemptStudents: ['3'] };
+    assert.strictEqual(L.taskAppliesToStudent(tpt, exempt), false);
+    const incl = { applyMode: 'all', groups: { instruments: ['Majorette'] }, includeStudents: ['7'] };
+    assert.strictEqual(L.taskAppliesToStudent(maj, incl), true);
+  });
+});
+
 describe('buildPublicStats', () => {
   const flags = { ...ALL_ON, songsOn: true, statsOn: true, leaderboardEnabled: true };
   const args  = { students, entries, songs, weights: W, salt: 'salt', flags,
@@ -140,6 +177,21 @@ describe('buildPublicStats', () => {
       { id: 's1', title: 'Anthem', dueDate: '2026-09-01', category: 'Stand Tunes', passed: 1, remaining: 1 });
     assert.strictEqual(rows[1].passed, 0);
     assert.ok(!('statuses' in rows[0]));
+  });
+  it('aggregates task check-offs (student-visible only; done of applicable, no PII)', () => {
+    const tasks = [
+      { id: 't1', title: 'Form', dueDate: '2026-09-01', studentVisible: true,
+        applyMode: 'all', groups: {}, statuses: { 42: { done: true } } },
+      { id: 't2', title: 'Hidden', studentVisible: false, applyMode: 'all', groups: {}, statuses: {} },
+    ];
+    const { tasks: rows } = L.buildPublicStats({ ...args, tasks, flags: { ...flags, tasksOn: true } });
+    assert.deepStrictEqual(rows, [{ id: 't1', title: 'Form', dueDate: '2026-09-01', done: 1, total: 2 }]);
+    assert.ok(!('statuses' in rows[0]));
+  });
+  it('publishes no task rows when the Tasks feature is off', () => {
+    const tasks = [{ id: 't1', title: 'Form', studentVisible: true, applyMode: 'all', groups: {}, statuses: {} }];
+    assert.deepStrictEqual(
+      L.buildPublicStats({ ...args, tasks, flags: { ...flags, tasksOn: false } }).tasks, []);
   });
   it('publishes a leaderboard of {num, name, score} sorted by score', () => {
     const { leaderboard } = L.buildPublicStats(args);
