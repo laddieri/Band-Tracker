@@ -799,20 +799,6 @@ async function randomizePseudonyms() {
   }
 }
 
-async function toggleMarchingLeaderboard() {
-  STATE.marchingLeaderboardEnabled = !STATE.marchingLeaderboardEnabled;
-  try {
-    await orgCol('settings').doc('presets').set(
-      { marchingLeaderboardEnabled: STATE.marchingLeaderboardEnabled }, { merge: true }
-    );
-  } catch(e) {
-    console.error('Failed to save leaderboard setting:', e);
-    showToast('Failed to save setting.');
-    STATE.marchingLeaderboardEnabled = !STATE.marchingLeaderboardEnabled; // revert
-  }
-  render();
-}
-
 // ── Section Management ────────────────────────────────────────────────────────
 
 function showManageSectionsModal() {
