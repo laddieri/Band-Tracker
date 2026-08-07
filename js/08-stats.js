@@ -605,8 +605,6 @@ function viewStudent(num) {
   const hist = DB.getStudentHistory(num);
   const errs = hist.reduce((sum,e)=>sum+(e.entry.mistakes||0),0);
   const pos  = hist.reduce((sum,e)=>sum+(e.entry.positives||0),0);
-  const avgE = hist.length ? (errs/hist.length).toFixed(1) : '—';
-  const avgP = hist.length ? (pos/hist.length).toFixed(1)  : '—';
 
   return `
     <div class="student-view">
@@ -624,12 +622,12 @@ function viewStudent(num) {
     ${featureOn('marks') ? `
     <div class="stats-row" style="grid-template-columns:repeat(2,1fr)">
       <div class="stat-block clickable" onclick="showStudentMarksModal('${esc(num)}','')">
-        <div class="stat-value" style="color:var(--danger)">${avgE}</div>
-        <div class="stat-label">Avg Mistakes</div>
+        <div class="stat-value" style="color:var(--danger)">${errs}</div>
+        <div class="stat-label">Total Mistakes</div>
       </div>
       <div class="stat-block clickable" onclick="showStudentMarksModal('${esc(num)}','')">
-        <div class="stat-value" style="color:var(--success)">${avgP}</div>
-        <div class="stat-label">Avg Positives</div>
+        <div class="stat-value" style="color:var(--success)">${pos}</div>
+        <div class="stat-label">Total Positives</div>
       </div>
     </div>` : ''}
 
