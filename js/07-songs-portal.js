@@ -1082,12 +1082,15 @@ function _portalBandAttendance() {
     return STATE.rehearsals
       .filter(r => !r.hiddenFromStudents)
       .map(r => {
-        const es = Object.values(STATE.entries[r.id] || {});
+        const es      = Object.values(STATE.entries[r.id] || {});
+        const absent  = es.filter(e => e.attendance === 'absent').length;
+        const late    = es.filter(e => e.attendance === 'late').length;
+        // Present = in-scope roster minus absent/late (present is the default —
+        // see buildPublicStats), only once attendance is under way.
+        const counted = !!r.attendanceSubmitted || absent > 0 || late > 0;
         return {
-          date: r.date, label: r.label || '',
-          absent:  es.filter(e => e.attendance === 'absent').length,
-          present: es.filter(e => e.attendance === 'present').length,
-          late:    es.filter(e => e.attendance === 'late').length,
+          date: r.date, label: r.label || '', absent, late,
+          present: counted ? Math.max(0, rehearsalStudents(r).length - absent - late) : 0,
         };
       });
   }
