@@ -199,6 +199,7 @@ async function startListeners() {
         songs:      d.features?.songs      !== false,
         stats:      d.features?.stats      !== false,
         drill:      d.features?.drill      !== false,
+        tasks:      d.features?.tasks      === true,  // opt-in (default off)
       };
       STATE.activeStudentFields        = Array.isArray(d.activeStudentFields) ? d.activeStudentFields : null;
       STATE.customStudentFields        = Array.isArray(d.customStudentFields)  ? d.customStudentFields  : [];
@@ -209,6 +210,7 @@ async function startListeners() {
         marks:      d.portalVisible?.marks      !== false,
         songs:      d.portalVisible?.songs      !== false,
         stats:      d.portalVisible?.stats      !== false,
+        tasks:      d.portalVisible?.tasks      !== false,
       };
       STATE.autoMarks                  = Array.isArray(d.autoMarks) ? d.autoMarks : null;
       STATE.lbWeights                  = d.lbWeights || {};
@@ -258,6 +260,7 @@ async function startListeners() {
       tick('students');
       _purgeBlockSpots();        // director-only: drop obsolete roster column/row
       _syncStudentSpotsMirror(); // director-only: keep each student's spot mirror current
+      _syncTaskMirror();         // director-only: keep each student's task mirror current
       schedulePublishPublicStats();
     }),
 
@@ -273,6 +276,27 @@ async function startListeners() {
     }, err => {
       console.error('songs listener error:', err);
       tick('songs'); // don't hang the app — songs will be empty
+    }),
+
+    // Check-off tasks (forms, fees…). Directors+staff read; only directors write
+    // the task docs, but staff may record completion (statuses). Each snapshot
+    // re-syncs the per-student taskStatuses mirror (director-only) so the portal
+    // stays current. See js/14-tasks.js.
+    orgCol('tasks').onSnapshot({ includeMetadataChanges: true }, snap => {
+      _notePendingWrites('tasks', snap.metadata.hasPendingWrites);
+      if (!snap.docChanges().length && !STATE.loading) return; // metadata-only
+      STATE.tasks = snap.docs
+        .map(d => ({ ...d.data(), id: d.id }))
+        .sort((a, b) => (a.dueDate || 'z').localeCompare(b.dueDate || 'z')
+                        || (a.title || '').localeCompare(b.title || ''));
+      if (typeof _overlayTaskStatusBuf === 'function') _overlayTaskStatusBuf();
+      _tasksMirrorReady = true;    // safe to reconcile mirrors now that tasks have loaded
+      tick('tasks');
+      _syncTaskMirror();           // director-only: keep each student's task mirror current
+      schedulePublishPublicStats();
+    }, err => {
+      console.error('tasks listener error:', err);
+      tick('tasks'); // don't hang the app — tasks will be empty
     }),
 
     // Drill library — one small metadata doc per drill (the heavy position
@@ -373,6 +397,57 @@ function _studentSpotsKey(obj) {
     .map(k => `${k}=${obj[k].label}|${obj[k].show}|${obj[k].shared ? 1 : 0}`).join(';');
 }
 
+// Students can't read the director-only `tasks` collection, so a director client
+// MIRRORS each student's task assignments onto their own doc
+// (students/{num}.taskStatuses = { taskId: {done, updatedAt} }) — same pattern as
+// the spots/songStatuses mirrors. A mirror ENTRY EXISTS iff the task applies to
+// that student (so the portal knows which tasks to show); its `done` flag is the
+// student's status. Diff-based and idempotent: writes only students whose task
+// set or done-flags changed, so steady state is a no-op and it self-heals after
+// any task/roster edit (the tasks/students listeners re-run it).
+let _tasksMirrorReady = false; // don't reconcile mirrors before the tasks listener's first load
+
+function _syncTaskMirror() {
+  if (!STATE.isAdmin || !STATE.students) return; // only directors write student docs
+  // Before tasks have loaded STATE.tasks is [], which would delete every
+  // student's mirror; wait for the first tasks snapshot (or a local create,
+  // which sets the flag too via the listener) so we never transiently wipe them.
+  if (!_tasksMirrorReady) return;
+  const desired = {}; // studentNumber → { taskId: {done, updatedAt} }
+  (STATE.tasks || []).forEach(task => {
+    Object.values(STATE.students).forEach(s => {
+      if (!taskAppliesToStudent(s, task)) return;
+      const st = task.statuses?.[String(s.number)];
+      (desired[String(s.number)] = desired[String(s.number)] || {})[task.id] =
+        { done: !!st?.done, updatedAt: st?.updatedAt || 0 };
+    });
+  });
+
+  const del = firebase.firestore.FieldValue.delete();
+  const pending = [];
+  Object.values(STATE.students).forEach(s => {
+    const num  = String(s.number);
+    const want = desired[num] || {};
+    if (_studentTasksKey(want) === _studentTasksKey(s.taskStatuses || {})) return;
+    if (Object.keys(want).length) { s.taskStatuses = want; pending.push([num, { taskStatuses: want }]); }
+    else { delete s.taskStatuses; pending.push([num, { taskStatuses: del }]); }
+  });
+  if (!pending.length) return;
+
+  for (let i = 0; i < pending.length; i += 400) {
+    const batch = db.batch();
+    pending.slice(i, i + 400).forEach(([num, data]) => batch.update(orgCol('students').doc(num), data));
+    batch.commit().catch(e => console.error('student task mirror sync failed:', e));
+  }
+}
+
+// Order-independent signature of a taskStatuses map, for change detection.
+// Keyed on taskId + done only (updatedAt is cosmetic and would churn).
+function _studentTasksKey(obj) {
+  return Object.keys(obj || {}).sort()
+    .map(k => `${k}=${obj[k].done ? 1 : 0}`).join(';');
+}
+
 // Retire the legacy block-spot fields: positions are assigned per show now, so
 // the roster's column/row are obsolete. A director client deletes them from any
 // student doc that still carries either. Idempotent (once cleared, a no-op) and
@@ -471,12 +546,14 @@ function studentListeners() {
         marks:      d.features?.marks      !== false,
         songs:      d.features?.songs      !== false,
         stats:      d.features?.stats      !== false,
+        tasks:      d.features?.tasks      === true,  // opt-in (default off)
       };
       STATE.portalVisible = {
         attendance: d.portalVisible?.attendance !== false,
         marks:      d.portalVisible?.marks      !== false,
         songs:      d.portalVisible?.songs      !== false,
         stats:      d.portalVisible?.stats      !== false,
+        tasks:      d.portalVisible?.tasks      !== false,
       };
       STATE.publicStats = d.stats || null;
       if (scopedSeason === undefined || (STATE.activeSeason || '') !== scopedSeason) subscribeScoped();
@@ -517,11 +594,13 @@ function computePublicStats() {
     entries:    STATE.entries,
     rehearsals: STATE.rehearsals,
     songs:      STATE.songs,
+    tasks:      STATE.tasks,
     weights:    _lbW(),
     salt:       STATE.pseudonymSalt,
     memExclusions: STATE.memorizationExclusions,
     flags: {
       songsOn:            featureOn('songs'),
+      tasksOn:            featureOn('tasks'),
       statsOn:            featureOn('stats'),
       marksOn:            featureOn('marks'),
       attendanceOn:       featureOn('attendance'),
@@ -681,6 +760,8 @@ auth.onAuthStateChanged(user => {
     STATE.rehearsals = [];
     STATE.entries    = {};
     STATE.songs      = [];
+    STATE.tasks      = [];
+    _tasksMirrorReady = false;
     STATE.spotHistory = {};
     STATE.publicStats = null;
     STATE.dirNames   = {};

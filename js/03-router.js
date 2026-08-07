@@ -37,6 +37,10 @@ function navigate(view, params = {}, _fromHistory = false) {
     _songGroupMode        = false;
     _songGroup            = new Set();
   }
+  if (_view === 'task' && view !== 'task') {
+    _taskFilter       = _mkFilter('name', 'asc');
+    _taskStatusFilter = null;
+  }
   if (_view === 'leaderboard' && view !== 'leaderboard') {
     _lbFilter = _mkFilter('score', 'desc');
   }
@@ -77,6 +81,7 @@ function navigate(view, params = {}, _fromHistory = false) {
 
 let _activeNum  = null;
 let _songStatusFilter        = null;      // song page: 'passed' | 'failed' | 'not_attempted' | null (all)
+let _taskStatusFilter        = null;      // task page: 'done' | 'not_done' | null (all)
 let _songGroupMode           = false;     // song page: building a group pass-off list
 let _songGroup               = new Set(); // student numbers (strings) in the group list
 let _songCatCollapsed        = new Set(); // category names that are currently collapsed
@@ -139,6 +144,7 @@ let _rhCalMonth = ''; // 'YYYY-MM' shown in the rehearsals calendar (set to curr
 let _lbFilter      = _mkFilter('score',    'desc');
 let _songFilter       = _mkFilter('name',     'asc');
 let _songRosterFilter = _mkFilter('passed',   'desc');
+let _taskFilter       = _mkFilter('name',     'asc');
 
 // ── Debounce store for note fields ────────────────────────────────────────────
 
@@ -232,7 +238,7 @@ function renderFilterBar(viewId, f, sortOptions, { hideSearch = false, extra = '
 // ── Filter event handlers ─────────────────────────────────────────────────────
 
 function _getFilterObj(viewId) {
-  return { roster: _rosterFilter, tracker: _trackerFilter, att: _attFilter, 'att-tab': _attTabFilter, lb: _lbFilter, song: _songFilter, 'song-roster': _songRosterFilter }[viewId];
+  return { roster: _rosterFilter, tracker: _trackerFilter, att: _attFilter, 'att-tab': _attTabFilter, lb: _lbFilter, song: _songFilter, 'song-roster': _songRosterFilter, task: _taskFilter }[viewId];
 }
 
 // Re-renders replace the whole view, so anything the user was typing in loses
@@ -440,6 +446,7 @@ function _refreshFilterList(viewId) {
       // initial viewSong render — otherwise they reappear on search/sort/filter.
       return song ? songStudentRows(_params.sid, Object.values(DB.getStudents()).filter(s => !memExcluded(s)), song.statuses || {}) : '';
     }],
+    task:         ['task-student-list', () => _taskStudentRows(_params.tid)],
   };
   const entry = lists[viewId];
   if (!entry) return false;
@@ -733,6 +740,9 @@ function featureOn(name) {
     case 'songs':      return f.songs      !== false;
     case 'stats':      return f.stats !== false && f.marks !== false;
     case 'drill':      return f.drill      !== false;
+    // Opt-in (=== true), unlike the others: a new tab shouldn't appear for
+    // existing bands whose settings doc predates this feature.
+    case 'tasks':      return f.tasks      === true;
     default:           return true;
   }
 }
@@ -749,6 +759,7 @@ function portalFeatureOn(name) {
     case 'marks':      return pv.marks      !== false;
     case 'songs':      return pv.songs      !== false;
     case 'stats':      return pv.stats      !== false;
+    case 'tasks':      return pv.tasks      !== false;
     default:           return true;
   }
 }
@@ -763,4 +774,6 @@ const VIEW_FEATURE = {
   'songs':          'songs',
   'song':           'songs',
   'drill':          'drill',
+  'tasks':          'tasks',
+  'task':           'tasks',
 };

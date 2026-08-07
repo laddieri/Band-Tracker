@@ -629,6 +629,7 @@ function showBrandSettingsModal() {
         ['attendance', 'Attendance', 'Track who’s absent, late, or present'],
         ['marks',      'Marks / Student Feedback', 'Log positive and mistake marks during rehearsals'],
         ['songs',      'Songs', 'Music memorization with pass / try-again tracking'],
+        ['tasks',      'Tasks', 'Check-off tracking for forms, fees & to-dos, with per-task who-it-applies-to rules'],
         ['stats',      'Stats / Leaderboard', 'Rankings built from marks (needs Marks on)'],
         ['drill',      'Drill / Field Chart', 'View Pyware field charts (directors & staff; students never see them)', true],
       ].map(([key, label, desc, adminOnly]) => {
@@ -943,12 +944,14 @@ async function saveBrandSettings() {
     songs:      readFeat('songs'),
     stats:      readFeat('stats'),
     drill:      readFeat('drill'),
+    tasks:      readFeat('tasks'),
   };
   const portalVisible = {
     attendance: readPortal('attendance'),
     marks:      readPortal('marks'),
     songs:      readPortal('songs'),
     stats:      readPortal('stats'),
+    tasks:      readPortal('tasks'),
   };
   const hideNegativeFromPortal = !(document.getElementById('neg-show-portal')?.checked ?? true);
   const countNegativeInScore   = !!(document.getElementById('neg-count-score')?.checked ?? true);

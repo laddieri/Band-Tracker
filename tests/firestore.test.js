@@ -64,6 +64,7 @@ async function seed() {
     await db.doc('orgs/a/entries/r1_42').set({ rehearsalId: 'r1', studentNumber: '42', attendance: 'present' });
     await db.doc('orgs/a/entries/r1_7').set({ rehearsalId: 'r1', studentNumber: '7', mistakes: 2 });
     await db.doc('orgs/a/songs/s1').set({ title: 'Anthem', statuses: { 7: { status: 'failed', note: 'bars 12-16' } } });
+    await db.doc('orgs/a/tasks/t1').set({ title: 'Handbook Form', applyMode: 'all', groups: {}, statuses: { 7: { done: true } } });
     await db.doc('orgs/a/drills/d1').set({ name: '2026 Show', fileName: 'show.3dj', setCount: 30, showId: 'sh1' });
     await db.doc('orgs/a/drills/d1/data/main').set({ sections: [], pages: [] });
     await db.doc('orgs/a/shows/sh1').set({ name: 'Halftime', mapping: { M1: '42' } });
@@ -171,6 +172,13 @@ describe('student data visibility', () => {
   });
   it('a director can read songs', async () => {
     await assertSucceeds(director('dirA').doc('orgs/a/songs/s1').get());
+  });
+  it('a student CANNOT read tasks (per-student done status lives there)', async () => {
+    await assertFails(director('studA').doc('orgs/a/tasks/t1').get());
+  });
+  it('a director can read and write tasks', async () => {
+    await assertSucceeds(director('dirA').doc('orgs/a/tasks/t1').get());
+    await assertSucceeds(director('dirA').doc('orgs/a/tasks/t2').set({ title: 'Fees', applyMode: 'all', groups: {}, statuses: {} }));
   });
   it('a director can read and write the drill library', async () => {
     await assertSucceeds(director('dirA').doc('orgs/a/drills/d1').get());
@@ -281,13 +289,23 @@ describe('staff role (recording access, no admin control)', () => {
     await assertFails(staff().doc('orgs/a/songs/s1').delete());
     await assertFails(staff().doc('orgs/a/songs/s1').set({ title: 'Renamed' }, { merge: true }));
   });
-  it('staff can update ONLY the songStatuses mirror on a student doc', async () => {
+  it('staff can record task completion (statuses only), not create/edit/delete tasks', async () => {
+    await assertSucceeds(staff().doc('orgs/a/tasks/t1').get());
+    await assertSucceeds(staff().doc('orgs/a/tasks/t1').set(
+      { statuses: { 42: { done: true } } }, { merge: true }));
+    await assertFails(staff().doc('orgs/a/tasks/t2').set({ title: 'New task' }));
+    await assertFails(staff().doc('orgs/a/tasks/t1').delete());
+    await assertFails(staff().doc('orgs/a/tasks/t1').set({ title: 'Renamed' }, { merge: true }));
+  });
+  it('staff can update ONLY the songStatuses/taskStatuses mirrors on a student doc', async () => {
     await assertSucceeds(staff().doc('orgs/a/students/42').set(
       { songStatuses: { s1: { status: 'passed', note: '', updatedAt: 1 } } }, { merge: true }));
+    await assertSucceeds(staff().doc('orgs/a/students/42').set(
+      { taskStatuses: { t1: { done: true, updatedAt: 1 } } }, { merge: true }));
     await assertFails(staff().doc('orgs/a/students/42').set({ name: 'Renamed' }, { merge: true }));
     await assertFails(staff().doc('orgs/a/students/42').set(
       { name: 'Renamed', songStatuses: {} }, { merge: true }));
-    await assertFails(staff().doc('orgs/a/students/99').set({ songStatuses: {} })); // no creates
+    await assertFails(staff().doc('orgs/a/students/99').set({ taskStatuses: {} })); // no creates
   });
   it('staff can read settings and publish settings/public, but NOT write presets', async () => {
     await assertSucceeds(staff().doc('orgs/a/settings/presets').get());

@@ -110,7 +110,7 @@ function render() {
   }
 
   const studentOnLeaderboard = _view === 'leaderboard' && STATE.studentNum && !STATE.isAdmin;
-  const isTop = ['roster','rehearsals','songs','attendance-tab','leaderboard','dashboard','drill'].includes(_view) && !studentOnLeaderboard;
+  const isTop = ['roster','rehearsals','songs','attendance-tab','leaderboard','dashboard','drill','tasks'].includes(_view) && !studentOnLeaderboard;
   backBtn.classList.toggle('hidden', isTop);
   backBtn.onclick = () => history.back();
 
@@ -123,7 +123,8 @@ function render() {
       ((_view === 'attendance' || _view === 'attendance-block') && _params.from === 'attendance-tab' && match === 'attendance-tab') ||
       ((_view === 'attendance' || _view === 'attendance-block') && _params.from === 'rehearsals' && match === 'rehearsals') ||
       ((_view === 'attendance' || _view === 'attendance-block') && _params.from !== 'attendance-tab' && _params.from !== 'rehearsals' && match === 'rehearsals') ||
-      (_view === 'song'       && match === 'songs')
+      (_view === 'song'       && match === 'songs') ||
+      (_view === 'task'       && match === 'tasks')
     );
     // Hide tabs for disabled features. Staff get the recording surfaces
     // (attendance, marks, songs, stats, read-only roster); Drill stays
@@ -139,6 +140,7 @@ function render() {
     if (match === 'leaderboard')    t.style.display = (canRecord() && featureOn('stats') && STATE.marchingLeaderboardEnabled) ? '' : 'none';
     if (match === 'dashboard')      t.style.display = (canRecord() && featureOn('marks')) ? '' : 'none';
     if (match === 'drill')          t.style.display = (canRecord() && featureOn('drill')) ? '' : 'none';
+    if (match === 'tasks')          t.style.display = (canRecord() && featureOn('tasks')) ? '' : 'none';
   });
 
   // If the current view belongs to a disabled feature, bounce to a safe view.
@@ -258,6 +260,20 @@ function render() {
       title.textContent = song?.title || 'Song';
       actions.innerHTML = (STATE.isAdmin ? editBtn(`showEditSongModal('${esc(_params.sid)}')`) : '') + userBtn();
       main.innerHTML = viewSong(_params.sid);
+      break;
+    }
+
+    case 'tasks':
+      title.textContent = 'Tasks';
+      actions.innerHTML = (STATE.isAdmin ? addBtn('showAddTaskModal()') : '') + userBtn();
+      main.innerHTML = viewTasks();
+      break;
+
+    case 'task': {
+      const task = STATE.tasks.find(t => t.id === _params.tid);
+      title.textContent = task?.title || 'Task';
+      actions.innerHTML = (STATE.isAdmin ? editBtn(`showEditTaskModal('${esc(_params.tid)}')`) : '') + userBtn();
+      main.innerHTML = viewTask(_params.tid);
       break;
     }
 

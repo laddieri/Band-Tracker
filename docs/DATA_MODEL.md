@@ -352,6 +352,7 @@ What a **student** can read (everything else is director-only):
 | `entries/{id}`                | own entries only; queries must filter `studentNumber == <own>` |
 | `rehearsals/*`                | ✅ — schedule metadata (dates/labels, incl. `hiddenFromStudents`) |
 | `songs/*`                     | ❌ — embeds every student's pass/fail + fail notes |
+| `tasks/*`                     | ❌ — embeds every student's done status (director/staff-only, same as songs) |
 | `drills/*` (+ `drills/*/data/*`) | ❌ — Pyware field-chart library (director-write; directors + staff read) |
 | `shows/*`                     | ❌ — per-show shared spot map (director-write; directors + staff read) |
 | `spotHistory/*`               | ❌ — who held each spot and when (director-ONLY: staff can't read it either) |
@@ -398,6 +399,30 @@ Song docs keep the director-facing `statuses` map, but each write also mirrors
 that student's own result to `students/{num}.songStatuses.{songId}`
 (`status`, `note`, `updatedAt` — no director identity). The portal reads the
 mirror; the song catalog and aggregate progress come from `settings/public`.
+
+### Tasks (check-off tracking) — per-student results + applicability
+
+Tasks (`tasks/{taskId}`: forms, fees, to-dos) are director/staff-only like
+songs, tracked as a simple done/not-done in the `statuses` map. Unlike songs
+(one global memorization-exclusion list), each task carries its OWN
+applicability: `applyMode` (`'all'` = everyone minus the `groups` = exempt
+instruments/sections/grades; `'include'` = only those groups) plus individual
+`includeStudents`/`exemptStudents` overrides. The pure predicate is
+`taskAppliesToStudent` (js/00-logic.js) — so e.g. a majorette exempt from song
+memorization still turns in the handbook form.
+
+Each student's task set is MIRRORED onto their own doc at
+`students/{num}.taskStatuses.{taskId} = {done, updatedAt}` (no director
+identity) by `_syncTaskMirror` (js/02-data.js), the same own-doc-mirror pattern
+as `songStatuses`/`spots`. **A mirror entry exists iff the task applies to that
+student** (so the portal knows which tasks to show); its `done` flag is the
+student's status. Marking not-done keeps the entry (`done:false`); only an
+applicability change removes it. It's director-only, diff-based and idempotent
+(self-heals after any task/roster edit), and needs no rules change beyond
+adding `taskStatuses` to the staff-writable field allowlist on the student doc.
+The task catalog + aggregate `{done, total}` progress (student-visible tasks
+only) come from `settings/public`. `students/{num}` staff-writable fields are
+therefore `songStatuses` and `taskStatuses`.
 
 Director identity in student-readable data: entries stamp `updatedBy`/`by`
 with the director's **uid**, never their email.

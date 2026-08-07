@@ -181,6 +181,8 @@ const STATE = {
   rehearsals:   [],
   entries:      {},
   songs:        [],
+  tasks:        [], // check-off tasks (forms, fees…): id → task doc; see js/14-tasks.js
+
   // Season model: rehearsals/entries are stamped with the active season label
   // and the listeners filter on it, so old seasons stop being read on every
   // cold start. '' = band hasn't started using seasons (unbounded, legacy).
@@ -204,7 +206,9 @@ const STATE = {
   bandColor:                  (typeof localStorage !== 'undefined' && localStorage.getItem('bandColor')) || '',
   // Band-wide feature toggles (default on; missing = on, so existing bands keep
   // everything). 'stats' also requires 'marks' — see featureOn().
-  features: { attendance: true, marks: true, songs: true, stats: true, drill: true },
+  // 'tasks' is opt-in (default off) so a new tab doesn't appear for existing
+  // bands until a director turns it on — see featureOn().
+  features: { attendance: true, marks: true, songs: true, stats: true, drill: true, tasks: false },
   activeStudentFields:        null,
   customStudentFields:        [],
   autoMarks:                  null,
@@ -220,7 +224,7 @@ const STATE = {
   spotHistory:                {},
   // Per-feature student portal visibility (independent of whether the feature is
   // enabled for directors). Default true = visible; false = hidden from portal.
-  portalVisible: { attendance: true, marks: true, songs: true, stats: true },
+  portalVisible: { attendance: true, marks: true, songs: true, stats: true, tasks: true },
   // Student clients: the director-published snapshot from settings/public
   // (per-rehearsal absence counts, song progress, pseudonymized leaderboard).
   // Students cannot read the raw roster/entries/songs — see firestore.rules.
