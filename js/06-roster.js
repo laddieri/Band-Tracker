@@ -280,7 +280,6 @@ function rosterRows(list) {
     const hist = DB.getStudentHistory(s.number);
     const errs = hist.reduce((sum,e)=>sum+(e.entry.mistakes||0),0);
     const pos  = hist.reduce((sum,e)=>sum+(e.entry.positives||0),0);
-    const avg  = hist.length ? (errs/hist.length).toFixed(1) : null;
     return `
       <div class="roster-row" onclick="navigate('student',{num:'${esc(s.number)}'})">
         <div class="student-info">
@@ -294,8 +293,8 @@ function rosterRows(list) {
         </div>
         <div class="student-badges">
           ${featureOn('marks') ? `
-          ${avg !== null ? `<span class="badge badge-danger">${avg}✗</span>` : ''}
-          ${pos > 0      ? `<span class="badge badge-success">${pos}✓</span>` : ''}` : ''}
+          ${errs > 0 ? `<span class="badge badge-danger">${errs}✗</span>` : ''}
+          ${pos > 0  ? `<span class="badge badge-success">${pos}✓</span>` : ''}` : ''}
         </div>
       </div>`;
   }).join('');
