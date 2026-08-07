@@ -276,10 +276,19 @@ function rosterRows(list) {
     return `<div class="empty-state" style="padding:24px"><p>No students match the current filter.</p></div>`;
   }
 
+  // Total songs assigned to memorizing students — computed once for the whole
+  // list rather than per row.
+  const songsTotal = STATE.songs.length;
   return list.map(s => {
     const hist = DB.getStudentHistory(s.number);
     const errs = hist.reduce((sum,e)=>sum+(e.entry.mistakes||0),0);
     const pos  = hist.reduce((sum,e)=>sum+(e.entry.positives||0),0);
+    // Songs passed off out of the total assigned. Excluded groups (e.g.
+    // majorettes) don't memorize music, so they get no song tick.
+    const showSongs   = featureOn('songs') && songsTotal > 0 && !memExcluded(s);
+    const songsPassed = showSongs
+      ? STATE.songs.filter(song => song.statuses?.[String(s.number)]?.status === 'passed').length
+      : 0;
     return `
       <div class="roster-row" onclick="navigate('student',{num:'${esc(s.number)}'})">
         <div class="student-info">
@@ -295,6 +304,7 @@ function rosterRows(list) {
           ${featureOn('marks') ? `
           ${errs > 0 ? `<span class="badge badge-danger">${errs}✗</span>` : ''}
           ${pos > 0  ? `<span class="badge badge-success">${pos}✓</span>` : ''}` : ''}
+          ${showSongs ? `<span class="badge badge-song" title="Songs passed off">${songsPassed}/${songsTotal} 🎵</span>` : ''}
         </div>
       </div>`;
   }).join('');
