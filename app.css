@@ -2440,6 +2440,12 @@ html, body {
 .song-stat-pass .song-stat-val { color: var(--success); }
 .song-stat-fail .song-stat-val { color: var(--danger); }
 .song-stat-na   .song-stat-val { color: var(--text-muted); }
+/* Clickable status boxes: each filters the list to its own status. */
+.song-stat-btn { cursor: pointer; transition: box-shadow .15s ease, background .15s ease, transform .05s ease; }
+.song-stat-btn:active { transform: scale(0.97); }
+.song-stat-pass.song-stat-active { box-shadow: 0 0 0 2px var(--success) inset; background: var(--success-bg); }
+.song-stat-fail.song-stat-active { box-shadow: 0 0 0 2px var(--danger) inset;  background: var(--danger-bg); }
+.song-stat-na.song-stat-active   { box-shadow: 0 0 0 2px var(--text-muted) inset; background: var(--surface-raised); }
 
 /* ── Song student rows ───────────────────────────────────────────────────────── */
 

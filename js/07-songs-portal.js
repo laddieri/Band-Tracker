@@ -253,9 +253,15 @@ function viewSong(sid) {
       </div>` : ''}
 
       <div class="song-stats-row">
-        <div class="song-stat song-stat-pass"><div class="song-stat-val">${passed}</div><div class="song-stat-lbl">Passed</div></div>
-        <div class="song-stat song-stat-fail"><div class="song-stat-val">${failed}</div><div class="song-stat-lbl">Try Again</div></div>
-        <div class="song-stat song-stat-na">  <div class="song-stat-val">${notAtt}</div><div class="song-stat-lbl">Not Attempted</div></div>
+        <div class="song-stat song-stat-pass song-stat-btn ${_songStatusFilter==='passed' ? 'song-stat-active' : ''}"
+             onclick="toggleSongStatusFilter('${esc(sid)}','passed')" aria-pressed="${_songStatusFilter==='passed'}"
+             aria-label="Show only passed students"><div class="song-stat-val">${passed}</div><div class="song-stat-lbl">Passed</div></div>
+        <div class="song-stat song-stat-fail song-stat-btn ${_songStatusFilter==='failed' ? 'song-stat-active' : ''}"
+             onclick="toggleSongStatusFilter('${esc(sid)}','failed')" aria-pressed="${_songStatusFilter==='failed'}"
+             aria-label="Show only try-again students"><div class="song-stat-val">${failed}</div><div class="song-stat-lbl">Try Again</div></div>
+        <div class="song-stat song-stat-na song-stat-btn ${_songStatusFilter==='not_attempted' ? 'song-stat-active' : ''}"
+             onclick="toggleSongStatusFilter('${esc(sid)}','not_attempted')" aria-pressed="${_songStatusFilter==='not_attempted'}"
+             aria-label="Show only not-attempted students"><div class="song-stat-val">${notAtt}</div><div class="song-stat-lbl">Not Attempted</div></div>
       </div>
 
       ${renderFilterBar('song', _songFilter, songSortOpts)}
@@ -284,7 +290,12 @@ function songStudentRows(sid, students, statuses) {
   const scoreMap = {};
   for (const s of students) scoreMap[s.number] = { status: getStatus(s.number) };
 
-  const pool = _songHidePassedFilter ? students.filter(s => getStatus(s.number) !== 'passed') : students;
+  let pool = students;
+  // Tapping a status box at the top filters to just that status; the
+  // "Not Passed Only" chip is a separate quick filter (the two clear each
+  // other, so only one is ever active at a time).
+  if (_songStatusFilter)     pool = pool.filter(s => getStatus(s.number) === _songStatusFilter);
+  if (_songHidePassedFilter) pool = pool.filter(s => getStatus(s.number) !== 'passed');
   const sorted = filterAndSortStudents(pool, _songFilter, scoreMap);
 
   if (!sorted.length) return `<div class="empty-state" style="padding:24px"><p>No students match the current filter.</p></div>`;
@@ -442,18 +453,21 @@ function _applyGroupSongStatus(sid, nums, status, note = '') {
   showToast(`${valid.length} student${valid.length !== 1 ? 's' : ''} marked ${status === 'passed' ? 'passed' : 'try again'}.`);
 }
 
+// Tapping a status box at the top of the song page filters the list to that
+// status; tapping the active box clears the filter. Clears the "Not Passed
+// Only" chip so the two filters can't contradict each other. User-initiated
+// tap, so the full re-render (which also updates the boxes' active state) is
+// fine.
+function toggleSongStatusFilter(sid, status) {
+  _songStatusFilter = _songStatusFilter === status ? null : status;
+  if (_songStatusFilter) _songHidePassedFilter = false;
+  _refreshSongView(sid);
+}
+
 function toggleSongHidePassed(sid) {
   _songHidePassedFilter = !_songHidePassedFilter;
-  const el = document.getElementById('song-student-list');
-  if (el) {
-    const song = STATE.songs.find(s => s.id === sid);
-    if (song) el.innerHTML = songStudentRows(sid, Object.values(DB.getStudents()).filter(s => !memExcluded(s)), song.statuses || {});
-  }
-  // Refresh the toggle chip appearance
-  document.querySelectorAll('.inst-filter-row .inst-chip').forEach(btn => {
-    if (btn.textContent.trim() === 'Not Passed Only')
-      btn.classList.toggle('inst-active', _songHidePassedFilter);
-  });
+  if (_songHidePassedFilter) _songStatusFilter = null;
+  _refreshSongView(sid);
 }
 
 function toggleSongCat(catKey, id) {

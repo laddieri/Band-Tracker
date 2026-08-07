@@ -34,6 +34,7 @@ function navigate(view, params = {}, _fromHistory = false) {
   if (_view === 'song' && view !== 'song') {
     _songFilter           = _mkFilter('name', 'asc');
     _songHidePassedFilter = false;
+    _songStatusFilter     = null;
     _songGroupMode        = false;
     _songGroup            = new Set();
   }
@@ -77,6 +78,7 @@ function navigate(view, params = {}, _fromHistory = false) {
 
 let _activeNum  = null;
 let _songHidePassedFilter    = false;
+let _songStatusFilter        = null;      // song page: 'passed' | 'failed' | 'not_attempted' | null (all)
 let _songGroupMode           = false;     // song page: building a group pass-off list
 let _songGroup               = new Set(); // student numbers (strings) in the group list
 let _songCatCollapsed        = new Set(); // category names that are currently collapsed
