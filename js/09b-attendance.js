@@ -175,29 +175,75 @@ function setAttTabRecentStatus(status) {
 // The interactive "Attendance Over Time" chart. The last-computed geometry +
 // data are stashed here so the scrub handler (attChartScrub) can map a tap to a
 // rehearsal and redraw the cursor/readout without recomputing from the DB or
-// re-rendering the whole tab. _attChartSel is the point the readout is pinned to.
+// re-rendering the whole tab. _attChartSel is the point the readout is pinned to;
+// _attChartScale is the visible window (week / month / season).
 let _attChartModel = null;
 let _attChartSel   = null;
+let _attChartScale = 'season';
+
+// Submitted rehearsals (with a date) in the active season, oldest → newest. Same
+// ordering as everywhere else — by date, then start time, then id — so same-day
+// rehearsals plot in the order they actually happened (compareRehearsalsDesc
+// reversed gives ascending).
+function _attChartRehearsals() {
+  return [...DB.getRehearsals()]
+    .filter(r => r.attendanceSubmitted && r.date)
+    .sort((a, b) => compareRehearsalsDesc(b, a));
+}
+
+// Narrow an ascending rehearsal list to the visible time scale. Week/month are
+// windows measured back from the most recent rehearsal (not "today"), so the
+// chart always shows data even when viewing a season that has wrapped up.
+function _attChartWindow(list, scale) {
+  if (scale === 'season' || list.length < 2) return list;
+  const toDays = s => { const [y, m, d] = String(s).split('-').map(Number); return Date.UTC(y, m - 1, d) / 86400000; };
+  const anchor = toDays(list[list.length - 1].date);
+  const cutoff = anchor - (scale === 'week' ? 6 : 30); // inclusive window
+  return list.filter(r => toDays(r.date) >= cutoff);
+}
 
 function _renderAttendanceChart() {
-  const allRehearsals = [...DB.getRehearsals()]
-    .filter(r => r.attendanceSubmitted)
-    .sort((a, b) => a.date.localeCompare(b.date));
-
   const total = Object.keys(DB.getStudents()).length;
-  if (allRehearsals.length < 2 || total === 0) { _attChartModel = null; return ''; }
+  const all   = _attChartRehearsals();
+  if (all.length < 2 || total === 0) { _attChartModel = null; return ''; }
 
-  const pts = allRehearsals.slice(-24).map(r => {
+  return `
+    <div class="sec-card">
+    <div id="att-tab-chart-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('att-tab-chart')">
+      <span class="section-title" style="margin:0">Attendance Over Time</span>
+      <span class="sec-chevron">▾</span>
+    </div>
+    <div id="att-tab-chart">${_attChartCardHtml()}</div>
+    </div>`;
+}
+
+// The week/month/season segmented control.
+function _attChartScaleToggle() {
+  return `<div class="att-scale-group">` +
+    [['week', 'Week'], ['month', 'Month'], ['season', 'Season']].map(([v, label]) =>
+      `<button class="att-scale-btn${_attChartScale === v ? ' att-scale-btn--on' : ''}" onclick="attChartSetScale('${v}')">${label}</button>`
+    ).join('') + `</div>`;
+}
+
+// The chart card for the current scale — rebuilt in place when the scale changes,
+// so it re-reads the DB and re-fits the axes but leaves the rest of the tab alone.
+function _attChartCardHtml() {
+  const pts = _attChartWindow(_attChartRehearsals(), _attChartScale).map(r => {
     const entries = STATE.entries[r.id] || {};
     const absent = Object.values(entries).filter(e => e.attendance === 'absent').length;
     const late   = Object.values(entries).filter(e => e.attendance === 'late').length;
     const [, m, d] = r.date.split('-').map(Number);
-    // Axis labels must stay short ("8/4") or they collide once a season fills
-    // up; fmtDate's long form is kept for the readout.
+    // Axis labels must stay short ("8/4") or they collide once a range fills up;
+    // fmtDate's long form is kept for the readout.
     return { id: r.id, label: `${m}/${d}`, full: fmtDate(r.date), absent, late };
   });
 
-  if (pts.length < 2) { _attChartModel = null; return ''; }
+  const toggle = _attChartScaleToggle();
+  if (pts.length < 2) {
+    _attChartModel = null;
+    return `<div class="att-chart-card card mb-12">${toggle}
+      <div class="att-chart-empty">Not enough rehearsals in this range yet.</div></div>`;
+  }
 
   const W = 360, H = 160, PL = 32, PR = 10, PT = 12, PB = 32;
   const iW = W - PL - PR, iH = H - PT - PB;
@@ -222,7 +268,7 @@ function _renderAttendanceChart() {
             <text x="${PL-4}" y="${y+4}" text-anchor="end" font-size="9" fill="var(--text-muted)">${v}</text>`;
   }).join('');
 
-  // Dots crowd into a solid band once the season fills up — shrink them so the
+  // Dots crowd into a solid band once a range fills up — shrink them so the
   // trend line stays readable.
   const dotR = pts.length > 16 ? 2 : pts.length > 10 ? 2.5 : 3;
 
@@ -257,29 +303,33 @@ function _renderAttendanceChart() {
       onpointerdown="attChartScrub(event)" onpointermove="attChartScrub(event)"></rect>`;
 
   return `
-    <div class="sec-card">
-    <div id="att-tab-chart-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('att-tab-chart')">
-      <span class="section-title" style="margin:0">Attendance Over Time</span>
-      <span class="sec-chevron">▾</span>
-    </div>
-    <div id="att-tab-chart">
-      <div class="att-chart-card card mb-12">
-        <div class="att-chart-readout" id="att-chart-readout">${_attChartReadoutInner(_attChartSel)}</div>
-        <svg id="att-chart-svg" viewBox="0 0 ${W} ${H}" width="100%" style="display:block;overflow:visible">
-          ${gridLines}
-          ${makePolyline('var(--danger)',  'absent')}
-          ${makePolyline('var(--warning)', 'late')}
-          ${xLabels}
-          <g id="att-chart-cursor">${_attChartCursor(_attChartSel)}</g>
-          ${hit}
-        </svg>
-        <div class="att-chart-legend">
-          <span class="att-chart-legend-item"><span class="att-chart-dot" style="background:var(--danger)"></span>Absent</span>
-          <span class="att-chart-legend-item"><span class="att-chart-dot" style="background:var(--warning)"></span>Late</span>
-        </div>
+    <div class="att-chart-card card mb-12">
+      ${toggle}
+      <div class="att-chart-readout" id="att-chart-readout">${_attChartReadoutInner(_attChartSel)}</div>
+      <svg id="att-chart-svg" viewBox="0 0 ${W} ${H}" width="100%" style="display:block;overflow:visible">
+        ${gridLines}
+        ${makePolyline('var(--danger)',  'absent')}
+        ${makePolyline('var(--warning)', 'late')}
+        ${xLabels}
+        <g id="att-chart-cursor">${_attChartCursor(_attChartSel)}</g>
+        ${hit}
+      </svg>
+      <div class="att-chart-legend">
+        <span class="att-chart-legend-item"><span class="att-chart-dot" style="background:var(--danger)"></span>Absent</span>
+        <span class="att-chart-legend-item"><span class="att-chart-dot" style="background:var(--warning)"></span>Late</span>
       </div>
-    </div>
     </div>`;
+}
+
+// Switch the visible time scale and rebuild just the chart card (re-anchoring the
+// readout to the most recent point in the new range). Collapse state lives on the
+// #att-tab-chart wrapper, so replacing its contents leaves it intact.
+function attChartSetScale(scale) {
+  if (scale === _attChartScale) return;
+  _attChartScale = scale;
+  _attChartSel   = null;
+  const el = document.getElementById('att-tab-chart');
+  if (el) el.innerHTML = _attChartCardHtml();
 }
 
 // Crosshair + emphasised dots for the pinned point (drawn under the hit rect so
