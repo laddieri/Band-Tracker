@@ -170,11 +170,19 @@ function buildPublicStats({ students, entries, rehearsals, songs, weights, flags
   const visEntries = {};
   for (const r of visRehearsals) if (entries[r.id]) visEntries[r.id] = entries[r.id];
 
-  const rehearsalRows = visRehearsals.map(r => ({
-    date:   r.date,
-    label:  r.label || '',
-    absent: Object.values(entries[r.id] || {}).filter(e => e.attendance === 'absent').length,
-  }));
+  // Per-rehearsal attendance tallies, all aggregate — no per-student data. On
+  // submit every in-scope student gets an explicit attendance entry (present /
+  // late / absent), so counting entries reflects the whole rehearsal.
+  const rehearsalRows = visRehearsals.map(r => {
+    const es = Object.values(entries[r.id] || {});
+    return {
+      date:    r.date,
+      label:   r.label || '',
+      absent:  es.filter(e => e.attendance === 'absent').length,
+      present: es.filter(e => e.attendance === 'present').length,
+      late:    es.filter(e => e.attendance === 'late').length,
+    };
+  });
 
   const songRows = (flags.songsOn ? songs : []).map(song => {
     const passed = memList.filter(s => song.statuses?.[String(s.number)]?.status === 'passed').length;

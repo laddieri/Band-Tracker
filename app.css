@@ -2632,6 +2632,26 @@ html, body {
 .portal-song-fail-note { font-size: 0.78rem; color: var(--text-muted); margin-top: 4px; font-style: italic; }
 .portal-fail-note-preview { font-size: 0.9rem; background: var(--bg); border-left: 3px solid var(--danger); padding: 8px 12px; border-radius: 0 var(--r-sm) var(--r-sm) 0; color: var(--text); margin: 0; white-space: pre-wrap; word-break: break-word; }
 
+/* ── Band Attendance Data (student portal, aggregate only) ──────────────────── */
+.band-att-list { display: flex; flex-direction: column; gap: 8px; }
+.band-att-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 10px 14px;
+}
+.band-att-info { min-width: 0; }
+.band-att-date { font-size: 0.9rem; font-weight: 600; }
+.band-att-label { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+.band-att-counts { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* Slightly smaller chips than the director summary row so several fit a phone row. */
+.band-att-counts .att-summary-chip { padding: 3px 10px; font-size: 0.75rem; }
+
 /* ── Songs page student progress roster ─────────────────────────────────────── */
 
 .songs-prog-hdr-title {
