@@ -116,11 +116,11 @@ describe('buildPublicStats', () => {
                     { id: 'r2', date: '2026-06-08' },
                   ] };
 
-  it('counts absences per rehearsal', () => {
+  it('counts attendance per rehearsal', () => {
     const { rehearsals } = L.buildPublicStats(args);
     assert.deepStrictEqual(rehearsals, [
-      { date: '2026-06-01', label: 'Sectionals', absent: 1 },
-      { date: '2026-06-08', label: '', absent: 0 },
+      { date: '2026-06-01', label: 'Sectionals', absent: 1, present: 1, late: 0 },
+      { date: '2026-06-08', label: '', absent: 0, present: 0, late: 1 },
     ]);
   });
   it('aggregates song progress without leaking per-student statuses', () => {
@@ -169,7 +169,7 @@ describe('buildPublicStats', () => {
     ];
     const { rehearsals: rows, leaderboard } = L.buildPublicStats({ ...args, rehearsals });
     // Only the visible rehearsal has a row.
-    assert.deepStrictEqual(rows, [{ date: '2026-06-08', label: '', absent: 0 }]);
+    assert.deepStrictEqual(rows, [{ date: '2026-06-08', label: '', absent: 0, present: 0, late: 1 }]);
     // #7's single entry was the hidden absence, so their published score is 0
     // (the absence can't leak through a lowered rank).
     assert.strictEqual(leaderboard.find(r => r.num === '7').score, 0);

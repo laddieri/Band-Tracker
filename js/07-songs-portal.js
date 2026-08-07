@@ -1070,6 +1070,30 @@ function _portalSongs(num) {
   }));
 }
 
+// Band-wide attendance snapshot for the student portal: one aggregate row per
+// visible rehearsal (present / late / absent totals only — never who). Students
+// read the published rows (settings/public, built by buildPublicStats), so no
+// per-student attendance leaks; directors/staff (and the director preview)
+// compute the same rows live from STATE, mirroring the publisher. Rehearsals a
+// director hid from students are excluded on both paths. Most recent first.
+function _portalBandAttendance() {
+  if (!portalFeatureOn('attendance')) return [];
+  if (canRecord()) {
+    return STATE.rehearsals
+      .filter(r => !r.hiddenFromStudents)
+      .map(r => {
+        const es = Object.values(STATE.entries[r.id] || {});
+        return {
+          date: r.date, label: r.label || '',
+          absent:  es.filter(e => e.attendance === 'absent').length,
+          present: es.filter(e => e.attendance === 'present').length,
+          late:    es.filter(e => e.attendance === 'late').length,
+        };
+      });
+  }
+  return STATE.publicStats?.rehearsals || [];
+}
+
 function viewStudentPortal(previewMode = false) {
   const num  = STATE.studentNum;
   const s    = STATE.students[num];
@@ -1080,6 +1104,8 @@ function viewStudentPortal(previewMode = false) {
   const hist = DB.getStudentHistory(num).filter(h => !h.rehearsal.hiddenFromStudents);
   const mySongs   = _portalSongs(num);
   const pseudonym = portalPseudonym(num);
+  // Band-wide attendance, only rehearsals that have any attendance recorded.
+  const bandAtt   = _portalBandAttendance().filter(r => (r.present || 0) + (r.late || 0) + (r.absent || 0) > 0);
 
   const spots      = studentSpots(s);
   const metaParts  = [s?.instrument, s?.section, s?.grade ? s.grade + ' Grade' : ''].filter(Boolean);
@@ -1284,6 +1310,34 @@ function viewStudentPortal(previewMode = false) {
       <button class="leaderboard-link-btn" onclick="${previewMode ? `previewLeaderboard('${esc(num)}')` : "navigate('leaderboard')"}">
         📊 View Band Stats &amp; Leaderboard
       </button>` : ''}
+
+      ${bandAtt.length ? `
+        <div class="sec-card">
+        <div id="portal-sec-bandatt-hdr" class="sec-hdr" onclick="toggleCollapse('portal-sec-bandatt')">
+          <span class="section-title" style="margin:0">Band Attendance Data</span>
+          <span class="sec-chevron">▾</span>
+        </div>
+        <div id="portal-sec-bandatt" class="sec-collapsed">
+          <div class="band-att-list">
+            ${bandAtt.map(r => {
+              const present = r.present || 0, late = r.late || 0, absent = r.absent || 0;
+              return `
+              <div class="band-att-row">
+                <div class="band-att-info">
+                  <div class="band-att-date">${fmtDate(r.date)}</div>
+                  ${r.label ? `<div class="band-att-label">${esc(r.label)}</div>` : ''}
+                </div>
+                <div class="band-att-counts">
+                  <span class="att-summary-chip att-chip-present">${present} Present</span>
+                  ${late ? `<span class="att-summary-chip att-chip-late">${late} Late</span>` : ''}
+                  <span class="att-summary-chip att-chip-absent">${absent} Absent</span>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+        </div>
+      ` : ''}
     </div>`;
 }
 
