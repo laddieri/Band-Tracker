@@ -2609,6 +2609,15 @@ html, body {
   color: var(--text-muted);
   margin-top: 2px;
 }
+.portal-song-right {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+/* Band-wide pass-off bar sits directly below the student's own status pill. */
+.portal-song-prog { width: 96px; }
 .portal-song-status {
   flex-shrink: 0;
   font-size: 0.75rem;
