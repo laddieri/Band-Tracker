@@ -170,17 +170,28 @@ function buildPublicStats({ students, entries, rehearsals, songs, weights, flags
   const visEntries = {};
   for (const r of visRehearsals) if (entries[r.id]) visEntries[r.id] = entries[r.id];
 
-  // Per-rehearsal attendance tallies, all aggregate — no per-student data. On
-  // submit every in-scope student gets an explicit attendance entry (present /
-  // late / absent), so counting entries reflects the whole rehearsal.
+  // Per-rehearsal attendance tallies, all aggregate — no per-student data.
+  // Attendance recording only stamps absences and lates; everyone else is
+  // present by default (see submitAttendance). So present is the in-scope
+  // roster minus absent/late, exactly as the director attendance views derive
+  // it — NOT a count of "present" entries (those usually don't exist). Present
+  // is only meaningful once attendance is under way, so it's left at 0 for a
+  // rehearsal with no submitted flag and no absent/late marks; the portal card
+  // then filters those untouched rehearsals out.
   const rehearsalRows = visRehearsals.map(r => {
-    const es = Object.values(entries[r.id] || {});
+    const es      = Object.values(entries[r.id] || {});
+    const absent  = es.filter(e => e.attendance === 'absent').length;
+    const late    = es.filter(e => e.attendance === 'late').length;
+    const inScope = r.scope
+      ? studentList.filter(s => rehearsalIncludesStudent(s, r.scope)).length
+      : studentList.length;
+    const counted = !!r.attendanceSubmitted || absent > 0 || late > 0;
     return {
       date:    r.date,
       label:   r.label || '',
-      absent:  es.filter(e => e.attendance === 'absent').length,
-      present: es.filter(e => e.attendance === 'present').length,
-      late:    es.filter(e => e.attendance === 'late').length,
+      absent,
+      late,
+      present: counted ? Math.max(0, inScope - absent - late) : 0,
     };
   });
 
