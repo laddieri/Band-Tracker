@@ -120,7 +120,8 @@ function instrumentFilterChips(activeFilter, fnName, fnFirstArg) {
 function viewRoster() {
   const students = DB.getStudents();
   const allStudents = Object.values(students);
-  const filtered = filterAndSortStudents(allStudents, _rosterFilter);
+  const scoreMap = _rosterScoreMap();
+  const filtered = filterAndSortStudents(allStudents, _rosterFilter, scoreMap);
 
   const rosterSortOpts = [
     {value:'name',   label:'Name'},
@@ -128,6 +129,11 @@ function viewRoster() {
     ...(hasField('instrument') ? [{value:'instrument', label:'Instrument'}] : []),
     ...(hasField('section')    ? [{value:'section',    label:'Section'}]    : []),
     ...(hasField('grade')      ? [{value:'grade',      label:'Grade'}]      : []),
+    ...(featureOn('marks') ? [
+      {value:'positives', label:'Positive Marks'},
+      {value:'mistakes',  label:'Negative Marks'},
+    ] : []),
+    ...(featureOn('songs') && STATE.songs.length ? [{value:'passed', label:'Songs Completed'}] : []),
   ];
   if (STATE.isAdmin && allStudents.length === 0) {
     return viewRosterOnboarding();
@@ -135,7 +141,7 @@ function viewRoster() {
 
   return `
     ${renderFilterBar('roster', _rosterFilter, rosterSortOpts)}
-    <div id="roster-list">${rosterRows(filtered)}</div>
+    <div id="roster-list">${rosterRows(filtered, scoreMap)}</div>
   `;
 }
 
@@ -271,7 +277,26 @@ function _studentSpotBadges(s) {
   ).join('');
 }
 
-function rosterRows(list) {
+// Per-student totals behind the roster's marks/songs ticks AND the score-based
+// sort options (positives, mistakes, passed). Built once per render and shared
+// by both the sorter and the row renderer so each student's history is scanned
+// only once. `passed` is 0 for memorization-excluded students (they get no
+// song tick).
+function _rosterScoreMap() {
+  const map = {};
+  for (const s of Object.values(DB.getStudents())) {
+    const hist = DB.getStudentHistory(s.number);
+    const mistakes  = hist.reduce((sum,e)=>sum+(e.entry.mistakes||0),0);
+    const positives = hist.reduce((sum,e)=>sum+(e.entry.positives||0),0);
+    const passed = (featureOn('songs') && !memExcluded(s))
+      ? STATE.songs.filter(song => song.statuses?.[String(s.number)]?.status === 'passed').length
+      : 0;
+    map[s.number] = { mistakes, positives, passed };
+  }
+  return map;
+}
+
+function rosterRows(list, scoreMap = _rosterScoreMap()) {
   if (!list.length) {
     return `<div class="empty-state" style="padding:24px"><p>No students match the current filter.</p></div>`;
   }
@@ -280,15 +305,13 @@ function rosterRows(list) {
   // list rather than per row.
   const songsTotal = STATE.songs.length;
   return list.map(s => {
-    const hist = DB.getStudentHistory(s.number);
-    const errs = hist.reduce((sum,e)=>sum+(e.entry.mistakes||0),0);
-    const pos  = hist.reduce((sum,e)=>sum+(e.entry.positives||0),0);
+    const sc   = scoreMap[s.number] || { mistakes: 0, positives: 0, passed: 0 };
+    const errs = sc.mistakes;
+    const pos  = sc.positives;
     // Songs passed off out of the total assigned. Excluded groups (e.g.
     // majorettes) don't memorize music, so they get no song tick.
     const showSongs   = featureOn('songs') && songsTotal > 0 && !memExcluded(s);
-    const songsPassed = showSongs
-      ? STATE.songs.filter(song => song.statuses?.[String(s.number)]?.status === 'passed').length
-      : 0;
+    const songsPassed = showSongs ? sc.passed : 0;
     return `
       <div class="roster-row" onclick="navigate('student',{num:'${esc(s.number)}'})">
         <div class="student-info">
