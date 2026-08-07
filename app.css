@@ -3464,6 +3464,8 @@ html, body {
 }
 .drill-fs-axis-num--top { top:4px; }
 .drill-fs-axis-num--bottom { bottom:4px; }
+/* 5-yard floating markers: smaller and dimmer so the 10s stay the anchors. */
+.drill-fs-axis-num--minor { font-size:0.6rem; font-weight:600; padding:1px 4px; opacity:0.8; }
 
 /* ── Drill tab (immersive field-chart viewer) ──────────────────────────────── */
 /* Fills the content area between the header and bottom nav; the chart stage
