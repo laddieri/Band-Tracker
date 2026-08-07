@@ -1040,23 +1040,33 @@ function portalPseudonym(num) {
   return row ? row.name : '';
 }
 
-// Songs for the student portal: the catalog plus this student's own result.
-// Directors read song docs directly; students join the published catalog
-// (settings/public) with the songStatuses mirror on their own student doc.
+// Songs for the student portal: the catalog plus this student's own result and
+// the band-wide pass-off tally (`passed` of `total` members). Directors read
+// song docs directly; students join the published catalog (settings/public) —
+// which already carries only aggregate counts, never per-student results — with
+// the songStatuses mirror on their own student doc. The tally lets a student
+// see how the whole band is progressing without any detail about who passed.
 function _portalSongs(num) {
   if (!portalFeatureOn('songs')) return [];
   // Students in an excluded group (e.g. majorettes) don't memorize music.
   if (memExcluded(STATE.students[String(num)])) return [];
   if (canRecord()) {
+    // Progress is measured over students who memorize music, matching both the
+    // director Songs view and the published aggregate students see.
+    const memStudents = Object.values(STATE.students).filter(s => !memExcluded(s));
+    const total = memStudents.length;
     return STATE.songs.map(song => ({
       id: song.id, title: song.title, dueDate: song.dueDate || '',
       category: song.category || '', mine: song.statuses?.[String(num)] || null,
+      passed: memStudents.filter(s => song.statuses?.[String(s.number)]?.status === 'passed').length,
+      total,
     }));
   }
   const mine = STATE.students[String(num)]?.songStatuses || {};
   return (STATE.publicStats?.songs || []).map(song => ({
     id: song.id, title: song.title, dueDate: song.dueDate || '',
     category: song.category || '', mine: mine[song.id] || null,
+    passed: song.passed || 0, total: (song.passed || 0) + (song.remaining || 0),
   }));
 }
 
@@ -1158,6 +1168,11 @@ function viewStudentPortal(previewMode = false) {
               const when     = (status !== 'not_attempted' && entry?.updatedAt)
                 ? `${status === 'passed' ? 'Passed' : 'Try Again'} ${fmtDateTime(entry.updatedAt)}` : '';
               const overdue  = song.dueDate && song.dueDate < today() && status !== 'passed';
+              // Band-wide pass-off progress: same green bar directors/staff see,
+              // built purely from aggregate counts (settings/public) — no detail
+              // about which other students passed.
+              const total = song.total || 0;
+              const pct   = total ? Math.round(song.passed / total * 100) : 0;
               return `
               <div class="portal-song-row">
                 <div class="portal-song-info">
@@ -1166,9 +1181,15 @@ function viewStudentPortal(previewMode = false) {
                   ${when ? `<div class="portal-song-when">${esc(when)}</div>` : ''}
                   ${failNote ? `<div class="portal-song-fail-note">📝 ${esc(failNote)}</div>` : ''}
                 </div>
-                <span class="portal-song-status ${status === 'passed' ? 'pss-pass' : status === 'failed' ? 'pss-fail' : 'pss-na'}">
-                  ${status === 'passed' ? '✓ Passed' : status === 'failed' ? '↻ Try Again' : '— Not Attempted'}
-                </span>
+                <div class="portal-song-right">
+                  <span class="portal-song-status ${status === 'passed' ? 'pss-pass' : status === 'failed' ? 'pss-fail' : 'pss-na'}">
+                    ${status === 'passed' ? '✓ Passed' : status === 'failed' ? '↻ Try Again' : '— Not Attempted'}
+                  </span>
+                  ${total ? `<div class="song-prog-wrap portal-song-prog" title="${song.passed} of ${total} band members passed">
+                    <div class="song-prog-bar"><div class="song-prog-fill" style="width:${pct}%"></div></div>
+                    <div class="song-prog-lbl">${song.passed} / ${total} passed</div>
+                  </div>` : ''}
+                </div>
               </div>`;
             };
             if (!cats.length) {
