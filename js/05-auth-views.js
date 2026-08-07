@@ -675,6 +675,22 @@ function showBrandSettingsModal() {
     </div>
 
     <div class="form-group">
+      <label class="form-label">Marching Leaderboard</label>
+      <p style="font-size:.75rem;color:var(--text-muted);margin:-2px 0 8px">
+        The ranking built from marks. When on, students see it under Stats (with
+        fun pseudonyms); when off, only directors and staff can see it.
+      </p>
+      <label style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;cursor:pointer">
+        <input type="checkbox" id="lb-visible-students" ${STATE.marchingLeaderboardEnabled ? 'checked' : ''}
+          style="margin-top:3px;width:18px;height:18px;flex-shrink:0">
+        <span>
+          <span style="font-weight:600">Show marching leaderboard to students</span>
+          <span style="display:block;font-size:.75rem;color:var(--text-muted)">Students see the ranking on their Stats tab</span>
+        </span>
+      </label>
+    </div>
+
+    <div class="form-group">
       <label class="form-label">Co-director invite code</label>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <code id="invite-code-display"
@@ -936,6 +952,7 @@ async function saveBrandSettings() {
   };
   const hideNegativeFromPortal = !(document.getElementById('neg-show-portal')?.checked ?? true);
   const countNegativeInScore   = !!(document.getElementById('neg-count-score')?.checked ?? true);
+  const marchingLeaderboardEnabled = !!(document.getElementById('lb-visible-students')?.checked ?? STATE.marchingLeaderboardEnabled);
   const bandColor              = _pendingBandColor !== null ? _pendingBandColor : STATE.bandColor;
   _pendingBandColor = null;
   STATE.bandName               = name;
@@ -945,9 +962,10 @@ async function saveBrandSettings() {
   STATE.portalVisible          = portalVisible;
   STATE.hideNegativeFromPortal = hideNegativeFromPortal;
   STATE.countNegativeInScore   = countNegativeInScore;
+  STATE.marchingLeaderboardEnabled = marchingLeaderboardEnabled;
   try { localStorage.setItem('bandColor', bandColor); } catch {}
   await orgCol('settings').doc('presets').set(
-    { bandName: name, bandLogo: logo, bandColor, features, portalVisible, hideNegativeFromPortal, countNegativeInScore },
+    { bandName: name, bandLogo: logo, bandColor, features, portalVisible, hideNegativeFromPortal, countNegativeInScore, marchingLeaderboardEnabled },
     { merge: true }
   );
   closeModal();

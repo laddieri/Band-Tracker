@@ -236,16 +236,21 @@ function _buildLbRankRows() {
 
   if (scored.length === 0)
     return `<div class="lb-stat-row"><div class="lb-stat-label">No students match this filter.</div></div>`;
+  // Pseudonyms are for the kids' view. Directors only need the silly name when
+  // the board is actually shown to students (so it matches what kids see);
+  // otherwise show the real name and drop the pseudonym entirely.
+  const showPseudo = STATE.marchingLeaderboardEnabled;
   return scored.map(({ docId, s, name, score }, i) => {
     const isMe = docId === myDocId;
     const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
+    const real  = s.name || `#${s.number}`;
     const click = canRecord() ? `onclick="navigate('student',{num:'${esc(s.number)}'})"` : '';
     return `
     <div class="lb-rank-row ${isMe ? 'lb-rank-me' : ''} ${i % 2 === 1 ? 'lb-stat-row-alt' : ''} ${canRecord() ? 'lb-row-clickable' : ''}" ${click}>
       <span class="lb-rank-medal">${medal}</span>
       <span class="lb-rank-name">
-        ${esc(name)}${isMe ? ' <span class="lb-you-badge">you</span>' : ''}
-        ${canRecord() ? `<span class="lb-real-name">${esc(s.name || `#${s.number}`)}</span>` : ''}
+        ${esc(showPseudo ? name : real)}${isMe ? ' <span class="lb-you-badge">you</span>' : ''}
+        ${(canRecord() && showPseudo) ? `<span class="lb-real-name">${esc(real)}</span>` : ''}
       </span>
       <span class="lb-rank-score ${score > 0 ? 'lb-val-ok' : score < 0 ? 'lb-val-warn' : ''}">${score > 0 ? '+' : ''}${score}</span>
       ${canRecord() ? `<span class="lb-row-chevron">›</span>` : ''}
@@ -482,70 +487,33 @@ function viewLeaderboardStudent() {
 }
 
 function viewLeaderboard() {
-  const rehearsals    = [...STATE.rehearsals].sort((a,b) => b.date.localeCompare(a.date));
-  const totalStudents = Object.keys(STATE.students).length;
-
-  const rehearsalRows = rehearsals.map(r => ({
-    id:     r.id,
-    date:   r.date,
-    label:  r.label || '',
-    absent: Object.values(STATE.entries[r.id] || {}).filter(e => e.attendance === 'absent').length,
-  }));
-
-  // Song progress is measured only over students who memorize music, so
-  // excluded groups (e.g. majorettes) don't dilute the percentages.
-  const memStudents = new Set(
-    Object.values(STATE.students).filter(s => !memExcluded(s)).map(s => String(s.number))
-  );
-  const songTotal = memStudents.size;
-  const songRows = DB.getSongs().map(song => {
-    const passed    = Object.entries(song.statuses || {})
-      .filter(([num, s]) => s.status === 'passed' && memStudents.has(String(num))).length;
-    const remaining = Math.max(0, songTotal - passed);
-    const pct       = songTotal ? Math.round(passed / songTotal * 100) : 0;
-    return { song, passed, remaining, pct };
-  });
-
-  // ── Render ────────────────────────────────────────────────────────────────
-
+  // Directors/staff land straight on the Marching Leaderboard. Attendance and
+  // song-memorization progress aren't duplicated here — they each have their own
+  // tab. Whether students can see this ranking is set in Band Settings.
   return `
     <div class="leaderboard-view">
-
-      <div class="sec-card">${_lbAttendanceSectionHtml(rehearsalRows)}</div>
-
-      <div class="sec-card">${_lbSongsSectionHtml(songRows)}</div>
-
-      ${(STATE.marchingLeaderboardEnabled || canRecord()) ? `
-        <div class="sec-card">
-          <div id="lb-sec-ranking-hdr" class="sec-hdr sec-hdr-open lb-marching-hdr" onclick="toggleCollapse('lb-sec-ranking')">
-            <span class="section-title" style="margin:0">Marching Leaderboard</span>
-            <div style="display:flex;align-items:center;gap:8px" onclick="event.stopPropagation()">
-              ${STATE.isAdmin ? `
-                <button class="lb-toggle-btn ${STATE.marchingLeaderboardEnabled ? 'lb-toggle-on' : 'lb-toggle-off'}"
-                        onclick="toggleMarchingLeaderboard()">
-                  ${STATE.marchingLeaderboardEnabled ? 'Visible to students' : 'Hidden from students'}
-                </button>` : ''}
-              <span class="sec-chevron" onclick="toggleCollapse('lb-sec-ranking')">▾</span>
-            </div>
+      <div class="sec-card">
+        <div id="lb-sec-ranking-hdr" class="sec-hdr sec-hdr-open lb-marching-hdr" onclick="toggleCollapse('lb-sec-ranking')">
+          <span class="section-title" style="margin:0">Marching Leaderboard</span>
+          <span class="sec-chevron">▾</span>
+        </div>
+        <div id="lb-sec-ranking">
+          ${!STATE.marchingLeaderboardEnabled && STATE.isAdmin
+            ? `<p class="lb-hidden-note">Students can’t see this leaderboard. Turn it on in Band Settings → Marching Leaderboard.</p>`
+            : ''}
+          ${renderFilterBar('lb', _lbFilter, [
+            {value:'score',      label:'Score'},
+            {value:'name',       label:'Name'},
+            {value:'instrument', label:'Instrument'},
+            {value:'grade',      label:'Grade'},
+            {value:'positives',  label:'Positives'},
+            {value:'mistakes',   label:'Mistakes'}
+          ])}
+          <div id="lb-rank-list" class="card mb-12" style="padding:0;overflow:hidden">
+            ${_buildLbRankRows()}
           </div>
-          <div id="lb-sec-ranking">
-            ${!STATE.marchingLeaderboardEnabled && STATE.isAdmin
-              ? `<p class="lb-hidden-note">Students cannot see this leaderboard. Toggle above to enable it.</p>`
-              : ''}
-            ${renderFilterBar('lb', _lbFilter, [
-              {value:'score',      label:'Score'},
-              {value:'name',       label:'Name'},
-              {value:'instrument', label:'Instrument'},
-              {value:'grade',      label:'Grade'},
-              {value:'positives',  label:'Positives'},
-              {value:'mistakes',   label:'Mistakes'}
-            ])}
-            <div id="lb-rank-list" class="card mb-12" style="padding:0;overflow:hidden">
-              ${_buildLbRankRows()}
-            </div>
-          </div>
-        </div>` : ''}
-
+        </div>
+      </div>
     </div>`;
 }
 
