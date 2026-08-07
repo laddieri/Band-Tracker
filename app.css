@@ -498,6 +498,19 @@ html, body {
 
 .att-chart-card { padding: 14px 16px 10px; }
 .att-chart-title { font-size: 0.85rem; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+.att-chart-readout {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px;
+  min-height: 26px; margin-bottom: 6px; font-size: 0.8rem;
+}
+.att-chart-ro-date { font-weight: 600; color: var(--text); }
+.att-chart-ro-stat { display: inline-flex; align-items: center; gap: 5px; color: var(--text-muted); }
+.att-chart-ro-stat::before { content: ''; width: 9px; height: 9px; border-radius: 50%; }
+.att-chart-ro-abs::before  { background: var(--danger); }
+.att-chart-ro-late::before { background: var(--warning); }
+.att-chart-ro-view {
+  margin-left: auto; border: none; background: none; cursor: pointer; padding: 2px 4px;
+  font-size: 0.78rem; font-weight: 600; color: var(--primary, var(--accent));
+}
 .att-chart-legend { display: flex; gap: 16px; margin-top: 8px; justify-content: center; }
 .att-chart-legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.78rem; color: var(--text-muted); }
 .att-chart-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }

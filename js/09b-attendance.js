@@ -172,13 +172,20 @@ function setAttTabRecentStatus(status) {
   else _rerenderForFilter('att-tab');
 }
 
+// The interactive "Attendance Over Time" chart. The last-computed geometry +
+// data are stashed here so the scrub handler (attChartScrub) can map a tap to a
+// rehearsal and redraw the cursor/readout without recomputing from the DB or
+// re-rendering the whole tab. _attChartSel is the point the readout is pinned to.
+let _attChartModel = null;
+let _attChartSel   = null;
+
 function _renderAttendanceChart() {
   const allRehearsals = [...DB.getRehearsals()]
     .filter(r => r.attendanceSubmitted)
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const total = Object.keys(DB.getStudents()).length;
-  if (allRehearsals.length < 2 || total === 0) return '';
+  if (allRehearsals.length < 2 || total === 0) { _attChartModel = null; return ''; }
 
   const pts = allRehearsals.slice(-24).map(r => {
     const entries = STATE.entries[r.id] || {};
@@ -186,11 +193,11 @@ function _renderAttendanceChart() {
     const late   = Object.values(entries).filter(e => e.attendance === 'late').length;
     const [, m, d] = r.date.split('-').map(Number);
     // Axis labels must stay short ("8/4") or they collide once a season fills
-    // up; fmtDate's long form is kept for the point tooltips.
-    return { label: `${m}/${d}`, full: fmtDate(r.date), absent, late };
+    // up; fmtDate's long form is kept for the readout.
+    return { id: r.id, label: `${m}/${d}`, full: fmtDate(r.date), absent, late };
   });
 
-  if (pts.length < 2) return '';
+  if (pts.length < 2) { _attChartModel = null; return ''; }
 
   const W = 360, H = 160, PL = 32, PR = 10, PT = 12, PB = 32;
   const iW = W - PL - PR, iH = H - PT - PB;
@@ -203,6 +210,11 @@ function _renderAttendanceChart() {
   const xStep = iW / (pts.length - 1);
   const toX = i => PL + i * xStep;
   const toY = v => PT + iH - (v / maxY) * iH;
+
+  // Stash everything the scrub handler needs to redraw the cursor + readout.
+  _attChartModel = { pts, W, H, PL, PR, PT, iW, iH, maxY, xStep, toX, toY };
+  // Keep the pinned point valid across re-renders; default to the most recent.
+  if (_attChartSel == null || _attChartSel >= pts.length) _attChartSel = pts.length - 1;
 
   const gridLines = ticks.map(v => {
     const y = toY(v);
@@ -217,9 +229,7 @@ function _renderAttendanceChart() {
   const makePolyline = (color, key) => {
     const points = pts.map((p, i) => `${toX(i).toFixed(1)},${toY(p[key]).toFixed(1)}`).join(' ');
     const dots = pts.map((p, i) =>
-      `<circle cx="${toX(i).toFixed(1)}" cy="${toY(p[key]).toFixed(1)}" r="${dotR}" fill="${color}">
-        <title>${p.full}: ${p[key]} ${key}</title>
-      </circle>`
+      `<circle cx="${toX(i).toFixed(1)}" cy="${toY(p[key]).toFixed(1)}" r="${dotR}" fill="${color}"/>`
     ).join('');
     return `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` + dots;
   };
@@ -240,6 +250,12 @@ function _renderAttendanceChart() {
     return `<text x="${toX(i).toFixed(1)}" y="${H-4}" text-anchor="${anchor}" font-size="9" fill="var(--text-muted)">${p.label}</text>`;
   }).join('');
 
+  // Full-plot pointer target for scrub/tap. touch-action:pan-y lets a vertical
+  // swipe still scroll the page while a tap or horizontal drag reads the chart.
+  const hit = `<rect x="${PL}" y="${PT}" width="${iW}" height="${iH}" fill="transparent"
+      style="cursor:crosshair;touch-action:pan-y"
+      onpointerdown="attChartScrub(event)" onpointermove="attChartScrub(event)"></rect>`;
+
   return `
     <div class="sec-card">
     <div id="att-tab-chart-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('att-tab-chart')">
@@ -248,11 +264,14 @@ function _renderAttendanceChart() {
     </div>
     <div id="att-tab-chart">
       <div class="att-chart-card card mb-12">
-        <svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;overflow:visible">
+        <div class="att-chart-readout" id="att-chart-readout">${_attChartReadoutInner(_attChartSel)}</div>
+        <svg id="att-chart-svg" viewBox="0 0 ${W} ${H}" width="100%" style="display:block;overflow:visible">
           ${gridLines}
           ${makePolyline('var(--danger)',  'absent')}
           ${makePolyline('var(--warning)', 'late')}
           ${xLabels}
+          <g id="att-chart-cursor">${_attChartCursor(_attChartSel)}</g>
+          ${hit}
         </svg>
         <div class="att-chart-legend">
           <span class="att-chart-legend-item"><span class="att-chart-dot" style="background:var(--danger)"></span>Absent</span>
@@ -261,6 +280,55 @@ function _renderAttendanceChart() {
       </div>
     </div>
     </div>`;
+}
+
+// Crosshair + emphasised dots for the pinned point (drawn under the hit rect so
+// taps still land). Empty when there's no model or selection.
+function _attChartCursor(idx) {
+  const m = _attChartModel;
+  if (!m || idx == null || idx < 0 || idx >= m.pts.length) return '';
+  const p = m.pts[idx];
+  const x = m.toX(idx).toFixed(1);
+  const ya = m.toY(p.absent).toFixed(1), yl = m.toY(p.late).toFixed(1);
+  return `<line x1="${x}" y1="${m.PT}" x2="${x}" y2="${m.PT + m.iH}" stroke="var(--text-muted)" stroke-width="1" stroke-dasharray="3 2" opacity="0.6"/>`
+    + `<circle cx="${x}" cy="${ya}" r="4.5" fill="var(--danger)" stroke="var(--surface, #fff)" stroke-width="1.5"/>`
+    + `<circle cx="${x}" cy="${yl}" r="4.5" fill="var(--warning)" stroke="var(--surface, #fff)" stroke-width="1.5"/>`;
+}
+
+// The live readout above the chart: which rehearsal is pinned, its absent/late
+// counts, and a jump to that rehearsal.
+function _attChartReadoutInner(idx) {
+  const m = _attChartModel;
+  if (!m || idx == null || idx < 0 || idx >= m.pts.length) return '';
+  const p = m.pts[idx];
+  return `<span class="att-chart-ro-date">${esc(p.full)}</span>`
+    + `<span class="att-chart-ro-stat att-chart-ro-abs">${p.absent} absent</span>`
+    + `<span class="att-chart-ro-stat att-chart-ro-late">${p.late} late</span>`
+    + `<button class="att-chart-ro-view" onclick="navigate('attendance',{rid:'${esc(p.id)}',from:'attendance-tab'})">View →</button>`;
+}
+
+// Map a pointer position to the nearest rehearsal and repaint the cursor +
+// readout in place (no full re-render, so the tab doesn't jump or lose scroll).
+function attChartScrub(e) {
+  const m = _attChartModel;
+  if (!m) return;
+  const svg = document.getElementById('att-chart-svg');
+  if (!svg) return;
+  const rect = svg.getBoundingClientRect();
+  if (!rect.width) return;
+  // Keep a drag scrubbing even after the finger leaves the plot rect.
+  if (e.type === 'pointerdown' && e.target.setPointerCapture) {
+    try { e.target.setPointerCapture(e.pointerId); } catch {}
+  }
+  const vx  = (e.clientX - rect.left) / rect.width * m.W; // viewBox x
+  let idx   = Math.round((vx - m.PL) / m.xStep);
+  idx = Math.max(0, Math.min(m.pts.length - 1, idx));
+  if (idx === _attChartSel) return;
+  _attChartSel = idx;
+  const g = document.getElementById('att-chart-cursor');
+  if (g) g.innerHTML = _attChartCursor(idx);
+  const r = document.getElementById('att-chart-readout');
+  if (r) r.innerHTML = _attChartReadoutInner(idx);
 }
 
 function viewAttendanceTab() {
