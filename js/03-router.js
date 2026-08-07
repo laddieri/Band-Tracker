@@ -402,7 +402,7 @@ function _rerenderForFilter(viewId) {
 // no dedicated list container (caller should fall back to a full re-render).
 function _refreshFilterList(viewId) {
   const lists = {
-    roster:    ['roster-list',       () => rosterRows(filterAndSortStudents(Object.values(DB.getStudents()), _rosterFilter))],
+    roster:    ['roster-list',       () => { const sm = _rosterScoreMap(); return rosterRows(filterAndSortStudents(Object.values(DB.getStudents()), _rosterFilter, sm), sm); }],
     'att-tab': () => {
       const rl = document.getElementById('att-tab-recent-list');
       const sl = document.getElementById('att-tab-season-list');
