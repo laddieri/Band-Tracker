@@ -398,6 +398,7 @@ function _rerenderForFilter(viewId) {
     case 'lb':           mc.innerHTML = viewLeaderboard(); break;
     case 'song':         mc.innerHTML = viewSong(_params.sid); break;
     case 'song-roster':  mc.innerHTML = viewSongs(); break;
+    case 'task':         mc.innerHTML = viewTask(_params.tid); break;
   }
   if (mc) mc.scrollTop = st;
 }
