@@ -266,8 +266,6 @@ function viewSong(sid) {
 
       ${renderFilterBar('song', _songFilter, songSortOpts)}
       <div class="inst-filter-row" style="padding-top:4px">
-        <button class="inst-chip ${_songHidePassedFilter ? 'inst-active' : ''}"
-                onclick="toggleSongHidePassed('${esc(sid)}')">Not Passed Only</button>
         <button class="inst-chip ${_songGroupMode ? 'inst-active' : ''}"
                 onclick="toggleSongGroupMode('${esc(sid)}')">👥 Group Pass-Off</button>
       </div>
@@ -290,12 +288,10 @@ function songStudentRows(sid, students, statuses) {
   const scoreMap = {};
   for (const s of students) scoreMap[s.number] = { status: getStatus(s.number) };
 
-  let pool = students;
-  // Tapping a status box at the top filters to just that status; the
-  // "Not Passed Only" chip is a separate quick filter (the two clear each
-  // other, so only one is ever active at a time).
-  if (_songStatusFilter)     pool = pool.filter(s => getStatus(s.number) === _songStatusFilter);
-  if (_songHidePassedFilter) pool = pool.filter(s => getStatus(s.number) !== 'passed');
+  // Tapping a status box at the top filters the list to just that status.
+  const pool = _songStatusFilter
+    ? students.filter(s => getStatus(s.number) === _songStatusFilter)
+    : students;
   const sorted = filterAndSortStudents(pool, _songFilter, scoreMap);
 
   if (!sorted.length) return `<div class="empty-state" style="padding:24px"><p>No students match the current filter.</p></div>`;
@@ -454,19 +450,10 @@ function _applyGroupSongStatus(sid, nums, status, note = '') {
 }
 
 // Tapping a status box at the top of the song page filters the list to that
-// status; tapping the active box clears the filter. Clears the "Not Passed
-// Only" chip so the two filters can't contradict each other. User-initiated
-// tap, so the full re-render (which also updates the boxes' active state) is
-// fine.
+// status; tapping the active box clears the filter. User-initiated tap, so the
+// full re-render (which also updates the boxes' active state) is fine.
 function toggleSongStatusFilter(sid, status) {
   _songStatusFilter = _songStatusFilter === status ? null : status;
-  if (_songStatusFilter) _songHidePassedFilter = false;
-  _refreshSongView(sid);
-}
-
-function toggleSongHidePassed(sid) {
-  _songHidePassedFilter = !_songHidePassedFilter;
-  if (_songHidePassedFilter) _songStatusFilter = null;
   _refreshSongView(sid);
 }
 
