@@ -676,10 +676,14 @@ function _drillFieldSvg(positions, opts = {}) {
     const major = yd % 10 === 0;
     lines += `<line x1="${sx}" y1="${MT}" x2="${sx}" y2="${MT+FH}" stroke="${major?P.major:P.minor}" stroke-width="${major?'0.8':'0.4'}"/>`;
     lines += `<line x1="${sx}" y1="${MT+FH}" x2="${sx}" y2="${(MT+FH+4).toFixed(1)}" stroke="${major?P.tickMaj:P.tickMin}" stroke-width="${major?'0.8':'0.5'}"/>`;
-    if (major && yd > 0 && yd < 100) {
+    // Number every yard line (both sidelines). The 10-yard lines keep the
+    // larger number; the 5-yard lines in between get a slightly smaller one so
+    // the 10s still read as the primary anchors. Goal lines (0/100) stay blank.
+    if (yd > 0 && yd < 100) {
       const lbl = yd > 50 ? 100 - yd : yd;
-      lines += `<text x="${sx}" y="${MT-4}" text-anchor="middle" fill="${P.num}" font-size="8" font-family="sans-serif">${lbl}</text>`;
-      lines += `<text x="${sx}" y="${(MT+FH+14).toFixed(1)}" text-anchor="middle" fill="${P.num}" font-size="8" font-family="sans-serif">${lbl}</text>`;
+      const fsz = major ? 8 : 6;
+      lines += `<text x="${sx}" y="${MT-4}" text-anchor="middle" fill="${P.num}" font-size="${fsz}" font-family="sans-serif">${lbl}</text>`;
+      lines += `<text x="${sx}" y="${(MT+FH+14).toFixed(1)}" text-anchor="middle" fill="${P.num}" font-size="${fsz}" font-family="sans-serif">${lbl}</text>`;
     }
   }
   // Hash marks (HS: 28 and 56 steps off the front sideline)
