@@ -436,7 +436,9 @@ function _refreshFilterList(viewId) {
     'song-roster':['song-roster-list', () => _buildSongRosterRows()],
     song:         ['song-student-list', () => {
       const song = STATE.songs.find(s => s.id === _params.sid);
-      return song ? songStudentRows(_params.sid, Object.values(DB.getStudents()), song.statuses || {}) : '';
+      // Exclude memorization-exempt students (e.g. majorettes), same as the
+      // initial viewSong render — otherwise they reappear on search/sort/filter.
+      return song ? songStudentRows(_params.sid, Object.values(DB.getStudents()).filter(s => !memExcluded(s)), song.statuses || {}) : '';
     }],
   };
   const entry = lists[viewId];
