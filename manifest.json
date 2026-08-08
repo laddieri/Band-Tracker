@@ -1,6 +1,6 @@
 {
-  "name": "Band Tracker",
-  "short_name": "Band Tracker",
+  "name": "Band Marks",
+  "short_name": "Band Marks",
   "description": "Marching band attendance, marks and song memorization tracker.",
   "start_url": "/",
   "scope": "/",

@@ -14,7 +14,7 @@ function viewHome() {
   return `
     <div class="hero">
       <div class="hero-date">${fmtDate(todayStr)}</div>
-      <div class="hero-title">🎺 Band Tracker</div>
+      <div class="hero-title">🎺 Band Marks</div>
       <div class="hero-sub">${sc} student${sc!==1?'s':''} · ${rehearsals.length} rehearsal${rehearsals.length!==1?'s':''}</div>
       ${todayR
         ? `<button class="btn btn-full btn-lg" style="background:white;color:var(--primary);margin-bottom:10px"
@@ -752,7 +752,7 @@ function _appSignInUrl() {
 }
 
 function buildStudentCodeSheetHTML(students) {
-  const bandName = STATE.bandName || 'Band Tracker';
+  const bandName = STATE.bandName || 'Band Marks';
   const urlShort = _appSignInUrl().replace(/^https?:\/\//, '').replace(/\/$/, '');
 
   // The slip is written to the student, so it carries only what means something

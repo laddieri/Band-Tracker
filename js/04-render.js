@@ -34,11 +34,11 @@ function render() {
       headerLogo.style.display = 'none';
     }
   }
-  document.title = STATE.bandName || 'Band Tracker';
+  document.title = STATE.bandName || 'Band Marks';
 
   if (STATE.authChecking) {
     backBtn.classList.add('hidden');
-    title.textContent = STATE.bandName || 'Band Tracker';
+    title.textContent = STATE.bandName || 'Band Marks';
     actions.innerHTML = '';
     nav.style.display = 'none';
     main.innerHTML = `<div class="loading-view"><div class="spinner"></div></div>`;
@@ -47,7 +47,7 @@ function render() {
 
   if (!STATE.user) {
     backBtn.classList.add('hidden');
-    title.textContent = 'Band Tracker';
+    title.textContent = 'Band Marks';
     actions.innerHTML = '';
     nav.style.display = 'none';
     main.innerHTML = viewLogin();
@@ -67,7 +67,7 @@ function render() {
 
   if (STATE.loading) {
     backBtn.classList.add('hidden');
-    title.textContent = 'Band Tracker';
+    title.textContent = 'Band Marks';
     actions.innerHTML = userBtn();
     main.innerHTML = `<div class="loading-view"><div class="spinner"></div><span>Loading data…</span></div>`;
     return;
@@ -78,7 +78,7 @@ function render() {
   // logout and lost data).
   if (STATE.connError) {
     backBtn.classList.add('hidden');
-    title.textContent = STATE.bandName || 'Band Tracker';
+    title.textContent = STATE.bandName || 'Band Marks';
     actions.innerHTML = '';
     nav.style.display = 'none';
     main.innerHTML = viewConnError();
@@ -89,7 +89,7 @@ function render() {
   // separate milestone; for now show a clear message instead of a blank app.
   if (STATE.needsOnboarding) {
     backBtn.classList.add('hidden');
-    title.textContent = 'Band Tracker';
+    title.textContent = 'Band Marks';
     actions.innerHTML = '';
     nav.style.display = 'none';
     main.innerHTML = viewOnboarding();
