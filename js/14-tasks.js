@@ -171,12 +171,32 @@ function toggleTaskStatusFilter(tid, status) {
   _refreshTaskView(tid);
 }
 
-// Toggle a student's completion. No confirmation — a check-off is cheap to undo.
+// Toggle a student's completion. Marking done is instant; UNMARKING a
+// previously-completed task asks for confirmation first — it's easy to tap by
+// accident and it clears a record the student can see in their portal.
 function setTaskDone(tid, num) {
   const task = STATE.tasks.find(t => t.id === tid);
   if (!task) return;
   if (!task.statuses) task.statuses = {};
-  const done = !task.statuses[String(num)]?.done;
+  const currentlyDone = !!task.statuses[String(num)]?.done;
+  if (currentlyDone) {
+    const s = STATE.students[String(num)];
+    const name = s?.name || `#${num}`;
+    showConfirmModal(
+      `Unmark ${esc(name)}?`,
+      `This clears the completed mark for <strong>${esc(task.title)}</strong> and sets it back to Not done.`,
+      () => _applyTaskDone(tid, num, false),
+      'Unmark', 'btn-danger'
+    );
+    return;
+  }
+  _applyTaskDone(tid, num, true);
+}
+
+function _applyTaskDone(tid, num, done) {
+  const task = STATE.tasks.find(t => t.id === tid);
+  if (!task) return;
+  if (!task.statuses) task.statuses = {};
   if (done) task.statuses[String(num)] = { done: true, updatedAt: Date.now(), updatedBy: STATE.user?.uid || '' };
   else delete task.statuses[String(num)];
   _bufferTaskStatus(tid, num, done);
