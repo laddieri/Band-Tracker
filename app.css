@@ -699,9 +699,6 @@ html, body {
 /* Songs-passed tally on roster rows — band-colored so it reads apart from the
    green positives tick. */
 .badge-song { background: var(--primary-tint); color: var(--primary); }
-/* Rehearsal attendance streak (🔥 N) — warm/amber so it reads apart from the
-   marks and songs badges. Adapts to both themes via the shared amber tokens. */
-.badge-streak { background: var(--amber-bg); color: var(--warning); }
 
 /* ── Section title ──────────────────────────────────────────────────────── */
 
