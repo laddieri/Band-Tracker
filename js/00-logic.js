@@ -91,6 +91,36 @@ function compareRehearsalsDesc(a, b) {
   return String(b?.id || '').localeCompare(String(a?.id || ''));
 }
 
+// ── Rehearsal attendance streak ───────────────────────────────────────────────
+
+// How many of the most recent consecutive rehearsals a student attended without
+// an absence. Only rehearsals where attendance was actually taken
+// (`attendanceSubmitted`) and that include the student (rehearsal scope) count;
+// they're walked newest-first and the streak stops at the first absence.
+// A 'late' still counts as attended — it isn't an absence — and a rehearsal with
+// no entry for the student (the common "present" case, which writes no entry
+// doc) counts as attended too. Rehearsals a director hid from students
+// (`hiddenFromStudents`) are skipped entirely — they "shouldn't count", so they
+// neither break nor extend the streak — keeping the number identical in the
+// director roster and the student's own portal.
+//   `rehearsals` — array of rehearsal docs; `entries` — STATE.entries shape
+//   ({ [rehearsalId]: { [studentNumber]: entry } }); `student` — the student doc
+//   (needs its number + scope fields).
+function rehearsalStreak(rehearsals, entries, student) {
+  if (!student) return 0;
+  const num = String(student.number);
+  const ordered = (rehearsals || [])
+    .filter(r => r && r.attendanceSubmitted && !r.hiddenFromStudents
+              && rehearsalIncludesStudent(student, r.scope))
+    .sort(compareRehearsalsDesc);
+  let streak = 0;
+  for (const r of ordered) {
+    if (entries?.[r.id]?.[num]?.attendance === 'absent') break;
+    streak++;
+  }
+  return streak;
+}
+
 // ── Memorization exclusions ───────────────────────────────────────────────────
 
 // Whether a student is excluded from song memorization. `exclusions` is a flat
@@ -1185,7 +1215,7 @@ function _pyware3daPageNote(u8, gapStart, gapEnd, N) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     FAKE_ADJECTIVES, FAKE_ANIMALS, _strHash, pseudonymFor,
-    rehearsalIncludesStudent, rehearsalScopeLabel, compareRehearsalsDesc,
+    rehearsalIncludesStudent, rehearsalScopeLabel, compareRehearsalsDesc, rehearsalStreak,
     isMemorizationExcluded,
     taskAppliesToStudent, _taskMatchesGroups,
     lbWeights, scoreStudentsCore, buildPublicStats,

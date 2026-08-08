@@ -652,13 +652,20 @@ function viewStudent(num) {
     ${featureOn('attendance') ? (() => {
       const absences = hist.filter(({entry:e}) => e.attendance === 'absent');
       const lates    = hist.filter(({entry:e}) => e.attendance === 'late');
-      if (!absences.length && !lates.length) return '';
+      const streak   = rehearsalStreak(DB.getRehearsals(), STATE.entries, s);
+      if (!absences.length && !lates.length && !streak) return '';
       const { mon, fri } = currentWeekRange();
       const wkAbs  = absences.filter(({rehearsal:r}) => r.date >= mon && r.date <= fri);
       const wkLate = lates.filter(({rehearsal:r}) => r.date >= mon && r.date <= fri);
       return `
         <div class="card mb-12" style="padding:0;overflow:hidden">
           <div class="att-card-title">Attendance Record</div>
+          ${streak > 0 ? `
+          <div class="att-streak-banner">
+            <span class="att-streak-flame">🔥</span>
+            <span class="att-streak-count">${streak}</span>
+            <span class="att-streak-text">rehearsal${streak !== 1 ? 's' : ''} in a row without an absence</span>
+          </div>` : ''}
 
           <div class="att-card-section">
             <div class="att-card-period">This Week</div>

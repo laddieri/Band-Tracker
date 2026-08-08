@@ -1111,6 +1111,10 @@ function viewStudentPortal(previewMode = false) {
   const pseudonym = portalPseudonym(num);
   // Band-wide attendance, only rehearsals that have any attendance recorded.
   const bandAtt   = _portalBandAttendance().filter(r => (r.present || 0) + (r.late || 0) + (r.absent || 0) > 0);
+  // Consecutive rehearsals attended without an absence. Computed over the same
+  // rehearsals/entries the streak uses everywhere (hidden ones excluded), so the
+  // number matches the director roster and the director's student-view preview.
+  const _portalStreak = rehearsalStreak(DB.getRehearsals(), STATE.entries, s);
 
   const spots      = studentSpots(s);
   const metaParts  = [s?.instrument, s?.section, s?.grade ? s.grade + ' Grade' : ''].filter(Boolean);
@@ -1131,13 +1135,19 @@ function viewStudentPortal(previewMode = false) {
         </div>
       </div>
 
-      ${(hist.length > 0 && portalFeatureOn('attendance')) ? `
+      ${((hist.length > 0 || _portalStreak > 0) && portalFeatureOn('attendance')) ? `
         <div class="sec-card">
         <div id="portal-sec-attendance-hdr" class="sec-hdr" onclick="toggleCollapse('portal-sec-attendance')">
           <span class="section-title" style="margin:0">Attendance</span>
           <span class="sec-chevron">▾</span>
         </div>
         <div id="portal-sec-attendance" class="sec-collapsed">
+          ${_portalStreak > 0 ? `
+            <div class="att-streak-banner" style="border-bottom:none;border-radius:var(--r-md,12px);margin-bottom:10px">
+              <span class="att-streak-flame">🔥</span>
+              <span class="att-streak-count">${_portalStreak}</span>
+              <span class="att-streak-text">rehearsal${_portalStreak !== 1 ? 's' : ''} in a row without an absence</span>
+            </div>` : ''}
           ${(() => {
             const absences = hist.filter(({entry:e}) => e.attendance === 'absent');
             const lates    = hist.filter(({entry:e}) => e.attendance === 'late');

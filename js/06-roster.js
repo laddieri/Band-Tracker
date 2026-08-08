@@ -284,6 +284,8 @@ function _studentSpotBadges(s) {
 // song tick).
 function _rosterScoreMap() {
   const map = {};
+  const rehearsals = DB.getRehearsals();
+  const attendanceOn = featureOn('attendance');
   for (const s of Object.values(DB.getStudents())) {
     const hist = DB.getStudentHistory(s.number);
     const mistakes  = hist.reduce((sum,e)=>sum+(e.entry.mistakes||0),0);
@@ -291,7 +293,8 @@ function _rosterScoreMap() {
     const passed = (featureOn('songs') && !memExcluded(s))
       ? STATE.songs.filter(song => song.statuses?.[String(s.number)]?.status === 'passed').length
       : 0;
-    map[s.number] = { mistakes, positives, passed };
+    const streak = attendanceOn ? rehearsalStreak(rehearsals, STATE.entries, s) : 0;
+    map[s.number] = { mistakes, positives, passed, streak };
   }
   return map;
 }
@@ -305,9 +308,10 @@ function rosterRows(list, scoreMap = _rosterScoreMap()) {
   // list rather than per row.
   const songsTotal = STATE.songs.length;
   return list.map(s => {
-    const sc   = scoreMap[s.number] || { mistakes: 0, positives: 0, passed: 0 };
+    const sc   = scoreMap[s.number] || { mistakes: 0, positives: 0, passed: 0, streak: 0 };
     const errs = sc.mistakes;
     const pos  = sc.positives;
+    const streak = sc.streak || 0;
     // Songs passed off out of the total assigned. Excluded groups (e.g.
     // majorettes) don't memorize music, so they get no song tick.
     const showSongs   = featureOn('songs') && songsTotal > 0 && !memExcluded(s);
@@ -324,6 +328,7 @@ function rosterRows(list, scoreMap = _rosterScoreMap()) {
           ].filter(Boolean).join(' · ')) || '<em style="color:var(--text-muted)">No details set</em>'}</div>
         </div>
         <div class="student-badges">
+          ${streak > 1 ? `<span class="badge badge-streak" title="${streak} rehearsals in a row without an absence">🔥 ${streak}</span>` : ''}
           ${featureOn('marks') ? `
           ${errs > 0 ? `<span class="badge badge-danger">${errs}✗</span>` : ''}
           ${pos > 0  ? `<span class="badge badge-success">${pos}✓</span>` : ''}` : ''}

@@ -327,6 +327,77 @@ describe('compareRehearsalsDesc', () => {
   });
 });
 
+describe('rehearsalStreak', () => {
+  const sam = { number: '42', name: 'Sam' };
+  // Newest → oldest: r4, r3, r2, r1
+  const rehs = [
+    { id: 'r1', date: '2026-03-01', attendanceSubmitted: true },
+    { id: 'r2', date: '2026-03-08', attendanceSubmitted: true },
+    { id: 'r3', date: '2026-03-15', attendanceSubmitted: true },
+    { id: 'r4', date: '2026-03-22', attendanceSubmitted: true },
+  ];
+
+  it('counts consecutive attended rehearsals from the most recent', () => {
+    // present (no entry) on r4/r3, late on r2, absent on r1 → streak stops at r1
+    const entries = {
+      r2: { '42': { attendance: 'late' } },
+      r1: { '42': { attendance: 'absent' } },
+    };
+    assert.strictEqual(L.rehearsalStreak(rehs, entries, sam), 3);
+  });
+
+  it('treats a rehearsal with no entry as attended (the "present" case)', () => {
+    assert.strictEqual(L.rehearsalStreak(rehs, {}, sam), 4);
+  });
+
+  it('a late still counts as attended (it is not an absence)', () => {
+    const entries = { r4: { '42': { attendance: 'late' } } };
+    assert.strictEqual(L.rehearsalStreak(rehs, entries, sam), 4);
+  });
+
+  it('returns 0 when the most recent counted rehearsal is an absence', () => {
+    const entries = { r4: { '42': { attendance: 'absent' } } };
+    assert.strictEqual(L.rehearsalStreak(rehs, entries, sam), 0);
+  });
+
+  it('ignores rehearsals where attendance was never submitted', () => {
+    const list = [
+      { id: 'r1', date: '2026-03-01', attendanceSubmitted: true },
+      { id: 'r2', date: '2026-03-08' }, // not submitted — skipped entirely
+      { id: 'r3', date: '2026-03-15', attendanceSubmitted: true },
+    ];
+    const entries = { r1: { '42': { attendance: 'absent' } } };
+    // r3 attended, r2 skipped, r1 absent → streak of 1
+    assert.strictEqual(L.rehearsalStreak(list, entries, sam), 1);
+  });
+
+  it('skips hidden rehearsals so they neither break nor extend the streak', () => {
+    const list = [
+      { id: 'r1', date: '2026-03-01', attendanceSubmitted: true },
+      { id: 'r2', date: '2026-03-08', attendanceSubmitted: true, hiddenFromStudents: true },
+      { id: 'r3', date: '2026-03-15', attendanceSubmitted: true },
+    ];
+    // r2 hidden holds an absence but is skipped; r3 and r1 attended → streak 2
+    const entries = { r2: { '42': { attendance: 'absent' } } };
+    assert.strictEqual(L.rehearsalStreak(list, entries, sam), 2);
+  });
+
+  it('only counts rehearsals whose scope includes the student', () => {
+    const flute = { number: '9', instrument: 'Flute', section: 'Woodwinds' };
+    const list = [
+      { id: 'r1', date: '2026-03-01', attendanceSubmitted: true },
+      { id: 'r2', date: '2026-03-08', attendanceSubmitted: true,
+        scope: { sections: ['Brass'] } }, // flute not in scope — skipped
+      { id: 'r3', date: '2026-03-15', attendanceSubmitted: true },
+    ];
+    assert.strictEqual(L.rehearsalStreak(list, {}, flute), 2);
+  });
+
+  it('returns 0 with no student', () => {
+    assert.strictEqual(L.rehearsalStreak(rehs, {}, null), 0);
+  });
+});
+
 // ── Memorization exclusions ───────────────────────────────────────────────────
 
 describe('isMemorizationExcluded', () => {
