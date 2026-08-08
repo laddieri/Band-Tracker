@@ -926,7 +926,7 @@ function handleFeatToggle(key) {
   portalLbl.classList.toggle('feat-portal-lbl-dim', !on);
 }
 
-async function saveBrandSettings() {
+function saveBrandSettings() {
   const name = document.getElementById('brand-name-input')?.value.trim() || '';
   const logo = _pendingLogoData !== null ? _pendingLogoData : STATE.bandLogo;
   _pendingLogoData = null;
@@ -967,13 +967,18 @@ async function saveBrandSettings() {
   STATE.countNegativeInScore   = countNegativeInScore;
   STATE.marchingLeaderboardEnabled = marchingLeaderboardEnabled;
   try { localStorage.setItem('bandColor', bandColor); } catch {}
-  await orgCol('settings').doc('presets').set(
-    { bandName: name, bandLogo: logo, bandColor, features, portalVisible, hideNegativeFromPortal, countNegativeInScore, marchingLeaderboardEnabled },
-    { merge: true }
-  );
+  // Close optimistically. STATE is already updated above, so the UI is correct;
+  // the write must NOT hold the modal open waiting on a server ack — on a flaky
+  // connection Firestore queues it locally (the header "Saving…" pill reflects
+  // that) and syncs when back online, exactly like every other write in the app.
+  // Awaiting here left the modal stuck open and the pill stuck on until sync.
   closeModal();
   showToast('Band settings saved.');
   render();
+  orgCol('settings').doc('presets').set(
+    { bandName: name, bandLogo: logo, bandColor, features, portalVisible, hideNegativeFromPortal, countNegativeInScore, marchingLeaderboardEnabled },
+    { merge: true }
+  ).catch(e => _toastSaveError(e, 'Saving band settings'));
 }
 
 // ── Start a new season ────────────────────────────────────────────────────────
