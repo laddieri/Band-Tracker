@@ -228,7 +228,7 @@ function render() {
 
     case 'rehearsal': {
       const r = DB.getRehearsals().find(r => r.id === _params.rid);
-      title.textContent = r ? fmtShort(r.date) + (r.label ? ` — ${r.label}` : '') : 'Rehearsal';
+      title.textContent = r ? fmtShort(r.date) + (r.label ? ` — ${r.label}` : '') : 'Event';
       actions.innerHTML = userBtn();
       main.innerHTML = viewRehearsal(_params.rid);
       break;
@@ -299,7 +299,7 @@ function render() {
       // The Marks tab always shows the summary. Recording for an open rehearsal
       // happens on the dedicated 'rehearsal' page, reached via a button in
       // viewDashboard() (so the summary stays available even mid-rehearsal).
-      title.textContent = 'Rehearsal Marks';
+      title.textContent = 'Event Marks';
       actions.innerHTML = (STATE.isAdmin ? optBtn('showMarksOptionsModal()') : '') + userBtn();
       main.innerHTML = viewDashboard();
       break;

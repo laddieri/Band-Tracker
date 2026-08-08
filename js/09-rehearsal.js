@@ -119,6 +119,7 @@ function _rhCardHtml(r) {
         const ended    = !!r.ended;
         const attDone  = !!r.attendanceSubmitted;
         const isPerf   = isPerformance(r);
+        const typeLbl  = eventTypeLabel(r);
         const perfBadge = isPerf ? `<span class="rh-badge rh-badge-perf">🎪 Performance</span>` : '';
         const stateCls = (ended ? 'rh-card-ended' : 'rh-card-open') + (isPerf ? ' rh-card-perf' : '');
         const activeR  = getActiveRehearsal();
@@ -133,10 +134,10 @@ function _rhCardHtml(r) {
           <div class="rh-card-menu-wrap">
             <button class="rh-card-menu-btn" onclick="event.stopPropagation();toggleRhMenu('${esc(r.id)}')" aria-label="More options">⋯</button>
             <div class="rh-card-menu-list hidden" id="rh-menu-${esc(r.id)}" onclick="event.stopPropagation()">
-              <button class="rh-card-menu-item" onclick="event.stopPropagation();toggleRhMenu('${esc(r.id)}');showRehearsalEditModal('${esc(r.id)}')">Edit Rehearsal</button>
-              <button class="rh-card-menu-item" onclick="event.stopPropagation();toggleRhMenu('${esc(r.id)}');showRehearsalPlanModal('${esc(r.id)}')">Rehearsal Plan</button>
-              ${ended && STATE.isAdmin ? `<button class="rh-card-menu-item" onclick="event.stopPropagation();toggleRhMenu('${esc(r.id)}');reopenRehearsal('${esc(r.id)}')">Reopen Rehearsal</button>` : ''}
-              ${STATE.isAdmin ? `<button class="rh-card-menu-item rh-menu-danger" onclick="event.stopPropagation();toggleRhMenu('${esc(r.id)}');confirmDeleteRehearsal('${esc(r.id)}')">Delete Rehearsal</button>` : ''}
+              <button class="rh-card-menu-item" onclick="event.stopPropagation();toggleRhMenu('${esc(r.id)}');showRehearsalEditModal('${esc(r.id)}')">Edit ${esc(typeLbl)}</button>
+              <button class="rh-card-menu-item" onclick="event.stopPropagation();toggleRhMenu('${esc(r.id)}');showRehearsalPlanModal('${esc(r.id)}')">${esc(typeLbl)} Plan</button>
+              ${ended && STATE.isAdmin ? `<button class="rh-card-menu-item" onclick="event.stopPropagation();toggleRhMenu('${esc(r.id)}');reopenRehearsal('${esc(r.id)}')">Reopen ${esc(typeLbl)}</button>` : ''}
+              ${STATE.isAdmin ? `<button class="rh-card-menu-item rh-menu-danger" onclick="event.stopPropagation();toggleRhMenu('${esc(r.id)}');confirmDeleteRehearsal('${esc(r.id)}')">Delete ${esc(typeLbl)}</button>` : ''}
             </div>
           </div>` : '';
         if (!ended) {
@@ -180,7 +181,7 @@ function _rhCardHtml(r) {
               </div>` : ''}
               ${STATE.isAdmin ? `
               <button class="btn btn-sm btn-danger btn-full" style="margin-top:8px"
-                onclick="confirmEndRehearsal('${esc(r.id)}')">End Rehearsal</button>` : ''}` : ''}
+                onclick="confirmEndRehearsal('${esc(r.id)}')">End ${esc(typeLbl)}</button>` : ''}` : ''}
             </div>`;
         }
         return `
@@ -560,7 +561,7 @@ function viewRehearsal(rid) {
     ${trackerSection}
 
     ${entryList.length ? `
-      <div class="section-title">Tracked This Rehearsal (${entryList.length})</div>
+      <div class="section-title">Tracked This ${esc(eventTypeLabel(r))} (${entryList.length})</div>
       ${entryList.map(([num, entry]) => {
         const stu = students[num];
         return `
@@ -636,7 +637,7 @@ function showMarkModal(rid, num, type) {
   const segments  = r?.segments || [];
 
   const segHtml = segments.length ? `
-    <div class="form-label" style="margin-bottom:7px">Which part of rehearsal?</div>
+    <div class="form-label" style="margin-bottom:7px">Which part of the event?</div>
     <div class="seg-chip-row">
       ${segments.map(s => `
         <button class="seg-chip${_pendingSegment === s ? ' seg-selected' : ''}"
@@ -839,7 +840,7 @@ function showGroupMarkModal(rid, groupName, type) {
     : scopePool.filter(s => _groupMatches(s, groupName));
 
   const segHtml = segments.length ? `
-    <div class="form-label" style="margin-bottom:7px">Which part of rehearsal?</div>
+    <div class="form-label" style="margin-bottom:7px">Which part of the event?</div>
     <div class="seg-chip-row">
       ${segments.map(s => `
         <button class="seg-chip${_pendingSegment === s ? ' seg-selected' : ''}"

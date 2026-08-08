@@ -65,7 +65,7 @@ function viewDashboard() {
   const selectedR = _dashRid ? rehearsals.find(r => r.id === _dashRid) : null;
   const scopeLabel = selectedR
     ? fmtDate(selectedR.date) + (selectedR.label ? ` — ${selectedR.label}` : '')
-    : `All Rehearsals (${rehearsals.length} total)`;
+    : `All Events (${rehearsals.length} total)`;
 
   const statCard = (label, value, sub, cls, onclick) => `
     <div class="dash-stat${onclick ? ' dash-stat-clickable' : ''}" ${onclick ? `onclick="${onclick}"` : ''}>
@@ -93,16 +93,16 @@ function viewDashboard() {
 
       ${openReh ? `
         <button class="btn btn-primary dash-record-btn" onclick="switchToFeedback('${esc(openReh.id)}')">
-          <span class="dash-record-main">✏️ Record Marks for This Rehearsal</span>
+          <span class="dash-record-main">✏️ Record Marks for This ${esc(eventTypeLabel(openReh))}</span>
           <span class="dash-record-sub">${esc(fmtDate(openReh.date))}${openReh.label ? ' — ' + esc(openReh.label) : ''}</span>
         </button>` : ''}
 
       <div class="dash-select-wrap">
         <select class="dash-select" onchange="setDashboardRehearsal(this.value)">
-          <option value="" ${!_dashRid ? 'selected' : ''}>Season Summary — All Rehearsals</option>
+          <option value="" ${!_dashRid ? 'selected' : ''}>Season Summary — All Events</option>
           ${rehearsals.map(r => `
             <option value="${esc(r.id)}" ${_dashRid === r.id ? 'selected' : ''}>
-              ${esc(fmtDate(r.date))}${r.label ? ' — ' + esc(r.label) : ''}${r.ended ? '' : ' (in progress)'}
+              ${isPerformance(r) ? '🎪 ' : ''}${esc(fmtDate(r.date))}${r.label ? ' — ' + esc(r.label) : ''}${r.ended ? '' : ' (in progress)'}
             </option>`).join('')}
         </select>
       </div>
@@ -144,7 +144,7 @@ function viewDashboard() {
 
       ${!topPos.length && !topMis.length && !topPerformers.length ? `
         <div class="empty-state" style="padding:48px 24px">
-          <p>No marks recorded${selectedR ? ' for this rehearsal' : ' yet'}.</p>
+          <p>No marks recorded${selectedR ? ' for this event' : ' yet'}.</p>
         </div>` : ''}
 
     </div>`;
@@ -195,7 +195,7 @@ function showStudentMarksModal(num, rid) {
     <div class="modal-handle"></div>
     <div class="modal-title">${esc(name)}
       <div style="font-size:0.78rem;font-weight:400;color:var(--text-muted);margin-top:2px">
-        ${rid ? (() => { const r = STATE.rehearsals.find(r => r.id === rid); return r ? fmtDate(r.date) + (r.label ? ' — ' + esc(r.label) : '') : ''; })() : 'All Rehearsals'}
+        ${rid ? (() => { const r = STATE.rehearsals.find(r => r.id === rid); return r ? fmtDate(r.date) + (r.label ? ' — ' + esc(r.label) : '') : ''; })() : 'All Events'}
       </div>
     </div>
     <div class="dash-modal-events">
@@ -297,13 +297,13 @@ function _lbAttendanceSectionHtml(rehearsalRows) {
             ${recentClick ? chevron : ''}
           </div>` : `
           <div class="lb-stat-row">
-            <div class="lb-stat-label">No rehearsals yet</div>
+            <div class="lb-stat-label">No events yet</div>
           </div>`}
           <div class="lb-stat-row lb-stat-row-alt ${weekClick ? 'lb-row-clickable' : ''}"
                ${weekClick ? `onclick="showLbAttendanceModal('week')"` : ''}>
             <div class="lb-stat-label">
               This week
-              <div class="lb-stat-sub">${fmtDate(mon)} – ${fmtDate(fri)} · ${weekRows.length} rehearsal${weekRows.length !== 1 ? 's' : ''}</div>
+              <div class="lb-stat-sub">${fmtDate(mon)} – ${fmtDate(fri)} · ${weekRows.length} event${weekRows.length !== 1 ? 's' : ''}</div>
             </div>
             <div class="lb-stat-val ${weekAbsences > 0 ? 'lb-val-warn' : 'lb-val-ok'}">
               ${weekRows.length ? `${weekAbsences} absent` : '—'}
@@ -314,9 +314,9 @@ function _lbAttendanceSectionHtml(rehearsalRows) {
                ${seasonClick ? `onclick="showLbAttendanceModal('season')"` : ''}>
             <div class="lb-stat-label">
               Season average
-              <div class="lb-stat-sub">${rehearsalRows.length} rehearsal${rehearsalRows.length !== 1 ? 's' : ''} total</div>
+              <div class="lb-stat-sub">${rehearsalRows.length} event${rehearsalRows.length !== 1 ? 's' : ''} total</div>
             </div>
-            <div class="lb-stat-val">${seasonAvg !== '—' ? `${seasonAvg} / rehearsal` : '—'}</div>
+            <div class="lb-stat-val">${seasonAvg !== '—' ? `${seasonAvg} / event` : '—'}</div>
             ${seasonClick ? chevron : ''}
           </div>
         </div>
@@ -334,18 +334,18 @@ function showLbAttendanceModal(scope) {
 
   const title = scope === 'week' ? 'This Week’s Attendance' : 'Season Attendance';
   if (!rows.length) {
-    openModal(`<div class="modal-title">${title}</div><p class="empty-state" style="padding:24px 0">No rehearsals in range.</p>`);
+    openModal(`<div class="modal-title">${title}</div><p class="empty-state" style="padding:24px 0">No events in range.</p>`);
     return;
   }
   const total = rows.reduce((s, x) => s + x.absent, 0);
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">${title}</div>
-    <div class="form-hint" style="margin:0 0 12px">${total} absence${total !== 1 ? 's' : ''} across ${rows.length} rehearsal${rows.length !== 1 ? 's' : ''}</div>
+    <div class="form-hint" style="margin:0 0 12px">${total} absence${total !== 1 ? 's' : ''} across ${rows.length} event${rows.length !== 1 ? 's' : ''}</div>
     <div class="card" style="padding:0;overflow:hidden">
       ${rows.map(({ r, absent }) => `
         <div class="dash-stu-row" onclick="closeModal();navigate('attendance',{rid:'${esc(r.id)}',from:'leaderboard'})">
-          <span class="dash-stu-name">${fmtDate(r.date)}${r.label ? ` · ${esc(r.label)}` : ''}</span>
+          <span class="dash-stu-name">${isPerformance(r) ? '🎪 ' : ''}${fmtDate(r.date)}${r.label ? ` · ${esc(r.label)}` : ''}</span>
           <span class="dash-stu-val ${absent > 0 ? 'dash-val-mis' : ''}">${absent} absent</span>
           <span class="dash-stu-chevron">›</span>
         </div>`).join('')}
@@ -441,7 +441,7 @@ function viewLeaderboardStudent() {
     <div class="leaderboard-view">
       <div class="empty-state" style="padding:48px 24px">
         <div class="empty-icon">📊</div>
-        <p>Band stats haven't been published yet. Check back after your next rehearsal!</p>
+        <p>Band stats haven't been published yet. Check back after your next event!</p>
       </div>
     </div>`;
   }
@@ -664,7 +664,7 @@ function viewStudent(num) {
           <div class="att-streak-banner">
             <span class="att-streak-flame">🔥</span>
             <span class="att-streak-count">${streak}</span>
-            <span class="att-streak-text">rehearsal${streak !== 1 ? 's' : ''} in a row without an absence</span>
+            <span class="att-streak-text">event${streak !== 1 ? 's' : ''} in a row without an absence</span>
           </div>` : ''}
 
           <div class="att-card-section">
@@ -784,7 +784,7 @@ function viewStudent(num) {
     ${hist.length ? `
       <div class="sec-card">
       <div id="stu-hist-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('stu-hist-sec')">
-        <span class="section-title" style="margin:0">Rehearsal History</span>
+        <span class="section-title" style="margin:0">Event History</span>
         <span class="sec-chevron">▾</span>
       </div>
       <div id="stu-hist-sec">
@@ -795,7 +795,7 @@ function viewStudent(num) {
         return `
         <div class="history-row ${e.mistakes>0?'had-mistakes':''} ${e.positives>0&&!e.mistakes?'had-positives':''}">
           <div class="history-info" onclick="navigate('rehearsal',{rid:'${esc(r.id)}'})">
-            <div class="history-date">${fmtDate(r.date)}</div>
+            <div class="history-date">${isPerformance(r) ? '🎪 ' : ''}${fmtDate(r.date)}</div>
             ${r.label ? `<div class="history-label">${esc(r.label)}</div>` : ''}
             ${featureOn('attendance') && e.attendance==='absent' ? `<div class="history-note att-absent-note">✗ Absent</div>` : ''}
             ${featureOn('attendance') && e.attendance==='late'   ? `<div class="history-note att-late-note">◷ Late</div>`   : ''}
@@ -822,7 +822,7 @@ function viewStudent(num) {
       </div>
     ` : `
       <div class="empty-state" style="padding:24px">
-        <p>No rehearsal data recorded yet.</p>
+        <p>No event data recorded yet.</p>
       </div>`}
     </div>
   `;

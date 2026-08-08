@@ -1947,7 +1947,7 @@ function drillInfoToggleEdit() {
 function drillQuickMark(num, type) {
   if (!canRecord()) return;
   const reh = getActiveRehearsal();
-  if (!reh) { showToast('No open rehearsal.'); return; }
+  if (!reh) { showToast('No open event.'); return; }
   showMarkModal(reh.id, num, type);
 }
 
