@@ -651,28 +651,24 @@ function showBrandSettingsModal() {
             <input type="checkbox" id="feat-portal-${key}" ${portalOn ? 'checked' : ''}${!featOn ? ' disabled' : ''}>
             <span>Show to students</span>
           </label>`}
+          ${key === 'marks' ? `
+          <div class="feat-sub${!featOn ? ' feat-sub-dim' : ''}" id="feat-sub-marks">
+            <div class="feat-sub-head">Negative marks</div>
+            ${[
+              ['neg-show-portal', !STATE.hideNegativeFromPortal, 'Show in student portal',    'Students can see their negative marks and feedback notes'],
+              ['neg-count-score', STATE.countNegativeInScore,    'Count in leaderboard score', 'Subtract negative marks from students\' leaderboard scores'],
+            ].map(([id, checked, label, desc]) => `
+            <label style="display:flex;align-items:flex-start;gap:10px;padding:6px 0;cursor:pointer">
+              <input type="checkbox" id="${id}" ${checked ? 'checked' : ''}${!featOn ? ' disabled' : ''}
+                style="margin-top:3px;width:16px;height:16px;flex-shrink:0">
+              <span>
+                <span style="font-weight:600">${label}</span>
+                <span style="display:block;font-size:.75rem;color:var(--text-muted)">${desc}</span>
+              </span>
+            </label>`).join('')}
+          </div>` : ''}
         </div>`;
       }).join('')}
-    </div>
-
-    <div class="form-group">
-      <label class="form-label">Negative Marks</label>
-      <p style="font-size:.75rem;color:var(--text-muted);margin:-2px 0 8px">
-        Controls how mistake marks (marching feedback) appear to students.
-        Does not affect attendance.
-      </p>
-      ${[
-        ['neg-show-portal',  !STATE.hideNegativeFromPortal, 'Show in student portal',        'Students can see their negative marks and feedback notes'],
-        ['neg-count-score',  STATE.countNegativeInScore,    'Count in leaderboard score',     'Subtract negative marks from students\' leaderboard scores'],
-      ].map(([id, checked, label, desc]) => `
-        <label style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;cursor:pointer">
-          <input type="checkbox" id="${id}" ${checked ? 'checked' : ''}
-            style="margin-top:3px;width:18px;height:18px;flex-shrink:0">
-          <span>
-            <span style="font-weight:600">${label}</span>
-            <span style="display:block;font-size:.75rem;color:var(--text-muted)">${desc}</span>
-          </span>
-        </label>`).join('')}
     </div>
 
     <div class="form-group">
@@ -924,6 +920,13 @@ function handleFeatToggle(key) {
   const on = featEl.checked;
   portalEl.disabled = !on;
   portalLbl.classList.toggle('feat-portal-lbl-dim', !on);
+  if (key === 'marks') {
+    const sub = document.getElementById('feat-sub-marks');
+    if (sub) {
+      sub.classList.toggle('feat-sub-dim', !on);
+      sub.querySelectorAll('input[type="checkbox"]').forEach(el => { el.disabled = !on; });
+    }
+  }
 }
 
 function saveBrandSettings() {
