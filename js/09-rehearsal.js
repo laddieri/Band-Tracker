@@ -472,7 +472,7 @@ function viewRehearsal(rid) {
             {value:'instrument', label:'Instrument'},
             {value:'section',    label:'Section'},
             {value:'grade',      label:'Grade'}
-          ], { extra: `${featureOn('drill') ? `<button class="inst-chip tracker-drill-btn${_drillSelectedNums.length ? ' tracker-drill-btn--active' : ''}" title="Load Pyware Drill" onclick="openDrillPicker()">
+          ], { extra: `${featureOn('drill') ? `<button class="inst-chip tracker-drill-btn${_drillSelectedNums.length ? ' tracker-drill-btn--active' : ''}" title="Load Field Chart" onclick="openDrillPicker()">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;display:block">
                 <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
               </svg>
@@ -481,7 +481,7 @@ function viewRehearsal(rid) {
             <div class="drill-selection-banner">
               <span class="drill-selection-label">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
-                ${_drillSelectedNums.length} student${_drillSelectedNums.length !== 1 ? 's' : ''} from drill
+                ${_drillSelectedNums.length} student${_drillSelectedNums.length !== 1 ? 's' : ''} from chart
               </span>
               <button class="drill-clear-btn" onclick="clearDrillSelection('${esc(rid)}')">Clear</button>
             </div>` : ''}

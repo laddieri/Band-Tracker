@@ -119,11 +119,11 @@ function _showDrillShowChooser() {
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Add “${esc(base)}” to a show</div>
-    <p class="modal-sub" style="margin:0 0 12px">A <strong>show</strong> groups drills that share one set of spot assignments. Add this drill to the show it belongs to and it takes on that show's letters &amp; numbers automatically — no re-entry. Or start a new show.</p>
+    <p class="modal-sub" style="margin:0 0 12px">A <strong>show</strong> groups charts that share one set of spot assignments. Add this chart to the show it belongs to and it takes on that show's letters &amp; numbers automatically — no re-entry. Or start a new show.</p>
     <div class="drill-show-choices">${_showChooserHtml(sel, base)}</div>
     <div class="modal-actions" style="margin-top:14px">
       <button class="btn btn-secondary" onclick="_drillCancelImport()">Cancel</button>
-      <button class="btn btn-primary" onclick="_drillCommitImport()">Add drill</button>
+      <button class="btn btn-primary" onclick="_drillCommitImport()">Add chart</button>
     </div>
   `);
 }
@@ -143,7 +143,7 @@ function _showChooserHtml(selectedId, defaultName) {
       <label class="drill-show-choice">
         <input type="radio" name="drill-show-choice" value="${esc(s.id)}"${selectedId === s.id ? ' checked' : ''}>
         <span class="drill-show-choice-name">${esc(s.name || 'Show')}</span>
-        <span class="drill-show-choice-meta">${n} drill${n !== 1 ? 's' : ''}</span>
+        <span class="drill-show-choice-meta">${n} chart${n !== 1 ? 's' : ''}</span>
       </label>`;
   }).join('');
   const newChecked = selectedId === 'new' || !shows.length;
@@ -213,7 +213,7 @@ function _drillCommitImport() {
   ref.set(meta)
     .then(() => ref.collection('data').doc('main').set({ sections: parsed.sections, pages: parsed.pages }))
     .then(() => orgCol('settings').doc('drill').set({ activeId: ref.id }, { merge: true }))
-    .catch(err => { console.error(err); showToast('Could not save the drill.'); });
+    .catch(err => { console.error(err); showToast('Could not save the chart.'); });
 
   // Optimistic local update so the new drill is active immediately.
   STATE.drills[ref.id] = { id: ref.id, ...meta };
@@ -234,7 +234,7 @@ function _drillCommitImport() {
 // anything else falls back to a toast. Messages are tagged 'E_DRILL_*:' by
 // _parsePywareFile.
 function _showDrillImportError(err) {
-  const msg = err?.message || 'Failed to read drill file.';
+  const msg = err?.message || 'Failed to read chart file.';
   const [tag, rest] = msg.includes(':') ? [msg.slice(0, msg.indexOf(':')), msg.slice(msg.indexOf(':') + 1)] : ['', msg];
   const bodies = {
     E_DRILL_ZIP: `
@@ -252,7 +252,7 @@ function _showDrillImportError(err) {
   const body = bodies[tag];
   if (!body) { showToast(rest); return; }
   openModal(`
-    <div class="modal-title">Can’t read this drill file</div>
+    <div class="modal-title">Can’t read this chart file</div>
     ${body}
     <div class="modal-actions">
       <button class="btn btn-primary" onclick="closeModal()">OK</button>
@@ -302,7 +302,7 @@ function _drillReplaceFileLoaded(drillId, file, parsed) {
     _showDrillRelabelModal();
   }).catch(e => {
     console.error('drill replace: could not read the current positions:', e);
-    showToast('Could not read this drill’s current positions. Try again.');
+    showToast('Could not read this chart’s current positions. Try again.');
   });
 }
 
@@ -312,7 +312,7 @@ function _drillReplaceFileLoaded(drillId, file, parsed) {
 function _drillReplaceUnmatched(drillId, file, parsed) {
   _drillPendingRelabel = { drillId, file, parsed, res: null };
   openModal(`
-    <div class="modal-title">This looks like a different drill</div>
+    <div class="modal-title">This looks like a different chart</div>
     <p>The performers in <strong>${esc(file.name)}</strong> don’t stand where the current file’s performers stand, so the app can’t tell which spot is which.</p>
     <p>You can still replace the file, but the spot assignments will keep their current letters &amp; numbers — check them afterward.</p>
     <div class="modal-actions">
@@ -336,7 +336,7 @@ function _showDrillRelabelModal() {
   const off  = Math.abs(p.res.offsetX) > 0.01 || Math.abs(p.res.offsetY) > 0.01;
   openModal(`
     <div class="modal-title">This file numbers the spots differently</div>
-    <p>The new file gives ${moved.length} assigned spot${moved.length !== 1 ? 's' : ''} a different letter &amp; number${off ? ', and puts the whole drill in a slightly different place on the field' : ''}. Everyone can keep the dot they’re actually standing on — their spot number just changes to match the new file.</p>
+    <p>The new file gives ${moved.length} assigned spot${moved.length !== 1 ? 's' : ''} a different letter &amp; number${off ? ', and puts the whole chart in a slightly different place on the field' : ''}. Everyone can keep the dot they’re actually standing on — their spot number just changes to match the new file.</p>
     <div class="drill-relabel-list">${rows}${more}</div>
     <div class="modal-actions" style="flex-direction:column;gap:8px;margin-top:14px">
       <button class="btn btn-primary btn-full" onclick="_drillRelabelConfirm(true)">Keep everyone on their dot</button>
@@ -371,7 +371,7 @@ function _drillReplaceCommit(drillId, file, parsed, newMapping) {
   const ref = orgCol('drills').doc(drillId);
   ref.update(meta)
     .then(() => ref.collection('data').doc('main').set({ sections: parsed.sections, pages: parsed.pages }))
-    .catch(err => { console.error(err); showToast('Could not save the drill file.'); });
+    .catch(err => { console.error(err); showToast('Could not save the chart file.'); });
   if (newMapping) _drillSaveMappingFor(drillId, newMapping);
 
   Object.assign(d, meta); // optimistic; the drills listener will confirm
@@ -383,7 +383,7 @@ function _drillReplaceCommit(drillId, file, parsed, newMapping) {
     if (typeof _drillPlayStop === 'function') _drillPlayStop();
   }
   closeModal();
-  showToast(newMapping ? 'File replaced — everyone kept their dot.' : 'Drill file replaced.');
+  showToast(newMapping ? 'File replaced — everyone kept their dot.' : 'Chart file replaced.');
   if (_view === 'drill') render(); else showDrillLibraryModal();
 }
 
@@ -392,7 +392,7 @@ function _drillReplaceCommit(drillId, file, parsed, newMapping) {
 function _migrateLegacyDrill(d) {
   const ref = orgCol('drills').doc('legacy');
   ref.set({
-    name:           (d.drillFileName || 'Imported drill').replace(/\.3dj$/i, ''),
+    name:           (d.drillFileName || 'Imported chart').replace(/\.3dj$/i, ''),
     fileName:       d.drillFileName || null,
     setCount:       d.drillPages.length,
     performerCount: d.drillPages[0]?.performers?.length || 0,
@@ -522,7 +522,7 @@ function showDrillPickModal() {
 
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">Select from Drill</div>
+    <div class="modal-title">Select from Chart</div>
     ${unmappedCount > 0 ? `
       <div class="drill-map-hint">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
@@ -536,9 +536,9 @@ function showDrillPickModal() {
       <button class="btn btn-sm btn-secondary" style="flex:1" onclick="drillClearAll()">Clear</button>
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0 2px">
-      <span style="font-size:0.72rem;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:55%">${_drillFileName ? esc(_drillFileName) : 'Drill file'}</span>
+      <span style="font-size:0.72rem;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:55%">${_drillFileName ? esc(_drillFileName) : 'Chart file'}</span>
       <div style="display:flex;gap:10px;flex-shrink:0">
-        ${Object.keys(STATE.drills || {}).length > 1 ? `<button class="drill-reload-btn" onclick="showDrillLibraryModal()">Switch drill</button>` : ''}
+        ${Object.keys(STATE.drills || {}).length > 1 ? `<button class="drill-reload-btn" onclick="showDrillLibraryModal()">Switch chart</button>` : ''}
         ${_drillPages && _drillPages.length ? `<button class="drill-reload-btn" onclick="showDrillChartModal()">View field chart →</button>` : ''}
       </div>
     </div>
@@ -1422,7 +1422,7 @@ function _renderDrillMappingModal() {
   const sections = _drillData;
   const show      = _activeShow();
   const drillName = show ? (show.name || 'this show')
-                         : (STATE.drills[STATE.activeDrillId]?.name || _drillFileName || 'this drill');
+                         : (STATE.drills[STATE.activeDrillId]?.name || _drillFileName || 'this chart');
 
   const renderSectionTabs = () => sections.map((s, i) =>
     `<button class="drill-tab${i === _drillMappingSection ? ' drill-tab--active' : ''}"
@@ -1431,7 +1431,7 @@ function _renderDrillMappingModal() {
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Spots for ${esc(drillName)}</div>
-    <p class="modal-sub" style="margin:0 0 10px">Assign this show's spots to students. ${show ? `Every drill in <strong>${esc(show.name || 'this show')}</strong> shares these assignments, so a new drill file for the show inherits them.` : `Each show maps independently, so a student can have different spots per show.`} Saved automatically.</p>
+    <p class="modal-sub" style="margin:0 0 10px">Assign this show's spots to students. ${show ? `Every chart in <strong>${esc(show.name || 'this show')}</strong> shares these assignments, so a new chart file for the show inherits them.` : `Each show maps independently, so a student can have different spots per show.`} Saved automatically.</p>
     <button class="btn btn-secondary btn-full" style="margin-bottom:10px" onclick="showDrillSpotImportModal()">⬆︎ Import / export spots (CSV)</button>
     <div class="drill-tabs">${renderSectionTabs()}</div>
     <div class="drill-map-list" id="drill-map-list">${_drillMapRowsHtml()}</div>
@@ -1562,13 +1562,13 @@ function _drillSpotTemplateCsv() {
 
 function downloadDrillSpotTemplate() {
   if (!_drillData) return;
-  const name = (STATE.drills[STATE.activeDrillId]?.name || 'drill').replace(/[^\w-]+/g, '_');
+  const name = (STATE.drills[STATE.activeDrillId]?.name || 'chart').replace(/[^\w-]+/g, '_');
   _downloadCsv(`${name}-spots.csv`, _drillSpotTemplateCsv());
 }
 
 function showDrillSpotImportModal() {
   if (!STATE.isAdmin || !_drillData) return;
-  const drillName = _activeShow()?.name || STATE.drills[STATE.activeDrillId]?.name || _drillFileName || 'this drill';
+  const drillName = _activeShow()?.name || STATE.drills[STATE.activeDrillId]?.name || _drillFileName || 'this chart';
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Import spots — ${esc(drillName)}</div>
@@ -1593,7 +1593,7 @@ function drillSpotImportFile(event) {
   const file = event.target.files[0];
   event.target.value = '';
   if (!file) return;
-  const drillName = _activeShow()?.name || STATE.drills[STATE.activeDrillId]?.name || _drillFileName || 'this drill';
+  const drillName = _activeShow()?.name || STATE.drills[STATE.activeDrillId]?.name || _drillFileName || 'this chart';
   const reader = new FileReader();
   reader.onload = e => {
     const validNums = new Set(Object.keys(STATE.students));
@@ -1650,15 +1650,15 @@ function viewDrill() {
     return `
       <div class="empty-state" style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px">
         <div class="empty-icon">🚩</div>
-        <p>${hasDrills ? 'No drill selected.' : 'No drill loaded yet.'}</p>
+        <p>${hasDrills ? 'No chart selected.' : 'No chart loaded yet.'}</p>
         <p style="color:var(--text-muted);max-width:300px;margin:6px auto 0">
           ${STATE.isAdmin
             ? `Upload a Pyware <strong>.3dj</strong> or <strong>.3da</strong> file to view your field chart, step through sets, label dots, and trace a performer's path.`
             : hasDrills ? `Open the library to pick the field chart to view.` : `A director hasn't added a field chart yet.`}
         </p>
         ${hasDrills
-          ? `<button class="btn btn-primary" style="margin-top:14px" onclick="showDrillLibraryModal()">Open Drill Library</button>`
-          : (STATE.isAdmin ? `<button class="btn btn-primary" style="margin-top:14px" onclick="drillAddFile()">Load Drill File</button>` : '')}
+          ? `<button class="btn btn-primary" style="margin-top:14px" onclick="showDrillLibraryModal()">Open Chart Library</button>`
+          : (STATE.isAdmin ? `<button class="btn btn-primary" style="margin-top:14px" onclick="drillAddFile()">Load Chart File</button>` : '')}
       </div>`;
   }
   return `<div id="drill-view-root" class="drill-view">${_drillViewInner()}</div>`;
@@ -1707,7 +1707,7 @@ function showDrillUnassignedModal() {
   if (!STATE.isAdmin) return;
   const nums  = _drillUnassignedNums();
   const show  = _activeShow();
-  const where = show ? esc(show.name || 'this show') : 'this drill';
+  const where = show ? esc(show.name || 'this show') : 'this chart';
   const rows = nums.map(n => {
     const s     = STATE.students[n];
     const name  = s ? (s.name || `#${n}`) : `#${n}`;
@@ -1733,12 +1733,12 @@ function _drillViewInner() {
   const idx   = _drillCurrentSet;
   const total = _drillPages.length;
   const count = Object.keys(STATE.drills || {}).length;
-  const name  = STATE.drills[STATE.activeDrillId]?.name || _drillFileName || 'Drill';
+  const name  = STATE.drills[STATE.activeDrillId]?.name || _drillFileName || 'Chart';
   const show  = _activeShow();
   const inShow = show ? Object.values(STATE.drills || {}).filter(d => d.showId === show.id).length : 0;
   const meta  = show
-    ? `${esc(show.name || 'Show')} · ${inShow} drill${inShow !== 1 ? 's' : ''} · tap to switch`
-    : (count > 1 ? `${count} drills · tap to switch` : 'Tap to manage library');
+    ? `${esc(show.name || 'Show')} · ${inShow} chart${inShow !== 1 ? 's' : ''} · tap to switch`
+    : (count > 1 ? `${count} charts · tap to switch` : 'Tap to manage library');
 
   return `
     <button class="drill-switcher" onclick="showDrillLibraryModal()">
@@ -2059,7 +2059,7 @@ const _DRILL_PLAY_MS = 450; // one count per tick
 function drillPlayToggle() {
   if (_drillPlaying) { _drillPlayStop(); _drillViewRerender(); return; }
   const idxs = _drillActiveIdx();
-  if (idxs.length < 2) { showToast('Select at least 2 sets, or this drill needs more sets.'); return; }
+  if (idxs.length < 2) { showToast('Select at least 2 sets, or this chart needs more sets.'); return; }
   _drillSelectMode = false;
   _drillPlayStart  = _drillPages[idxs[0]].count;
   _drillPlayEnd    = _drillPages[idxs[idxs.length - 1]].count;
@@ -2263,7 +2263,7 @@ function showDrillOptionsModal() {
     <div class="options-menu">
       <button class="options-menu-item" onclick="closeModal();showDrillLibraryModal()">
         <div class="options-menu-icon">📚</div>
-        <div><div class="options-menu-label">Drill Library</div><div class="options-menu-sub">${count ? `${count} drill${count!==1?'s':''} · ${STATE.isAdmin ? 'switch, add or remove' : 'switch drills'}` : (STATE.isAdmin ? 'Add your first drill file' : 'No drills yet')}</div></div>
+        <div><div class="options-menu-label">Chart Library</div><div class="options-menu-sub">${count ? `${count} chart${count!==1?'s':''} · ${STATE.isAdmin ? 'switch, add or remove' : 'switch charts'}` : (STATE.isAdmin ? 'Add your first chart file' : 'No charts yet')}</div></div>
       </button>
       ${(has && STATE.isAdmin) ? `
       <button class="options-menu-item" onclick="closeModal();showDrillMappingModal()">
@@ -2275,7 +2275,7 @@ function showDrillOptionsModal() {
     <div class="drill-opt-section">
       <div class="drill-opt-label">Dot labels</div>
       <div class="drill-lblseg-group" id="drill-lblseg-group">
-        ${['Off', 'Drill #', 'Names'].map((t, i) =>
+        ${['Off', 'Chart #', 'Names'].map((t, i) =>
           `<button class="drill-lblseg${_drillLabelMode === i ? ' drill-lblseg--on' : ''}" onclick="drillSetLabelMode(${i})">${t}</button>`
         ).join('')}
       </div>
@@ -2372,17 +2372,17 @@ function showDrillLibraryModal() {
       </div>`;
     const body = gids.length
       ? gids.map(_drillLibRowHtml).join('')
-      : `<p class="drill-lib-empty">No drill files in this show — it only lingers in show pickers. Delete it if it’s a leftover.</p>`;
+      : `<p class="drill-lib-empty">No chart files in this show — it only lingers in show pickers. Delete it if it’s a leftover.</p>`;
     return `<div class="drill-lib-group">${head}<div class="drill-lib-list">${body}</div></div>`;
   }).join('');
 
   openModal(`
     <div id="drill-library-modal">
       <div class="modal-handle"></div>
-      <div class="modal-title">Drill Library</div>
-      <p class="modal-sub" style="margin:0 0 10px">Drills are grouped by <strong>show</strong> — all drills in a show share one set of spot assignments. Tap a drill to make it the active field chart for everyone.</p>
-      ${groups.size ? groupsHtml : `<p style="color:var(--text-muted);text-align:center;padding:20px 0">No drills saved yet.</p>`}
-      ${STATE.isAdmin ? `<button class="btn btn-secondary btn-full" style="margin-top:12px" onclick="drillAddFile()">＋ Add drill file</button>` : ''}
+      <div class="modal-title">Chart Library</div>
+      <p class="modal-sub" style="margin:0 0 10px">Charts are grouped by <strong>show</strong> — all charts in a show share one set of spot assignments. Tap a chart to make it the active field chart for everyone.</p>
+      ${groups.size ? groupsHtml : `<p style="color:var(--text-muted);text-align:center;padding:20px 0">No charts saved yet.</p>`}
+      ${STATE.isAdmin ? `<button class="btn btn-secondary btn-full" style="margin-top:12px" onclick="drillAddFile()">＋ Add chart file</button>` : ''}
       <div class="modal-actions" style="margin-top:8px">
         <button class="btn btn-secondary btn-full" onclick="closeModal()">Done</button>
       </div>
@@ -2428,7 +2428,7 @@ function drillShowDeletePrompt(showId) {
   if (Object.values(STATE.drills || {}).some(d => d.showId === showId)) return; // safety: empty shows only
   showConfirmModal(
     'Delete show?',
-    `Remove “${esc(s.name || 'this show')}” and its spot assignments? It has no drill files, so it only appears in show pickers. This can’t be undone.`,
+    `Remove “${esc(s.name || 'this show')}” and its spot assignments? It has no chart files, so it only appears in show pickers. This can’t be undone.`,
     () => drillShowDelete(showId),
     'Delete', 'btn-danger'
   );
@@ -2449,7 +2449,7 @@ function drillMoveToShowPrompt(id) {
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Move “${esc(base)}” to a show</div>
-    <p class="modal-sub" style="margin:0 0 12px">Pick the show this drill belongs to — it takes on that show's spot assignments. Or start a new show.</p>
+    <p class="modal-sub" style="margin:0 0 12px">Pick the show this chart belongs to — it takes on that show's spot assignments. Or start a new show.</p>
     <div class="drill-show-choices">${_showChooserHtml(d.showId || 'new', base)}</div>
     <div class="modal-actions" style="margin-top:14px">
       <button class="btn btn-secondary" onclick="showDrillLibraryModal()">Cancel</button>
@@ -2468,7 +2468,7 @@ function drillMoveToShowCommit(id) {
   d.showId = showId; // optimistic
   orgCol('drills').doc(id).set({ showId }, { merge: true })
     .then(() => _cleanupEmptyShow(oldShowId))
-    .catch(e => _toastSaveError(e, 'Moving the drill'));
+    .catch(e => _toastSaveError(e, 'Moving the chart'));
   showDrillLibraryModal();
   if (_view === 'drill' && id === STATE.activeDrillId) render();
 }
@@ -2495,9 +2495,9 @@ function drillRenamePrompt(id) {
   if (!d) return;
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">Rename Drill</div>
+    <div class="modal-title">Rename Chart</div>
     <input class="form-input" id="drill-rename-input" type="text" maxlength="80"
-           value="${esc(d.name || d.fileName || '')}" placeholder="Drill name" autocomplete="off">
+           value="${esc(d.name || d.fileName || '')}" placeholder="Chart name" autocomplete="off">
     <div class="modal-actions" style="margin-top:14px">
       <button class="btn btn-secondary" onclick="showDrillLibraryModal()">Cancel</button>
       <button class="btn btn-primary" onclick="drillRenameSave('${esc(id)}')">Save</button>
@@ -2521,8 +2521,8 @@ function drillDeletePrompt(id) {
   const d = STATE.drills[id];
   if (!d) return;
   showConfirmModal(
-    'Delete drill?',
-    `Remove “${esc(d.name || d.fileName || 'this drill')}” from the library? This can’t be undone. Its show's spot assignments stay for the show's other drills.`,
+    'Delete chart?',
+    `Remove “${esc(d.name || d.fileName || 'this chart')}” from the library? This can’t be undone. Its show's spot assignments stay for the show's other charts.`,
     () => drillDelete(id),
     'Delete', 'btn-danger'
   );
