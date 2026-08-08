@@ -121,6 +121,26 @@ function rehearsalStreak(rehearsals, entries, student) {
   return streak;
 }
 
+// Every rehearsal a student attended, newest-first. "Attended" uses the same
+// universe as the streak — rehearsals where attendance was taken
+// (`attendanceSubmitted`), that include the student (scope), and aren't hidden
+// from students — minus the ones they were marked absent for. A 'late' still
+// counts as attended (it isn't an absence), and a rehearsal with no entry for
+// the student (the common "present" case, which writes no entry doc) counts as
+// attended too. Each returned item is `{ rehearsal, status }`, where `status` is
+// 'present' or 'late'. The portal's "N Attended" pill is this list's length and
+// its modal is the list itself.
+function rehearsalsAttended(rehearsals, entries, student) {
+  if (!student) return [];
+  const num = String(student.number);
+  return (rehearsals || [])
+    .filter(r => r && r.attendanceSubmitted && !r.hiddenFromStudents
+              && rehearsalIncludesStudent(student, r.scope)
+              && entries?.[r.id]?.[num]?.attendance !== 'absent')
+    .sort(compareRehearsalsDesc)
+    .map(r => ({ rehearsal: r, status: entries?.[r.id]?.[num]?.attendance === 'late' ? 'late' : 'present' }));
+}
+
 // ── Memorization exclusions ───────────────────────────────────────────────────
 
 // Whether a student is excluded from song memorization. `exclusions` is a flat
@@ -1215,7 +1235,7 @@ function _pyware3daPageNote(u8, gapStart, gapEnd, N) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     FAKE_ADJECTIVES, FAKE_ANIMALS, _strHash, pseudonymFor,
-    rehearsalIncludesStudent, rehearsalScopeLabel, compareRehearsalsDesc, rehearsalStreak,
+    rehearsalIncludesStudent, rehearsalScopeLabel, compareRehearsalsDesc, rehearsalStreak, rehearsalsAttended,
     isMemorizationExcluded,
     taskAppliesToStudent, _taskMatchesGroups,
     lbWeights, scoreStudentsCore, buildPublicStats,
