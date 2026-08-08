@@ -34,11 +34,11 @@ function render() {
       headerLogo.style.display = 'none';
     }
   }
-  document.title = STATE.bandName || 'Band Tracker';
+  document.title = STATE.bandName || 'Band Marks';
 
   if (STATE.authChecking) {
     backBtn.classList.add('hidden');
-    title.textContent = STATE.bandName || 'Band Tracker';
+    title.textContent = STATE.bandName || 'Band Marks';
     actions.innerHTML = '';
     nav.style.display = 'none';
     main.innerHTML = `<div class="loading-view"><div class="spinner"></div></div>`;
@@ -47,7 +47,7 @@ function render() {
 
   if (!STATE.user) {
     backBtn.classList.add('hidden');
-    title.textContent = 'Band Tracker';
+    title.textContent = 'Band Marks';
     actions.innerHTML = '';
     nav.style.display = 'none';
     main.innerHTML = viewLogin();
@@ -67,7 +67,7 @@ function render() {
 
   if (STATE.loading) {
     backBtn.classList.add('hidden');
-    title.textContent = 'Band Tracker';
+    title.textContent = 'Band Marks';
     actions.innerHTML = userBtn();
     main.innerHTML = `<div class="loading-view"><div class="spinner"></div><span>Loading data…</span></div>`;
     return;
@@ -78,7 +78,7 @@ function render() {
   // logout and lost data).
   if (STATE.connError) {
     backBtn.classList.add('hidden');
-    title.textContent = STATE.bandName || 'Band Tracker';
+    title.textContent = STATE.bandName || 'Band Marks';
     actions.innerHTML = '';
     nav.style.display = 'none';
     main.innerHTML = viewConnError();
@@ -89,7 +89,7 @@ function render() {
   // separate milestone; for now show a clear message instead of a blank app.
   if (STATE.needsOnboarding) {
     backBtn.classList.add('hidden');
-    title.textContent = 'Band Tracker';
+    title.textContent = 'Band Marks';
     actions.innerHTML = '';
     nav.style.display = 'none';
     main.innerHTML = viewOnboarding();
@@ -360,13 +360,15 @@ function userBtn() {
   return `<button class="user-btn" onclick="showUserMenu()" title="${esc(STATE.user?.email || '')}" aria-label="Account menu">${esc(initials)}</button>`;
 }
 
-// The mobile bottom bar keeps only the primary tabs; this sheet holds the rest
-// so they're reachable one-handed without stretching to the bar's corners. It
+// A fully-reachable menu of EVERY available tab, opened from the "More" button.
+// The compact centered bottom bar is for quick taps; this thumb-zone sheet is
+// the one-handed path to any section, including those already on the bar. It
 // mirrors the live tab elements (icons, labels, feature/role gating, active
 // state), so it always matches what the sidebar would show. openModal() renders
-// it as a thumb-zone bottom sheet on phones.
+// it as a bottom sheet on phones. The `[data-view]` filter skips the More button
+// itself (it has no data-view).
 function openNavMore() {
-  const items = [...document.querySelectorAll('#bottom-nav .nav-tab.nav-secondary')]
+  const items = [...document.querySelectorAll('#bottom-nav .nav-tab[data-view]')]
     .filter(t => !t.classList.contains('tab-hidden'))
     .map(t => {
       const view   = t.dataset.view;

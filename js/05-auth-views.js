@@ -13,7 +13,7 @@ function viewLogin() {
       ${STATE.bandLogo
         ? `<img src="${STATE.bandLogo}" class="login-logo-img" alt="Band Logo">`
         : `<div class="login-logo">🎺</div>`}
-      <div class="login-title">${esc(STATE.bandName || 'Band Tracker')}</div>
+      <div class="login-title">${esc(STATE.bandName || 'Band Marks')}</div>
       ${_authLossNote()}
 
       <button class="btn btn-primary btn-full btn-lg" onclick="studentStart()">🎵 Students — tap here</button>
