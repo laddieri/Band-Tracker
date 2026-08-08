@@ -2098,6 +2098,20 @@ html, body {
   opacity: 0.35;
   pointer-events: none;
 }
+.feat-sub {
+  padding: 0 0 6px 28px;
+}
+.feat-sub-head {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: 2px 0;
+}
+.feat-sub-dim {
+  opacity: 0.45;
+}
 
 /* ── CSV Import ─────────────────────────────────────────────────────────────── */
 
