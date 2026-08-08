@@ -261,7 +261,7 @@ function confirmDeleteStudent(num) {
   const sName = s?.name || `#${num}`;
   showConfirmModal(
     `Delete ${esc(sName)}?`,
-    `All of <strong>${esc(sName)}</strong>'s rehearsal records, marks, song
+    `All of <strong>${esc(sName)}</strong>'s attendance records, marks, song
      results and their login code will be permanently deleted. This cannot be
      undone.`,
     () => _deleteStudent(num),
@@ -315,7 +315,7 @@ function _deleteStudent(num) {
 // within a rehearsal a director scheduled (firestore.rules blocks the create,
 // these guards keep the client honest if a stale view still offers the button).
 function showNewRehearsalModal() {
-  if (!STATE.isAdmin) { showToast('Only directors can start a rehearsal.'); return; }
+  if (!STATE.isAdmin) { showToast('Only directors can start an event.'); return; }
   openModal(`
     <div class="modal-title" id="m-event-title">New Rehearsal</div>
     ${_eventTypeToggle('rehearsal')}
@@ -337,7 +337,7 @@ function showNewRehearsalModal() {
 }
 
 function saveNewRehearsal() {
-  if (!STATE.isAdmin) { showToast('Only directors can start a rehearsal.'); return; }
+  if (!STATE.isAdmin) { showToast('Only directors can start an event.'); return; }
   const date = document.getElementById('m-date').value;
   if (!date) { showToast('Date is required'); return; }
   const id = genId();
@@ -502,7 +502,7 @@ function showRehearsalEditModal(rid) {
                style="margin-top:3px;width:18px;height:18px;flex-shrink:0">
         <span>
           <span style="font-weight:600">Hide from students</span>
-          <span style="display:block;font-size:.75rem;color:var(--text-muted)">Students won't see this rehearsal's attendance, marks, or history, and it won't affect their leaderboard — useful for optional rehearsals. Directors and staff still see everything.</span>
+          <span style="display:block;font-size:.75rem;color:var(--text-muted)">Students won't see this event's attendance, marks, or history, and it won't affect their leaderboard — useful for optional events. Directors and staff still see everything.</span>
         </span>
       </label>
     </div>
@@ -518,9 +518,9 @@ function showRehearsalPlanModal(rid) {
   if (!r) return;
   const segments = r.segments || [];
   openModal(`
-    <div class="modal-title">Rehearsal Plan</div>
+    <div class="modal-title">${esc(eventTypeLabel(r))} Plan</div>
     <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:12px">
-      Segments let directors tag which part of rehearsal a mark was noticed in.
+      Segments let directors tag which part of the event a mark was noticed in.
     </p>
     ${segments.length ? `
       <div class="seg-plan-list">
@@ -601,7 +601,7 @@ function saveRehearsalEdit(rid) {
 // Ending a rehearsal, like starting or reopening one, is director-only — the
 // rules reject any staff update that moves the `ended` flag.
 function confirmEndRehearsal(rid) {
-  if (!STATE.isAdmin) { showToast('Only directors can end a rehearsal.'); return; }
+  if (!STATE.isAdmin) { showToast('Only directors can end an event.'); return; }
   const r = DB.getRehearsals().find(r => r.id === rid);
   if (!r) return;
   const endMarks = _getAutoMarks().filter(m => m.when === 'end');
@@ -609,7 +609,7 @@ function confirmEndRehearsal(rid) {
     ? endMarks.map(m => `<li>${esc(m.note)}</li>`).join('')
     : '<li style="color:var(--text-muted)">None configured</li>';
   openModal(`
-    <div class="modal-title">End Rehearsal?</div>
+    <div class="modal-title">End ${esc(eventTypeLabel(r))}?</div>
     <p style="font-size:0.9rem;color:var(--text-muted);margin-bottom:8px">
       The following auto marks will be applied to eligible students:
     </p>
@@ -619,14 +619,14 @@ function confirmEndRehearsal(rid) {
     </p>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-success" onclick="endRehearsal('${esc(rid)}')">End Rehearsal</button>
+      <button class="btn btn-success" onclick="endRehearsal('${esc(rid)}')">End ${esc(eventTypeLabel(r))}</button>
     </div>
   `);
 }
 
 async function endRehearsal(rid) {
   closeModal();
-  if (!STATE.isAdmin) { showToast('Only directors can end a rehearsal.'); return; }
+  if (!STATE.isAdmin) { showToast('Only directors can end an event.'); return; }
   const r = STATE.rehearsals.find(r => r.id === rid);
   if (!r) return;
   const entries  = STATE.entries[rid] || {};
@@ -673,7 +673,7 @@ async function endRehearsal(rid) {
     const next = STATE.rehearsals.find(r2 => !r2.ended && r2.id !== rid);
     _activeRid = next ? next.id : null;
   }
-  showToast(`Rehearsal ended — ${autoCount ? `${autoCount} auto mark${autoCount !== 1 ? 's' : ''} applied.` : 'no auto marks.'}`);
+  showToast(`${eventTypeLabel(r)} ended — ${autoCount ? `${autoCount} auto mark${autoCount !== 1 ? 's' : ''} applied.` : 'no auto marks.'}`);
   render();
 }
 
@@ -681,7 +681,7 @@ async function endRehearsal(rid) {
 // reject a staff update that flips `ended` back to false.
 function reopenRehearsal(rid) {
   closeModal();
-  if (!STATE.isAdmin) { showToast('Only directors can reopen a rehearsal.'); return; }
+  if (!STATE.isAdmin) { showToast('Only directors can reopen an event.'); return; }
   const r = STATE.rehearsals.find(r => r.id === rid);
   if (!r) return;
   const currentActive = getActiveRehearsal();
@@ -689,8 +689,8 @@ function reopenRehearsal(rid) {
     const curLabel = fmtDate(currentActive.date) + (currentActive.label ? ` — ${currentActive.label}` : '');
     const newLabel  = fmtDate(r.date)            + (r.label            ? ` — ${r.label}`            : '');
     showConfirmModal(
-      'Switch Active Rehearsal?',
-      `<strong>${curLabel}</strong> is currently open. Reopening <strong>${newLabel}</strong> will make it the active rehearsal for student feedback. The current rehearsal will remain open and become active again once this one is ended.`,
+      'Switch Active Event?',
+      `<strong>${curLabel}</strong> is currently open. Reopening <strong>${newLabel}</strong> will make it the active event for student feedback. The current event will remain open and become active again once this one is ended.`,
       () => {
         r.ended = false;
         orgCol('rehearsals').doc(rid).set({ ended: false }, { merge: true });
@@ -698,7 +698,7 @@ function reopenRehearsal(rid) {
         showToast(`Switched to ${newLabel}`);
         render();
       },
-      'Switch Rehearsal',
+      'Switch Event',
       'btn-primary'
     );
     return;
@@ -706,14 +706,14 @@ function reopenRehearsal(rid) {
   r.ended = false;
   orgCol('rehearsals').doc(rid).set({ ended: false }, { merge: true });
   _activeRid = rid;
-  showToast('Rehearsal reopened.');
+  showToast(`${eventTypeLabel(r)} reopened.`);
   render();
 }
 
 function confirmDeleteRehearsal(rid) {
   const r = STATE.rehearsals.find(r => r.id === rid);
   showConfirmModal(
-    'Delete this rehearsal?',
+    `Delete this ${(r ? eventTypeLabel(r) : 'Event').toLowerCase()}?`,
     `${r ? `<strong>${fmtDate(r.date)}${r.label ? ' — ' + esc(r.label) : ''}</strong> and a` : 'A'}ll
      of its attendance and marks records will be permanently deleted. This
      cannot be undone.`,
@@ -726,7 +726,7 @@ function confirmDeleteRehearsal(rid) {
         snap.forEach(doc => batch.delete(doc.ref));
         batch.commit();
       });
-      showToast('Rehearsal deleted');
+      showToast(`${r ? eventTypeLabel(r) : 'Event'} deleted`);
       navigate('rehearsals');
     },
     'Delete'
@@ -1045,7 +1045,7 @@ function showAutoMarksModal() {
   if (!STATE.isAdmin) return;
   const marks = _getAutoMarks();
   const condLabel = c => ({ on_time: 'On time', no_mistakes: 'No mistakes', present: 'Present' }[c] || c);
-  const whenLabel = w => w === 'start' ? 'Attendance submitted' : 'Rehearsal ends';
+  const whenLabel = w => w === 'start' ? 'Attendance submitted' : 'Event ends';
 
   const rows = marks.length
     ? marks.map(m => `
@@ -1096,12 +1096,12 @@ function showEditAutoMarkModal(id) {
     <div class="form-group">
       <label class="form-label">Mark text</label>
       <input class="form-input" id="am-note" type="text"
-             value="${esc(existing?.note || '')}" placeholder="e.g. Full rehearsal attended">
+             value="${esc(existing?.note || '')}" placeholder="e.g. Full event attended">
     </div>
     <div class="form-group">
       <label class="form-label">Award when</label>
       <select class="form-input" id="am-when">
-        <option value="end"   ${sel(existing?.when ?? 'end', 'end'  )}>Rehearsal ends</option>
+        <option value="end"   ${sel(existing?.when ?? 'end', 'end'  )}>Event ends</option>
         <option value="start" ${sel(existing?.when,          'start')}>Attendance submitted</option>
       </select>
     </div>

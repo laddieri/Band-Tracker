@@ -10,7 +10,7 @@ function showAttendanceReportModal() {
   const { mon } = currentWeekRange();
 
   const rehearsalOptions = rehearsals.map(r =>
-    `<option value="${esc(r.id)}">${esc(fmtDate(r.date))}${r.label ? ' — ' + r.label : ''}</option>`
+    `<option value="${esc(r.id)}">${isPerformance(r) ? '🎪 ' : ''}${esc(fmtDate(r.date))}${r.label ? ' — ' + r.label : ''}</option>`
   ).join('');
 
   _reportType = 'alltime';
@@ -22,16 +22,16 @@ function showAttendanceReportModal() {
     <div class="seg-chip-row" style="margin-bottom:16px">
       <button class="seg-chip seg-selected" id="rpt-chip-alltime" onclick="selectReportType('alltime')">All Time</button>
       <button class="seg-chip" id="rpt-chip-week" onclick="selectReportType('week')">By Week</button>
-      <button class="seg-chip" id="rpt-chip-single" onclick="selectReportType('single')">Single Rehearsal</button>
+      <button class="seg-chip" id="rpt-chip-single" onclick="selectReportType('single')">Single Event</button>
     </div>
     <div id="rpt-week-input" style="display:none;margin-bottom:16px">
       <label class="form-label">Week of (any date in that week)</label>
       <input class="form-input" id="rpt-week-date" type="date" value="${mon}">
     </div>
     <div id="rpt-single-input" style="display:none;margin-bottom:16px">
-      <label class="form-label">Rehearsal</label>
+      <label class="form-label">Event</label>
       <select class="form-input" id="rpt-single-rid">
-        ${rehearsalOptions || '<option value="">No rehearsals</option>'}
+        ${rehearsalOptions || '<option value="">No events</option>'}
       </select>
     </div>
     <div class="modal-actions">
@@ -57,7 +57,7 @@ function exportAttendanceReport() {
   if (_reportType === 'single') {
     const rid = document.getElementById('rpt-single-rid')?.value;
     const r = allRehearsals.find(r => r.id === rid);
-    if (!r) { showToast('Select a rehearsal.'); return; }
+    if (!r) { showToast('Select an event.'); return; }
     rehearsals  = [r];
     periodLabel = fmtDate(r.date) + (r.label ? ' — ' + r.label : '');
   } else if (_reportType === 'week') {
@@ -72,7 +72,7 @@ function exportAttendanceReport() {
   }
 
   closeModal();
-  if (!rehearsals.length) { showToast('No rehearsals in that period.'); return; }
+  if (!rehearsals.length) { showToast('No events in that period.'); return; }
 
   _printHtmlDocument(buildAttendanceReportHTML(rehearsals, periodLabel));
 }
@@ -189,7 +189,7 @@ function buildAttendanceReportHTML(rehearsals, periodLabel) {
     <tbody>${summaryRows}</tbody>
   </table>` : `<p class="none-msg">No absences or late arrivals recorded for this period.</p>`}
 
-  ${detailSections ? `<h2>Detail by Rehearsal</h2>${detailSections}` : ''}
+  ${detailSections ? `<h2>Detail by Event</h2>${detailSections}` : ''}
 </body>
 </html>`;
 }

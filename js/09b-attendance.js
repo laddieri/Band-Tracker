@@ -67,7 +67,7 @@ function _buildSeasonListHtml() {
   const students   = Object.values(DB.getStudents()).sort((a,b) => (a.name||'').localeCompare(b.name||''));
   const submitted  = rehearsals.filter(r => r.attendanceSubmitted);
   if (!submitted.length) {
-    return `<div class="empty-state" style="padding:12px 0"><p>No submitted rehearsals yet.</p></div>`;
+    return `<div class="empty-state" style="padding:12px 0"><p>No submitted events yet.</p></div>`;
   }
   const seasonMap = {};
   for (const r of submitted) {
@@ -242,7 +242,7 @@ function _attChartCardHtml() {
   if (pts.length < 2) {
     _attChartModel = null;
     return `<div class="att-chart-card card mb-12">${toggle}
-      <div class="att-chart-empty">Not enough rehearsals in this range yet.</div></div>`;
+      <div class="att-chart-empty">Not enough events in this range yet.</div></div>`;
   }
 
   const W = 360, H = 160, PL = 32, PR = 10, PT = 12, PB = 32;
@@ -386,7 +386,7 @@ function viewAttendanceTab() {
   const students   = Object.values(DB.getStudents()).sort((a,b) => (a.name||'').localeCompare(b.name||''));
 
   if (!rehearsals.length) {
-    return `<div class="empty-state"><p>No rehearsals yet.</p></div>`;
+    return `<div class="empty-state"><p>No events yet.</p></div>`;
   }
 
   // ── Open-rehearsal attendance CTA ─────────────────────────────────────────
@@ -402,7 +402,7 @@ function viewAttendanceTab() {
     } else {
       attendanceCta = `<button class="start-rehearsal-btn att-modify-att-btn"
         onclick="confirmModifyAttendance('${esc(openReh.id)}')">
-        ✏️ Modify Current Rehearsal Attendance
+        ✏️ Modify Current Event Attendance
       </button>`;
     }
   }
@@ -438,7 +438,7 @@ function viewAttendanceTab() {
   const historySection = `
     <div class="sec-card">
     <div id="att-tab-history-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('att-tab-history')">
-      <span class="section-title" style="margin:0">Rehearsal History</span>
+      <span class="section-title" style="margin:0">Event History</span>
       <span class="sec-chevron">▾</span>
     </div>
     <div id="att-tab-history">
@@ -571,7 +571,7 @@ function viewAttendance(rid) {
   const students = rehearsalStudents(r);
   const entries  = STATE.entries[rid] || {};
   if (!students.length) {
-    return `<div class="empty-state"><p>${r?.scope ? 'No students match this rehearsal’s groups.' : 'No students in the roster yet.'}</p></div>`;
+    return `<div class="empty-state"><p>${r?.scope ? 'No students match this event’s groups.' : 'No students in the roster yet.'}</p></div>`;
   }
 
   const submitted = r?.attendanceSubmitted || false;

@@ -1010,11 +1010,11 @@ function showNewSeasonModal() {
     <div class="modal-title">Start New Season</div>
     <p style="font-size:.9rem;line-height:1.6;margin-bottom:8px">
       ${hasHistory
-        ? `Archives <strong>${rehearsalCount} rehearsal${rehearsalCount !== 1 ? 's' : ''}</strong> and
+        ? `Archives <strong>${rehearsalCount} event${rehearsalCount !== 1 ? 's' : ''}</strong> and
            <strong>${entryCount} attendance/marks record${entryCount !== 1 ? 's' : ''}</strong> under the season
            name below. Nothing is deleted — you can view archived seasons anytime from Band
            Settings. Attendance, marks and stats start fresh.`
-        : `Names the season so rehearsals and marks recorded from now on can be archived
+        : `Names the season so events and marks recorded from now on can be archived
            cleanly when the next one starts.`}
     </p>
     ${needsArchiveName ? `

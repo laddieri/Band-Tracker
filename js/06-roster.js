@@ -15,7 +15,7 @@ function viewHome() {
     <div class="hero">
       <div class="hero-date">${fmtDate(todayStr)}</div>
       <div class="hero-title">🎺 Band Marks</div>
-      <div class="hero-sub">${sc} student${sc!==1?'s':''} · ${rehearsals.length} rehearsal${rehearsals.length!==1?'s':''}</div>
+      <div class="hero-sub">${sc} student${sc!==1?'s':''} · ${rehearsals.length} event${rehearsals.length!==1?'s':''}</div>
       ${todayR
         ? `<button class="btn btn-full btn-lg" style="background:white;color:var(--primary);margin-bottom:10px"
                onclick="navigate('rehearsal',{rid:'${esc(todayR.id)}'})">
@@ -531,7 +531,7 @@ function showMarksOptionsModal() {
         <div class="options-menu-icon">⚡</div>
         <div>
           <div class="options-menu-label">Auto Marks</div>
-          <div class="options-menu-sub">Marks awarded automatically at rehearsal start or end</div>
+          <div class="options-menu-sub">Marks awarded automatically at event start or end</div>
         </div>
       </button>
     </div>
@@ -834,7 +834,7 @@ function showDeleteRosterModal() {
       This will permanently delete <strong>all ${count} student${count !== 1 ? 's' : ''}</strong> from the roster.
     </p>
     <p style="font-size:.85rem;color:var(--text-muted);line-height:1.5;margin-bottom:16px">
-      Rehearsal history and attendance records will remain but will no longer be linked to any student. This cannot be undone.
+      Event history and attendance records will remain but will no longer be linked to any student. This cannot be undone.
     </p>
     <div class="form-group" style="margin-bottom:16px">
       <label class="form-label">Type <strong>DELETE</strong> to confirm</label>

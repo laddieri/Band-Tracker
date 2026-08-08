@@ -1149,7 +1149,7 @@ function viewStudentPortal(previewMode = false) {
             <div class="att-streak-banner" style="border-bottom:none;border-radius:var(--r-md,12px);margin-bottom:10px">
               <span class="att-streak-flame">🔥</span>
               <span class="att-streak-count">${_portalStreak}</span>
-              <span class="att-streak-text">rehearsal${_portalStreak !== 1 ? 's' : ''} in a row without an absence</span>
+              <span class="att-streak-text">event${_portalStreak !== 1 ? 's' : ''} in a row without an absence</span>
             </div>` : ''}
           ${(() => {
             const absences = hist.filter(({entry:e}) => e.attendance === 'absent');
@@ -1312,7 +1312,7 @@ function viewStudentPortal(previewMode = false) {
       ${(portalFeatureOn('marks') && hist.length > 0) ? `
         <div class="sec-card">
         <div id="portal-sec-history-hdr" class="sec-hdr" onclick="toggleCollapse('portal-sec-history')">
-          <span class="section-title" style="margin:0">Rehearsal History</span>
+          <span class="section-title" style="margin:0">Event History</span>
           <span class="sec-chevron">▾</span>
         </div>
         <div id="portal-sec-history" class="sec-collapsed">
@@ -1327,7 +1327,7 @@ function viewStudentPortal(previewMode = false) {
           <div class="portal-rehearsal-card" id="prc-${esc(r.id)}">
             <div class="portal-rehear-hdr" onclick="togglePortalRehearsal('${esc(r.id)}')">
               <div class="portal-rehear-info">
-                <div class="portal-rehear-date">${fmtDate(r.date)}</div>
+                <div class="portal-rehear-date">${isPerformance(r) ? '🎪 ' : ''}${fmtDate(r.date)}</div>
                 ${r.label ? `<div class="portal-rehear-label">${esc(r.label)}</div>` : ''}
               </div>
               <div class="portal-badges">
@@ -1353,7 +1353,7 @@ function viewStudentPortal(previewMode = false) {
         }).join('')}
         </div>
         </div>
-      ` : (portalFeatureOn('marks') ? `<p class="empty-state" style="padding:24px 0">No rehearsal history yet.</p>` : '')}
+      ` : (portalFeatureOn('marks') ? `<p class="empty-state" style="padding:24px 0">No event history yet.</p>` : '')}
 
       ${portalFeatureOn('stats') ? `
       <button class="leaderboard-link-btn" onclick="${previewMode ? `previewLeaderboard('${esc(num)}')` : "navigate('leaderboard')"}">
@@ -1471,13 +1471,13 @@ function showPortalAttendedModal(num = STATE.studentNum) {
   const s        = STATE.students[num];
   const attended = rehearsalsAttended(DB.getRehearsals(), STATE.entries, s);
   if (!attended.length) {
-    openModal(`<div class="modal-title">Rehearsals Attended</div><p class="empty-state" style="padding:24px 0">No rehearsals attended yet.</p>`);
+    openModal(`<div class="modal-title">Events Attended</div><p class="empty-state" style="padding:24px 0">No events attended yet.</p>`);
     return;
   }
   const rows = attended.map(({ rehearsal: r, status }) => `
     <div class="portal-modal-row">
       <div class="portal-modal-row-info">
-        <div class="portal-modal-date">${fmtDate(r.date)}</div>
+        <div class="portal-modal-date">${isPerformance(r) ? '🎪 ' : ''}${fmtDate(r.date)}</div>
         ${r.label ? `<div class="portal-modal-label">${esc(r.label)}</div>` : ''}
       </div>
       ${status === 'late'
@@ -1485,8 +1485,8 @@ function showPortalAttendedModal(num = STATE.studentNum) {
         : `<span class="portal-badge portal-badge-positive">Present</span>`}
     </div>`).join('');
   openModal(`
-    <div class="modal-title">Rehearsals Attended</div>
-    <div class="portal-modal-total portal-total-positive">${attended.length} rehearsal${attended.length!==1?'s':''} attended</div>
+    <div class="modal-title">Events Attended</div>
+    <div class="portal-modal-total portal-total-positive">${attended.length} event${attended.length!==1?'s':''} attended</div>
     <div class="portal-modal-list">${rows}</div>`);
 }
 
