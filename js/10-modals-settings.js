@@ -317,7 +317,8 @@ function _deleteStudent(num) {
 function showNewRehearsalModal() {
   if (!STATE.isAdmin) { showToast('Only directors can start a rehearsal.'); return; }
   openModal(`
-    <div class="modal-title">New Rehearsal</div>
+    <div class="modal-title" id="m-event-title">New Rehearsal</div>
+    ${_eventTypeToggle('rehearsal')}
     <div class="form-group">
       <label class="form-label">Date *</label>
       <input class="form-input" id="m-date" type="date" value="${today()}">
@@ -345,6 +346,8 @@ function saveNewRehearsal() {
   const r  = { id, date, label: document.getElementById('m-label').value.trim(),
                startedAt: Date.now(),
                ...(STATE.activeSeason ? { season: STATE.activeSeason } : {}) };
+  // Only stamp performances — an absent `type` reads as a rehearsal.
+  if (_readEventType() === 'performance') r.type = 'performance';
   const scope = _readRehearsalScope();
   if (scope) r.scope = scope;
   STATE.rehearsals.unshift(r);
@@ -353,6 +356,39 @@ function saveNewRehearsal() {
   closeModal();
   _activeRid = id;
   navigate('attendance-tab');
+}
+
+// ── Event type (rehearsal vs performance) ─────────────────────────────────────
+// A segmented toggle at the top of the new/edit modal. The choice is held in a
+// hidden #m-type input (stateless — no module var to reset) and read back by
+// _readEventType(). Only 'performance' is ever written to the doc; 'rehearsal'
+// is the default, so rehearsal docs carry no `type` field (see eventType() in
+// js/00-logic.js).
+function _eventTypeToggle(type = 'rehearsal') {
+  const isPerf = type === 'performance';
+  return `
+    <div class="form-group">
+      <input type="hidden" id="m-type" value="${isPerf ? 'performance' : 'rehearsal'}">
+      <div class="rh-viewmode" role="group" aria-label="Event type">
+        <button type="button" class="rh-viewmode-btn${isPerf ? '' : ' rh-viewmode-btn--on'}"
+                data-type="rehearsal" onclick="selectEventType('rehearsal')">🥁 Rehearsal</button>
+        <button type="button" class="rh-viewmode-btn${isPerf ? ' rh-viewmode-btn--on' : ''}"
+                data-type="performance" onclick="selectEventType('performance')">🎪 Performance</button>
+      </div>
+    </div>`;
+}
+
+function selectEventType(t) {
+  const inp = document.getElementById('m-type');
+  if (inp) inp.value = t;
+  document.querySelectorAll('.rh-viewmode-btn[data-type]').forEach(el =>
+    el.classList.toggle('rh-viewmode-btn--on', el.dataset.type === t));
+  const ttl = document.getElementById('m-event-title');
+  if (ttl) ttl.textContent = t === 'performance' ? 'New Performance' : 'New Rehearsal';
+}
+
+function _readEventType() {
+  return document.getElementById('m-type')?.value === 'performance' ? 'performance' : 'rehearsal';
 }
 
 // ── Rehearsal scope (who attends) ─────────────────────────────────────────────
@@ -448,7 +484,8 @@ function showRehearsalEditModal(rid) {
   const r = DB.getRehearsals().find(r => r.id === rid);
   if (!r) return;
   openModal(`
-    <div class="modal-title">Edit Rehearsal</div>
+    <div class="modal-title">Edit ${esc(eventTypeLabel(r))}</div>
+    ${_eventTypeToggle(eventType(r))}
     <div class="form-group">
       <label class="form-label">Date</label>
       <input class="form-input" id="m-date" type="date" value="${esc(r.date)}">
@@ -539,21 +576,25 @@ function saveRehearsalEdit(rid) {
   if (idx === -1) return;
   const scope = _readRehearsalScope();
   const hide  = !!document.getElementById('m-hide-students')?.checked;
+  const isPerf = _readEventType() === 'performance';
   const patch = {
     date:  document.getElementById('m-date').value,
     label: document.getElementById('m-label').value.trim(),
+    // Only performances store a `type`; clear it back to the rehearsal default.
+    type:  isPerf ? 'performance' : firebase.firestore.FieldValue.delete(),
     // Persist the scope, or clear it back to full band when nothing is checked.
     scope: scope || firebase.firestore.FieldValue.delete(),
     // Flag (or clear) hidden-from-students. Absent = visible, so delete when off.
     hiddenFromStudents: hide ? true : firebase.firestore.FieldValue.delete(),
   };
   const next = { ...STATE.rehearsals[idx], date: patch.date, label: patch.label };
+  if (isPerf) next.type = 'performance'; else delete next.type;
   if (scope) next.scope = scope; else delete next.scope;
   if (hide) next.hiddenFromStudents = true; else delete next.hiddenFromStudents;
   STATE.rehearsals[idx] = next;
   orgCol('rehearsals').doc(rid).set(patch, { merge: true });
   closeModal();
-  showToast('Rehearsal updated');
+  showToast(`${eventTypeLabel(next)} updated`);
   render();
 }
 

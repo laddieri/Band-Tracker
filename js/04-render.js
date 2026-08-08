@@ -214,7 +214,7 @@ function render() {
       // Creating a rehearsal is director-only — staff record within one.
       const _hasOpen = STATE.rehearsals.some(r => !r.ended);
       const _hasAny  = STATE.rehearsals.length > 0;
-      title.textContent = 'Rehearsals';
+      title.textContent = 'Events';
       actions.innerHTML = (STATE.isAdmin && (!_hasAny || _hasOpen) ? addBtn('showNewRehearsalModal()') : '') + userBtn();
       main.innerHTML = viewRehearsals();
       break;
