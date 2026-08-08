@@ -32,12 +32,12 @@ function viewHome() {
       <button class="btn btn-full btn-lg"
         style="background:rgba(255,255,255,.15);color:white;border:2px solid rgba(255,255,255,.4);"
         onclick="showNewRehearsalModal()">
-        New Rehearsal for Another Date
+        New Event for Another Date
       </button>` : ''}
     </div>
 
     ${recent.length ? `
-      <div class="section-title">Recent Rehearsals</div>
+      <div class="section-title">Recent Events</div>
       ${recent.map(r => {
         const ents = DB.getRehearsalEntries(r.id);
         const cnt  = Object.values(ents).filter(e => e.mistakes > 0 || e.positives > 0 || e.attendance || e.events?.length).length;
@@ -47,7 +47,7 @@ function viewHome() {
           <div class="card clickable" onclick="navigate('rehearsal',{rid:'${esc(r.id)}'})">
             <div class="flex items-center justify-between">
               <div>
-                <div class="font-bold">${fmtDate(r.date)}</div>
+                <div class="font-bold">${isPerformance(r) ? '🎪 ' : ''}${fmtDate(r.date)}</div>
                 ${r.label ? `<div class="text-muted text-sm mt-4">${esc(r.label)}</div>` : ''}
               </div>
               <div class="text-right">
@@ -64,7 +64,7 @@ function viewHome() {
     ` : `
       <div class="empty-state">
         <div class="empty-icon">🎺</div>
-        <p>No rehearsals yet.</p>
+        <p>No events yet.</p>
         <p>Tap <strong>Start Today's Rehearsal</strong> to begin!</p>
       </div>
     `}

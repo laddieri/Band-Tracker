@@ -174,6 +174,7 @@ let _attFilter     = _mkFilter('name',     'asc');
 let _attTabFilter       = _mkFilter('absences', 'desc');
 let _attTabRecentStatus = ''; // quick-filter on Most Recent chips: ''|'absent'|'late'|'present'
 let _rhViewMode = (typeof localStorage !== 'undefined' && localStorage.getItem('rhViewMode')) || 'list'; // 'list' | 'calendar'
+let _rhTypeFilter = (typeof localStorage !== 'undefined' && localStorage.getItem('rhTypeFilter')) || 'all'; // 'all' | 'rehearsal' | 'performance'
 let _rhCalMonth = ''; // 'YYYY-MM' shown in the rehearsals calendar (set to current month on first open)
 let _lbFilter      = _mkFilter('score',    'desc');
 let _songFilter       = _mkFilter('name',     'asc');

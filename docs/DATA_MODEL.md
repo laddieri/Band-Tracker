@@ -33,8 +33,12 @@ orgs/{orgId}                          # org metadata
   ├─ settings/public                  # director-published student-safe snapshot
   ├─ settings/drill                   # pointer: { activeId } — the school-wide active drill
   ├─ students/{studentNumber}         # was: /students/{studentNumber}
-  ├─ rehearsals/{rehearsalId}         # was: /rehearsals/{rehearsalId}
+  ├─ rehearsals/{rehearsalId}         # was: /rehearsals/{rehearsalId} — a rehearsal OR performance
   │    (fields) date, label, season, scope?, ended?, attendanceSubmitted?,
+  │    type?,                          # 'performance' marks a performance; absent = rehearsal
+  │                                    #   (presentation only — attendance, marks,
+  │                                    #   streaks and the leaderboard treat both
+  │                                    #   the same; see eventType() in js/00-logic.js)
   │    startedAt                       # epoch ms the rehearsal was started —
   │                                    #   shown on the card, breaks same-date
   │                                    #   ties in compareRehearsalsDesc()

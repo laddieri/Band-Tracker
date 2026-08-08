@@ -491,6 +491,13 @@ html, body {
 .rh-badge-active { background: var(--amber-bg); color: var(--amber-text); border: 1px solid var(--amber-border); }
 .rh-badge-scope  { background: var(--primary-tint); color: var(--primary); text-transform: none; letter-spacing: 0; }
 .rh-badge-hidden { background: var(--bg); color: var(--text-muted); border: 1px dashed var(--border); text-transform: none; letter-spacing: 0; }
+.rh-badge-perf   { background: var(--purple-bg); color: var(--purple-text); border: 1px solid var(--purple-border); text-transform: none; letter-spacing: 0; }
+
+/* Performance events get a subtle purple left edge on their card + a marker on
+   the calendar cell, so they stand out from the (far more common) rehearsals. */
+.rh-card-perf { border-left: 3px solid var(--purple-text); }
+.rh-cal-perf  { position: absolute; top: 2px; right: 3px; font-size: 0.6rem; line-height: 1; }
+.rh-typefilter { margin-top: -8px; }
 
 .rh-card-actions { display: flex; gap: 8px; margin-top: 12px; }
 .rh-card-actions .btn { flex: 1; }

@@ -283,6 +283,26 @@ describe('rehearsalScopeLabel', () => {
   });
 });
 
+// ── Event type (rehearsal vs performance) ─────────────────────────────────────
+
+describe('event type', () => {
+  it('treats an absent type as a rehearsal', () => {
+    assert.strictEqual(L.eventType({}), 'rehearsal');
+    assert.strictEqual(L.eventType(null), 'rehearsal');
+    assert.strictEqual(L.isPerformance({}), false);
+    assert.strictEqual(L.eventTypeLabel({}), 'Rehearsal');
+  });
+  it('treats an unrecognized type as a rehearsal', () => {
+    assert.strictEqual(L.eventType({ type: 'wat' }), 'rehearsal');
+    assert.strictEqual(L.isPerformance({ type: 'wat' }), false);
+  });
+  it('recognizes a performance', () => {
+    assert.strictEqual(L.eventType({ type: 'performance' }), 'performance');
+    assert.strictEqual(L.isPerformance({ type: 'performance' }), true);
+    assert.strictEqual(L.eventTypeLabel({ type: 'performance' }), 'Performance');
+  });
+});
+
 // ── Rehearsal ordering ────────────────────────────────────────────────────────
 
 describe('compareRehearsalsDesc', () => {

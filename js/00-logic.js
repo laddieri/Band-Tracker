@@ -43,6 +43,24 @@ function pseudonymFor(id, salt) {
   return `${adj} ${ani}`;
 }
 
+// ── Event type (rehearsal vs performance) ─────────────────────────────────────
+
+// An event doc is a rehearsal or a performance. The type lives in the doc's
+// `type` field, but the field is only written for performances — an absent (or
+// unrecognized) value reads as a rehearsal, so every pre-existing doc, and the
+// common case, needs nothing stored. This is a presentation distinction only:
+// attendance, marks, streaks and the leaderboard treat both the same.
+function eventType(r) {
+  return r && r.type === 'performance' ? 'performance' : 'rehearsal';
+}
+function isPerformance(r) {
+  return eventType(r) === 'performance';
+}
+// Singular noun for headings/messages ("New Performance", "Event not found").
+function eventTypeLabel(r) {
+  return isPerformance(r) ? 'Performance' : 'Rehearsal';
+}
+
 // ── Rehearsal scope ───────────────────────────────────────────────────────────
 
 // A rehearsal can target a subset of the band. `scope` is
@@ -1235,6 +1253,7 @@ function _pyware3daPageNote(u8, gapStart, gapEnd, N) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     FAKE_ADJECTIVES, FAKE_ANIMALS, _strHash, pseudonymFor,
+    eventType, isPerformance, eventTypeLabel,
     rehearsalIncludesStudent, rehearsalScopeLabel, compareRehearsalsDesc, rehearsalStreak, rehearsalsAttended,
     isMemorizationExcluded,
     taskAppliesToStudent, _taskMatchesGroups,

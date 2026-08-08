@@ -15,23 +15,23 @@ function rehearsalStudents(rOrId) {
 // ── View: Rehearsals List ─────────────────────────────────────────────────────
 
 function viewRehearsals() {
-  const rehearsals = [...DB.getRehearsals()].sort(compareRehearsalsDesc);
-  if (!rehearsals.length) {
+  const all = [...DB.getRehearsals()].sort(compareRehearsalsDesc);
+  if (!all.length) {
     return `
       <div class="empty-state">
         <div class="empty-icon">📋</div>
-        <p>No rehearsals yet.</p>
+        <p>No events yet.</p>
         <p>${STATE.isAdmin
               ? 'Tap <strong>+</strong> above or use the Home tab.'
               : 'A director needs to start one before you can record.'}</p>
       </div>`;
   }
 
-  const hasOpen = rehearsals.some(r => !r.ended);
+  const hasOpen = all.some(r => !r.ended);
   // Starting a rehearsal is director-only (staff record within one — see
   // firestore.rules and the staff section in docs/DATA_MODEL.md).
   const startBtn = STATE.isAdmin && !hasOpen
-    ? `<button class="start-rehearsal-btn" onclick="showNewRehearsalModal()">+ Start a New Rehearsal</button>`
+    ? `<button class="start-rehearsal-btn" onclick="showNewRehearsalModal()">+ Start a New Event</button>`
     : '';
 
   const toggle = `
@@ -40,25 +40,53 @@ function viewRehearsals() {
       <button class="rh-viewmode-btn${_rhViewMode === 'calendar' ? ' rh-viewmode-btn--on' : ''}" onclick="setRhViewMode('calendar')">📅 Calendar</button>
     </div>`;
 
-  // In calendar view, surface any open rehearsal's full card above the grid so
-  // the in-progress rehearsal is still front-and-center (as it is in list view).
+  // Type filter (All / Rehearsals / Performances). Only worth showing once the
+  // band actually has a performance on the books — most bands are all rehearsals.
+  const hasPerf = all.some(isPerformance);
+  const typeFilter = hasPerf ? `
+    <div class="rh-viewmode rh-typefilter">
+      <button class="rh-viewmode-btn${_rhTypeFilter === 'all' ? ' rh-viewmode-btn--on' : ''}" onclick="setRhTypeFilter('all')">All</button>
+      <button class="rh-viewmode-btn${_rhTypeFilter === 'rehearsal' ? ' rh-viewmode-btn--on' : ''}" onclick="setRhTypeFilter('rehearsal')">🥁 Rehearsals</button>
+      <button class="rh-viewmode-btn${_rhTypeFilter === 'performance' ? ' rh-viewmode-btn--on' : ''}" onclick="setRhTypeFilter('performance')">🎪 Performances</button>
+    </div>` : '';
+
+  // Apply the type filter everywhere the list/calendar reads. When the band has
+  // no performances the filter row is hidden and `active` is just `all`, so a
+  // stale 'performance'/'rehearsal' preference can never silently hide the list.
+  const active = (hasPerf && _rhTypeFilter !== 'all')
+    ? all.filter(r => eventType(r) === _rhTypeFilter)
+    : all;
+
+  // In calendar view, surface any open event's full card above the grid so
+  // the in-progress event is still front-and-center (as it is in list view).
   let openBanner = '';
   if (_rhViewMode === 'calendar') {
-    const openRs = rehearsals.filter(r => !r.ended);
+    const openRs = active.filter(r => !r.ended);
     if (openRs.length) {
       openBanner = `
-        <div class="section-title">${openRs.length > 1 ? 'Open Rehearsals' : 'Open Rehearsal'}</div>
+        <div class="section-title">${openRs.length > 1 ? 'Open Events' : 'Open Event'}</div>
         <div class="rh-cards-grid rh-cal-open-banner">${openRs.map(_rhCardHtml).join('')}</div>`;
     }
   }
 
-  const body = _rhViewMode === 'calendar' ? `${openBanner}${_rhCalendarHtml()}` : _rhListHtml(rehearsals);
-  return `<div class="rh-view">${startBtn}${toggle}${body}</div>`;
+  const empty = !active.length
+    ? `<div class="empty-state" style="padding:24px"><p>No ${_rhTypeFilter === 'performance' ? 'performances' : 'rehearsals'} yet.</p></div>`
+    : '';
+  const body = active.length
+    ? (_rhViewMode === 'calendar' ? `${openBanner}${_rhCalendarHtml(active)}` : _rhListHtml(active))
+    : empty;
+  return `<div class="rh-view">${startBtn}${toggle}${typeFilter}${body}</div>`;
 }
 
 function setRhViewMode(mode) {
   _rhViewMode = mode;
   try { localStorage.setItem('rhViewMode', mode); } catch {}
+  render();
+}
+
+function setRhTypeFilter(t) {
+  _rhTypeFilter = t;
+  try { localStorage.setItem('rhTypeFilter', t); } catch {}
   render();
 }
 
@@ -90,7 +118,9 @@ function _rhCardHtml(r) {
         const pos  = Object.values(ents).reduce((s,e)=>s+(e.positives||0),0);
         const ended    = !!r.ended;
         const attDone  = !!r.attendanceSubmitted;
-        const stateCls = ended ? 'rh-card-ended' : 'rh-card-open';
+        const isPerf   = isPerformance(r);
+        const perfBadge = isPerf ? `<span class="rh-badge rh-badge-perf">🎪 Performance</span>` : '';
+        const stateCls = (ended ? 'rh-card-ended' : 'rh-card-open') + (isPerf ? ' rh-card-perf' : '');
         const activeR  = getActiveRehearsal();
         const isActive = !ended && activeR && activeR.id === r.id;
         // Rehearsals started before `startedAt` was stamped simply show no time.
@@ -118,6 +148,7 @@ function _rhCardHtml(r) {
                   ${timeLine}
                   ${r.label ? `<div class="text-muted text-sm mt-4">${esc(r.label)}</div>` : ''}
                   <div class="rh-status-row">
+                    ${perfBadge}
                     <span class="rh-badge rh-badge-open">Open</span>
                     ${isActive ? `<span class="rh-badge rh-badge-active">Active</span>` : ''}
                     ${r.hiddenFromStudents ? `<span class="rh-badge rh-badge-hidden">🙈 Hidden from students</span>` : ''}
@@ -160,6 +191,7 @@ function _rhCardHtml(r) {
                 ${timeLine}
                 ${r.label ? `<div class="text-muted text-sm mt-4">${esc(r.label)}</div>` : ''}
                 <div class="rh-status-row">
+                  ${perfBadge}
                   <span class="rh-badge rh-badge-ended">Ended</span>
                   ${r.hiddenFromStudents ? `<span class="rh-badge rh-badge-hidden">🙈 Hidden from students</span>` : ''}
                   ${featureOn('attendance') && attDone ? `<span class="rh-badge rh-badge-att">Attendance ✓</span>` : ''}
@@ -181,16 +213,16 @@ function _rhCardHtml(r) {
 
 const _RH_DOW = ['Su','Mo','Tu','We','Th','Fr','Sa'];
 
-function _rhCalendarHtml() {
+function _rhCalendarHtml(events = DB.getRehearsals()) {
   if (!_rhCalMonth) _rhCalMonth = today().slice(0, 7); // default to the current month
   const [y, m] = _rhCalMonth.split('-').map(Number); // m = 1..12
   const firstDow    = new Date(y, m - 1, 1).getDay(); // 0 = Sunday
   const daysInMonth = new Date(y, m, 0).getDate();
   const todayStr    = today();
 
-  // Rehearsals on each date this month.
+  // Events on each date this month.
   const byDate = {};
-  DB.getRehearsals().forEach(r => {
+  events.forEach(r => {
     if (r.date.slice(0, 7) === _rhCalMonth) (byDate[r.date] = byDate[r.date] || []).push(r);
   });
 
@@ -203,8 +235,11 @@ function _rhCalendarHtml() {
     if (list.length) {
       const allEnded = list.every(r => r.ended);
       const dotCls   = allEnded ? 'rh-cal-dot--ended' : 'rh-cal-dot--open';
-      cells += `<button class="rh-cal-cell rh-cal-has${isToday}" onclick="rhDateClick(this,'${ds}')" title="${esc(list.map(r => r.label || 'Rehearsal').join(', '))}">
+      const hasPerf  = list.some(isPerformance);
+      const perfMark = hasPerf ? `<span class="rh-cal-perf" aria-hidden="true">🎪</span>` : '';
+      cells += `<button class="rh-cal-cell rh-cal-has${isToday}" onclick="rhDateClick(this,'${ds}')" title="${esc(list.map(r => r.label || eventTypeLabel(r)).join(', '))}">
         <span class="rh-cal-num">${d}</span>
+        ${perfMark}
         <span class="rh-cal-dot ${dotCls}">${list.length > 1 ? list.length : ''}</span>
       </button>`;
     } else {
@@ -224,6 +259,7 @@ function _rhCalendarHtml() {
       <div class="rh-cal-legend">
         <span><i class="rh-cal-dot rh-cal-dot--ended"></i> Ended</span>
         <span><i class="rh-cal-dot rh-cal-dot--open"></i> Open</span>
+        <span>🎪 Performance</span>
         <span class="rh-cal-legend-hint">Tap a date for its attendance &amp; marks</span>
       </div>
     </div>`;
@@ -253,7 +289,7 @@ function rhDateClick(anchorEl, dateStr) {
     <div class="rh-pop-date">${esc(fmtDate(dateStr))}</div>
     ${list.map(r => `
       <div class="rh-pop-item">
-        ${(multi || r.label) ? `<div class="rh-pop-label">${esc(r.label || 'Rehearsal')}${r.ended ? '' : ' · open'}</div>` : ''}
+        ${(multi || r.label || isPerformance(r)) ? `<div class="rh-pop-label">${isPerformance(r) ? '🎪 ' : ''}${esc(r.label || eventTypeLabel(r))}${r.ended ? '' : ' · open'}</div>` : ''}
         <div class="rh-pop-actions">
           ${featureOn('attendance') ? `<button class="rh-pop-btn" onclick="rhPopGo('attendance','${esc(r.id)}')">📋 Attendance</button>` : ''}
           ${featureOn('marks')      ? `<button class="rh-pop-btn" onclick="rhPopGo('marks','${esc(r.id)}')">✏️ Marks</button>` : ''}
@@ -351,7 +387,7 @@ function _trackerListHtml(rid) {
 
 function viewRehearsal(rid) {
   const r = DB.getRehearsals().find(r => r.id === rid);
-  if (!r) return `<div class="empty-state"><p>Rehearsal not found.</p></div>`;
+  if (!r) return `<div class="empty-state"><p>Event not found.</p></div>`;
 
   const entries    = DB.getRehearsalEntries(rid);
   const students   = DB.getStudents();
@@ -553,7 +589,7 @@ function viewRehearsal(rid) {
 
     ${r.ended ? `
       <div class="ended-banner">
-        ✓ Rehearsal ended — auto marks applied
+        ✓ ${esc(eventTypeLabel(r))} ended — auto marks applied
       </div>` : ''}
   `;
 }
