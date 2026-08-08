@@ -351,6 +351,28 @@ html, body {
 .nav-more-item.active { border-color: var(--primary); background: var(--primary-bg); color: var(--primary); }
 .nav-more-item.active svg { color: var(--primary); }
 
+/* One-handed reach (phones): float the bottom nav as a centered, compact pill
+   instead of a full-width bar, so the end tabs aren't stranded in the
+   hard-to-reach corners. It stays in normal flow at var(--nav-h) tall — only
+   its horizontal footprint shrinks — so the sticky attendance footer, drill
+   stage and FAB still measure the nav correctly. The "More" sheet (openNavMore)
+   is the fully-reachable path to every tab. The desktop sidebar
+   (min-width:768px, below) is unaffected. */
+@media (max-width: 767px) {
+  #bottom-nav {
+    align-self: center;        /* center the pill; don't stretch full width */
+    width: 100%;
+    max-width: 320px;
+    margin-bottom: 8px;
+    padding: 0 4px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.16);
+  }
+  /* Extra clearance so content doesn't hide behind the raised pill. */
+  #main-content { padding-bottom: calc(var(--nav-h) + 20px); }
+}
+
 /* ── Cards ──────────────────────────────────────────────────────────────── */
 
 .card {

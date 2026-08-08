@@ -360,13 +360,15 @@ function userBtn() {
   return `<button class="user-btn" onclick="showUserMenu()" title="${esc(STATE.user?.email || '')}" aria-label="Account menu">${esc(initials)}</button>`;
 }
 
-// The mobile bottom bar keeps only the primary tabs; this sheet holds the rest
-// so they're reachable one-handed without stretching to the bar's corners. It
+// A fully-reachable menu of EVERY available tab, opened from the "More" button.
+// The compact centered bottom bar is for quick taps; this thumb-zone sheet is
+// the one-handed path to any section, including those already on the bar. It
 // mirrors the live tab elements (icons, labels, feature/role gating, active
 // state), so it always matches what the sidebar would show. openModal() renders
-// it as a thumb-zone bottom sheet on phones.
+// it as a bottom sheet on phones. The `[data-view]` filter skips the More button
+// itself (it has no data-view).
 function openNavMore() {
-  const items = [...document.querySelectorAll('#bottom-nav .nav-tab.nav-secondary')]
+  const items = [...document.querySelectorAll('#bottom-nav .nav-tab[data-view]')]
     .filter(t => !t.classList.contains('tab-hidden'))
     .map(t => {
       const view   = t.dataset.view;
