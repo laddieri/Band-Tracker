@@ -54,13 +54,13 @@
         </svg>
         <span>Rehearsals</span>
       </button>
-      <button class="nav-tab" data-view="attendance-tab" onclick="navigate('attendance-tab')">
+      <button class="nav-tab nav-secondary" data-view="attendance-tab" onclick="navigate('attendance-tab')">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
         </svg>
         <span>Attendance</span>
       </button>
-      <button class="nav-tab" data-view="dashboard" onclick="navigate('dashboard')">
+      <button class="nav-tab nav-secondary" data-view="dashboard" onclick="navigate('dashboard')">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <rect x="3" y="3" width="7" height="9" rx="1"/>
           <rect x="14" y="3" width="7" height="5" rx="1"/>
@@ -77,26 +77,37 @@
         </svg>
         <span>Songs</span>
       </button>
-      <button class="nav-tab" data-view="leaderboard" onclick="navigate('leaderboard')">
+      <button class="nav-tab nav-secondary" data-view="leaderboard" onclick="navigate('leaderboard')">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
           <polyline points="17 6 23 6 23 12"/>
         </svg>
         <span>Stats</span>
       </button>
-      <button class="nav-tab" data-view="drill" onclick="navigate('drill')">
+      <button class="nav-tab nav-secondary" data-view="drill" onclick="navigate('drill')">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="4" y1="22" x2="4" y2="3"/>
           <path d="M4 4h13l-2.5 3.5L17 11H4"/>
         </svg>
         <span>Drill</span>
       </button>
-      <button class="nav-tab" data-view="tasks" onclick="navigate('tasks')">
+      <button class="nav-tab nav-secondary" data-view="tasks" onclick="navigate('tasks')">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M9 11l3 3L22 4"/>
           <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
         </svg>
         <span>Tasks</span>
+      </button>
+      <!-- On the mobile bottom bar this reveals the secondary tabs in a
+           thumb-reachable sheet; hidden in the desktop sidebar, which shows
+           every tab directly. See openNavMore() in js/04-render.js. -->
+      <button class="nav-tab nav-more-btn" id="nav-more" onclick="openNavMore()" aria-haspopup="dialog">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="5" cy="12" r="1.6"/>
+          <circle cx="12" cy="12" r="1.6"/>
+          <circle cx="19" cy="12" r="1.6"/>
+        </svg>
+        <span>More</span>
       </button>
     </nav>
   </div>

@@ -128,20 +128,32 @@ function render() {
     );
     // Hide tabs for disabled features. Staff get the recording surfaces
     // (attendance, marks, songs, stats, read-only roster); Drill stays
-    // director-only (so do the rules).
-    if (match === 'roster')         t.style.display = canRecord() ? '' : 'none';
-    if (match === 'attendance-tab') t.style.display = featureOn('attendance') ? '' : 'none';
-    if (match === 'songs')          t.style.display = featureOn('songs') ? '' : 'none';
+    // director-only (so do the rules). `.tab-hidden` hides a tab everywhere —
+    // bar AND the "More" sheet — while responsive bar-vs-sheet placement is
+    // left to CSS (.nav-secondary), so don't gate with inline display here.
+    if (match === 'roster')         t.classList.toggle('tab-hidden', !canRecord());
+    if (match === 'attendance-tab') t.classList.toggle('tab-hidden', !featureOn('attendance'));
+    if (match === 'songs')          t.classList.toggle('tab-hidden', !featureOn('songs'));
     // The "Stats" tab is the Marching Leaderboard. Hide it for directors/staff
     // when the leaderboard is turned off — the roster's per-metric sorts cover
     // quick director lookups, and the toggle lives in Band Settings. Students
     // still reach band stats from their portal, so this nav gate doesn't affect
     // them (they don't use this bottom nav).
-    if (match === 'leaderboard')    t.style.display = (canRecord() && featureOn('stats') && STATE.marchingLeaderboardEnabled) ? '' : 'none';
-    if (match === 'dashboard')      t.style.display = (canRecord() && featureOn('marks')) ? '' : 'none';
-    if (match === 'drill')          t.style.display = (canRecord() && featureOn('drill')) ? '' : 'none';
-    if (match === 'tasks')          t.style.display = (canRecord() && featureOn('tasks')) ? '' : 'none';
+    if (match === 'leaderboard')    t.classList.toggle('tab-hidden', !(canRecord() && featureOn('stats') && STATE.marchingLeaderboardEnabled));
+    if (match === 'dashboard')      t.classList.toggle('tab-hidden', !(canRecord() && featureOn('marks')));
+    if (match === 'drill')          t.classList.toggle('tab-hidden', !(canRecord() && featureOn('drill')));
+    if (match === 'tasks')          t.classList.toggle('tab-hidden', !(canRecord() && featureOn('tasks')));
   });
+
+  // The "More" tab reveals the secondary tabs on the mobile bottom bar. Hide it
+  // when nothing's overflowing, and light it up when the active view lives
+  // inside the sheet (its own tab is collapsed out of the bar).
+  const moreBtn = document.getElementById('nav-more');
+  if (moreBtn) {
+    const secondary = [...tabs].filter(t => t.classList.contains('nav-secondary'));
+    moreBtn.classList.toggle('tab-hidden', !secondary.some(t => !t.classList.contains('tab-hidden')));
+    moreBtn.classList.toggle('active',      secondary.some(t => t.classList.contains('active')));
+  }
 
   // If the current view belongs to a disabled feature, bounce to a safe view.
   const curFeature = VIEW_FEATURE[_view];
@@ -346,4 +358,24 @@ function optBtn(fn) {
 function userBtn() {
   const initials = (STATE.user?.email || '?').slice(0, 2).toUpperCase();
   return `<button class="user-btn" onclick="showUserMenu()" title="${esc(STATE.user?.email || '')}" aria-label="Account menu">${esc(initials)}</button>`;
+}
+
+// The mobile bottom bar keeps only the primary tabs; this sheet holds the rest
+// so they're reachable one-handed without stretching to the bar's corners. It
+// mirrors the live tab elements (icons, labels, feature/role gating, active
+// state), so it always matches what the sidebar would show. openModal() renders
+// it as a thumb-zone bottom sheet on phones.
+function openNavMore() {
+  const items = [...document.querySelectorAll('#bottom-nav .nav-tab.nav-secondary')]
+    .filter(t => !t.classList.contains('tab-hidden'))
+    .map(t => {
+      const view   = t.dataset.view;
+      const label  = t.querySelector('span')?.textContent || '';
+      const svg    = t.querySelector('svg')?.outerHTML || '';
+      const active = t.classList.contains('active') ? ' active' : '';
+      // closeModal() first so navigate() replaces the modal history sentinel
+      // (see the history handling in navigate(), js/03-router.js).
+      return `<button class="nav-more-item${active}" onclick="closeModal(); navigate('${view}')">${svg}<span>${esc(label)}</span></button>`;
+    }).join('');
+  openModal(`<div class="modal-title">More</div><div class="nav-more-grid">${items}</div>`);
 }
