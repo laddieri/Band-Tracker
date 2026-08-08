@@ -560,32 +560,6 @@ html, body {
   margin-top: 6px;
 }
 
-.att-chart-card { padding: 14px 16px 10px; }
-.att-chart-title { font-size: 0.85rem; font-weight: 600; color: var(--text); margin-bottom: 8px; }
-.att-scale-group { display: inline-flex; border: 1px solid var(--border); border-radius: var(--r-sm); overflow: hidden; margin-bottom: 10px; }
-.att-scale-btn {
-  border: none; border-left: 1px solid var(--border); background: var(--surface); color: var(--text);
-  font-size: 0.75rem; font-weight: 600; padding: 5px 14px; cursor: pointer;
-}
-.att-scale-btn:first-child { border-left: none; }
-.att-scale-btn--on { background: var(--primary); color: #fff; }
-.att-chart-empty { padding: 22px 4px; text-align: center; color: var(--text-muted); font-size: 0.85rem; }
-.att-chart-readout {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px;
-  min-height: 26px; margin-bottom: 6px; font-size: 0.8rem;
-}
-.att-chart-ro-date { font-weight: 600; color: var(--text); }
-.att-chart-ro-stat { display: inline-flex; align-items: center; gap: 5px; color: var(--text-muted); }
-.att-chart-ro-stat::before { content: ''; width: 9px; height: 9px; border-radius: 50%; }
-.att-chart-ro-abs::before  { background: var(--danger); }
-.att-chart-ro-late::before { background: var(--warning); }
-.att-chart-ro-view {
-  margin-left: auto; border: none; background: none; cursor: pointer; padding: 2px 4px;
-  font-size: 0.78rem; font-weight: 600; color: var(--primary, var(--accent));
-}
-.att-chart-legend { display: flex; gap: 16px; margin-top: 8px; justify-content: center; }
-.att-chart-legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.78rem; color: var(--text-muted); }
-.att-chart-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
 
 .lb-weight-row { display:flex; align-items:center; gap:12px; padding:9px 12px; background:var(--surface-alt); border:1.5px solid var(--border); border-radius:var(--r-sm); }
 .lb-weight-info { flex:1; min-width:0; }
@@ -1786,7 +1760,6 @@ html, body {
 .sec-card > div:not(.sec-hdr):not(.song-cat-hdr) { padding: 10px 14px 12px; }
 .sec-card .songs-list-grid { padding: 0; }
 .sec-card .history-row:last-child { margin-bottom: 0; }
-.att-tab-view .sec-card .att-chart-card { border: none; box-shadow: none; padding: 0; margin: 0; }
 
 /* Student portal: the collapsible sections are wrapped in .sec-card so each
    heading reads as an obvious card header (matching the director views). Trim
