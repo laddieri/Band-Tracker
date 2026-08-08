@@ -631,7 +631,7 @@ function showBrandSettingsModal() {
         ['songs',      'Songs', 'Music memorization with pass / try-again tracking'],
         ['tasks',      'Tasks', 'Check-off tracking for forms, fees & to-dos, with per-task who-it-applies-to rules'],
         ['stats',      'Stats / Leaderboard', 'Rankings built from marks (needs Marks on)'],
-        ['drill',      'Drill / Field Chart', 'View Pyware field charts (directors & staff; students never see them)', true],
+        ['drill',      'Charts / Field Chart', 'View Pyware field charts (directors & staff; students never see them)', true],
       ].map(([key, label, desc, adminOnly]) => {
         const featOn   = STATE.features?.[key] !== false;
         const portalOn = STATE.portalVisible?.[key] !== false;
