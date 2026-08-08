@@ -13,12 +13,28 @@ let _studentCode = '';    // the code entered in the student wizard
 // Stamp the initial history entry so popstate always has a valid state.
 history.replaceState({ view: _view, params: _params }, '');
 
+// Set just before we call history.back() ourselves to unwind an orphaned modal
+// sentinel (see _unwindModalSentinels) so the resulting popstate is treated as
+// bookkeeping, not a user Back press.
+let _suppressModalPop = false;
+
 // OS back gesture / hardware back button.
 window.addEventListener('popstate', e => {
   // If a modal is open, this back press should close it — not navigate.
   const overlay = document.getElementById('modal-overlay');
   if (overlay && !overlay.classList.contains('hidden')) {
     overlay.classList.add('hidden');
+    // Back closed the modal and the browser already popped its sentinel. If more
+    // sentinels remain beneath (nested modals), unwind them too so the next Back
+    // returns to the real previous view.
+    if (history.state?.modal) _unwindModalSentinels();
+    return;
+  }
+  // A history.back() we issued to drop an orphaned sentinel (closeModal cleanup):
+  // don't re-navigate, but keep unwinding if more sentinels are stacked.
+  if (_suppressModalPop) {
+    _suppressModalPop = false;
+    if (history.state?.modal) _unwindModalSentinels();
     return;
   }
   // Sentinel-only entry (modal was closed before back fired) — skip it.
@@ -26,6 +42,24 @@ window.addEventListener('popstate', e => {
   const { view = 'rehearsals', params = {} } = e.state || {};
   navigate(view, params, true); // true = don't push another entry
 });
+
+// Pop any modal history sentinel(s) sitting on top of the stack. openModal
+// pushes one per open; closing without navigating (the ✕/Close button, the
+// backdrop, Escape) leaves it orphaned as the current entry, so the next Back
+// press is spent stepping off it instead of returning to the previous view —
+// the "Back does nothing / needs a second tap" bug. Popping it restores the
+// stack to exactly what it was before the modal opened.
+function _unwindModalSentinels() {
+  // Only when the overlay is actually closed. A sentinel that's current while
+  // the overlay is still open belongs to a live modal (e.g. a
+  // `closeModal(); showOtherModal()` chain that reopened one) — leave it.
+  const overlay = document.getElementById('modal-overlay');
+  const open    = overlay && !overlay.classList.contains('hidden');
+  if (!open && history.state?.modal) {
+    _suppressModalPop = true;
+    history.back();
+  }
+}
 
 function navigate(view, params = {}, _fromHistory = false) {
   if (_view === 'rehearsal' && view !== 'rehearsal') {
@@ -672,6 +706,11 @@ function closeModal() {
     try { _modalReturnFocus.focus(); } catch {}
   }
   _modalReturnFocus = null;
+  // Drop the history sentinel openModal pushed so a later Back press goes to the
+  // previous view, not off an orphaned modal entry. Deferred a tick: a
+  // `closeModal(); navigate(...)` caller replaces the sentinel synchronously in
+  // navigate(), and by the time this runs there's nothing left to unwind.
+  if (wasOpen) setTimeout(_unwindModalSentinels, 0);
 }
 
 function _modalFocusables() {
@@ -690,7 +729,12 @@ function openModal(html) {
     </div>
     ${html}`;
   document.getElementById('modal-overlay').classList.remove('hidden');
-  history.pushState({ modal: true }, '');
+  // One sentinel per open overlay: if a modal is already the current history
+  // entry — a `closeModal(); showOtherModal()` chain, or a modal swapping its
+  // own body — replace it rather than stacking a second sentinel that Back would
+  // then have to step through.
+  if (history.state?.modal) history.replaceState({ modal: true }, '');
+  else                      history.pushState   ({ modal: true }, '');
   // Focus the first control after the close button, falling back to close —
   // keyboard/screen-reader users land inside the dialog, not behind it.
   const focusables = _modalFocusables();
