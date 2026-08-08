@@ -320,10 +320,10 @@ html, body {
 .nav-tab.tab-hidden { display: none !important; }
 
 /* One-handed reach: on the mobile bottom bar only the primary tabs
-   (roster / rehearsals / songs) stay put; the rest collapse into the "More"
-   sheet so targets are few, wide and away from the hard-to-reach corners. The
-   desktop sidebar (min-width:768px, below) has room, so it re-shows them all
-   and drops the More button. */
+   (roster / rehearsals / attendance / songs) stay put; the rest collapse into
+   the "More" sheet so targets are few, wide and away from the hard-to-reach
+   corners. The desktop sidebar (min-width:768px, below) has room, so it
+   re-shows them all and drops the More button. */
 .nav-tab.nav-secondary { display: none; }
 
 .nav-more-grid {
