@@ -398,6 +398,50 @@ describe('rehearsalStreak', () => {
   });
 });
 
+describe('rehearsalsAttended', () => {
+  const sam = { number: '42', name: 'Sam' };
+  const rehs = [
+    { id: 'r1', date: '2026-03-01', attendanceSubmitted: true },
+    { id: 'r2', date: '2026-03-08', attendanceSubmitted: true },
+    { id: 'r3', date: '2026-03-15', attendanceSubmitted: true },
+    { id: 'r4', date: '2026-03-22', attendanceSubmitted: true },
+  ];
+
+  it('lists attended rehearsals newest-first with present/late status', () => {
+    const entries = {
+      r2: { '42': { attendance: 'late' } },
+      r1: { '42': { attendance: 'absent' } }, // absent → not attended
+    };
+    const res = L.rehearsalsAttended(rehs, entries, sam);
+    assert.deepStrictEqual(res.map(x => x.rehearsal.id), ['r4', 'r3', 'r2']);
+    assert.deepStrictEqual(res.map(x => x.status), ['present', 'present', 'late']);
+  });
+
+  it('counts a no-entry rehearsal as attended (present)', () => {
+    const res = L.rehearsalsAttended(rehs, {}, sam);
+    assert.strictEqual(res.length, 4);
+    assert.ok(res.every(x => x.status === 'present'));
+  });
+
+  it('excludes absences, unsubmitted, hidden and out-of-scope rehearsals', () => {
+    const flute = { number: '9', instrument: 'Flute', section: 'Woodwinds' };
+    const list = [
+      { id: 'a', date: '2026-03-01', attendanceSubmitted: true },
+      { id: 'b', date: '2026-03-08' }, // not submitted
+      { id: 'c', date: '2026-03-15', attendanceSubmitted: true, hiddenFromStudents: true },
+      { id: 'd', date: '2026-03-22', attendanceSubmitted: true, scope: { sections: ['Brass'] } },
+      { id: 'e', date: '2026-03-29', attendanceSubmitted: true },
+    ];
+    const entries = { a: { '9': { attendance: 'absent' } } };
+    const res = L.rehearsalsAttended(list, entries, flute);
+    assert.deepStrictEqual(res.map(x => x.rehearsal.id), ['e']);
+  });
+
+  it('returns [] with no student', () => {
+    assert.deepStrictEqual(L.rehearsalsAttended(rehs, {}, null), []);
+  });
+});
+
 // ── Memorization exclusions ───────────────────────────────────────────────────
 
 describe('isMemorizationExcluded', () => {

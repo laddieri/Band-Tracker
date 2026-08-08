@@ -1115,6 +1115,9 @@ function viewStudentPortal(previewMode = false) {
   // rehearsals/entries the streak uses everywhere (hidden ones excluded), so the
   // number matches the director roster and the director's student-view preview.
   const _portalStreak = rehearsalStreak(DB.getRehearsals(), STATE.entries, s);
+  // Every rehearsal this student attended (present or late) — the "N Attended"
+  // pill count; the pill's modal lists them (showPortalAttendedModal).
+  const _portalAttended = rehearsalsAttended(DB.getRehearsals(), STATE.entries, s);
 
   const spots      = studentSpots(s);
   const metaParts  = [s?.instrument, s?.section, s?.grade ? s.grade + ' Grade' : ''].filter(Boolean);
@@ -1153,6 +1156,7 @@ function viewStudentPortal(previewMode = false) {
             const lates    = hist.filter(({entry:e}) => e.attendance === 'late');
             return `
                 <div class="att-summary-row">
+                  ${_portalAttended.length ? `<button type="button" class="att-summary-chip att-chip-present att-chip-btn" onclick="showPortalAttendedModal()">${_portalAttended.length} Attended</button>` : ''}
                   <span class="att-summary-chip att-chip-absent">${absences.length} Absence${absences.length!==1?'s':''}</span>
                   <span class="att-summary-chip att-chip-late">${lates.length} Late${lates.length!==1?'s':''}</span>
                 </div>
@@ -1460,6 +1464,32 @@ function showPortalPositivesModal() {
     <div class="modal-title">Positive Marks</div>
     <div class="portal-modal-total portal-total-positive">${totalPos} total positive mark${totalPos!==1?'s':''}</div>
     <div class="portal-modal-list">${sections}</div>`);
+}
+
+// The "N Attended" pill: every rehearsal the student was present or late for,
+// newest-first. Built from the same pure helper the pill count uses, so the
+// list length always matches the pill.
+function showPortalAttendedModal() {
+  const s        = STATE.students[STATE.studentNum];
+  const attended = rehearsalsAttended(DB.getRehearsals(), STATE.entries, s);
+  if (!attended.length) {
+    openModal(`<div class="modal-title">Rehearsals Attended</div><p class="empty-state" style="padding:24px 0">No rehearsals attended yet.</p>`);
+    return;
+  }
+  const rows = attended.map(({ rehearsal: r, status }) => `
+    <div class="portal-modal-row">
+      <div class="portal-modal-row-info">
+        <div class="portal-modal-date">${fmtDate(r.date)}</div>
+        ${r.label ? `<div class="portal-modal-label">${esc(r.label)}</div>` : ''}
+      </div>
+      ${status === 'late'
+        ? `<span class="portal-badge att-portal-badge-late">Late</span>`
+        : `<span class="portal-badge portal-badge-positive">Present</span>`}
+    </div>`).join('');
+  openModal(`
+    <div class="modal-title">Rehearsals Attended</div>
+    <div class="portal-modal-total portal-total-positive">${attended.length} rehearsal${attended.length!==1?'s':''} attended</div>
+    <div class="portal-modal-list">${rows}</div>`);
 }
 
 function toggleCollapse(id) {
