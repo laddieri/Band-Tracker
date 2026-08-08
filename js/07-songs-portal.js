@@ -1156,7 +1156,7 @@ function viewStudentPortal(previewMode = false) {
             const lates    = hist.filter(({entry:e}) => e.attendance === 'late');
             return `
                 <div class="att-summary-row">
-                  ${_portalAttended.length ? `<button type="button" class="att-summary-chip att-chip-present att-chip-btn" onclick="showPortalAttendedModal()">${_portalAttended.length} Attended</button>` : ''}
+                  ${_portalAttended.length ? `<button type="button" class="att-summary-chip att-chip-present att-chip-btn" onclick="showPortalAttendedModal('${esc(num)}')">${_portalAttended.length} Attended</button>` : ''}
                   <span class="att-summary-chip att-chip-absent">${absences.length} Absence${absences.length!==1?'s':''}</span>
                   <span class="att-summary-chip att-chip-late">${lates.length} Late${lates.length!==1?'s':''}</span>
                 </div>
@@ -1184,11 +1184,11 @@ function viewStudentPortal(previewMode = false) {
         <div id="portal-sec-marks" class="sec-collapsed">
           <div class="portal-stats">
             ${!STATE.hideNegativeFromPortal ? `
-            <button type="button" class="portal-stat portal-stat-btn" onclick="showPortalMistakesModal()">
+            <button type="button" class="portal-stat portal-stat-btn" onclick="showPortalMistakesModal('${esc(num)}')">
               <div class="portal-stat-value portal-stat-mistake">${totalErr}</div>
               <div class="portal-stat-label">Mistake Marks</div>
             </button>` : ''}
-            <button type="button" class="portal-stat portal-stat-btn" onclick="showPortalPositivesModal()">
+            <button type="button" class="portal-stat portal-stat-btn" onclick="showPortalPositivesModal('${esc(num)}')">
               <div class="portal-stat-value portal-stat-positive">${totalPos}</div>
               <div class="portal-stat-label">Positives</div>
             </button>
@@ -1390,8 +1390,7 @@ function viewStudentPortal(previewMode = false) {
     </div>`;
 }
 
-function showPortalMistakesModal() {
-  const num  = STATE.studentNum;
+function showPortalMistakesModal(num = STATE.studentNum) {
   const hist = DB.getStudentHistory(num);
   const relevant = hist.filter(({entry: e}) => (e.mistakes || 0) > 0);
   if (!relevant.length) {
@@ -1428,8 +1427,7 @@ function showPortalMistakesModal() {
     <div class="portal-modal-list">${sections}</div>`);
 }
 
-function showPortalPositivesModal() {
-  const num  = STATE.studentNum;
+function showPortalPositivesModal(num = STATE.studentNum) {
   const hist = DB.getStudentHistory(num);
   const relevant = hist.filter(({entry: e}) => (e.positives || 0) > 0);
   if (!relevant.length) {
@@ -1469,8 +1467,8 @@ function showPortalPositivesModal() {
 // The "N Attended" pill: every rehearsal the student was present or late for,
 // newest-first. Built from the same pure helper the pill count uses, so the
 // list length always matches the pill.
-function showPortalAttendedModal() {
-  const s        = STATE.students[STATE.studentNum];
+function showPortalAttendedModal(num = STATE.studentNum) {
+  const s        = STATE.students[num];
   const attended = rehearsalsAttended(DB.getRehearsals(), STATE.entries, s);
   if (!attended.length) {
     openModal(`<div class="modal-title">Rehearsals Attended</div><p class="empty-state" style="padding:24px 0">No rehearsals attended yet.</p>`);
