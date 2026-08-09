@@ -140,7 +140,7 @@ function viewRoster() {
   }
 
   return `
-    ${renderFilterBar('roster', _rosterFilter, rosterSortOpts)}
+    ${renderFilterBar('roster', _rosterFilter, rosterSortOpts, { secondarySort: true })}
     <div id="roster-list">${rosterRows(filtered, scoreMap)}</div>
   `;
 }

@@ -170,7 +170,9 @@ function _mkFilter(sortField, sortDir) {
   // draft holds the staged instrument/section/grade selections while the filter
   // panel is open; nothing filters the list until "Apply filter" copies it into
   // the arrays above. null when the panel is closed. See applyFilter/cancelFilter.
-  return { search: '', sortField, sortDir, instruments: [], sections: [], grades: [], panelOpen: false, draft: null };
+  // sortField2 ('' = none) is an optional tie-breaker applied after sortField,
+  // surfaced by views that pass { secondarySort:true } to renderFilterBar.
+  return { search: '', sortField, sortDir, sortField2: '', sortDir2: 'asc', instruments: [], sections: [], grades: [], panelOpen: false, draft: null };
 }
 let _rosterFilter  = _mkFilter('name',     'asc');
 let _trackerFilter = _mkFilter('name',     'asc');
@@ -198,7 +200,7 @@ function debounced(key, fn, ms = 800) {
 // (filterAndSortStudents — the engine behind every list view — lives in
 // js/00-logic.js so it's unit-testable.)
 
-function renderFilterBar(viewId, f, sortOptions, { hideSearch = false, extra = '' } = {}) {
+function renderFilterBar(viewId, f, sortOptions, { hideSearch = false, extra = '', secondarySort = false } = {}) {
   const activeCount = f.instruments.length + f.sections.length + f.grades.length;
   const instruments = instrumentsInRoster();
   const sections    = sectionsInRoster();
@@ -270,7 +272,31 @@ function renderFilterBar(viewId, f, sortOptions, { hideSearch = false, extra = '
         </button>
         ${extra}
       </div>
+      ${secondarySort ? _renderSecondarySortRow(viewId, f, sortOptions) : ''}
       ${panel}
+    </div>`;
+}
+
+// A "then by" row for a tie-breaker sort: a field select (with a "none" option,
+// and the primary field omitted since sorting by it twice is a no-op) plus a
+// direction toggle that's disabled until a secondary field is chosen.
+function _renderSecondarySortRow(viewId, f, sortOptions) {
+  const opts = sortOptions.filter(o => o.value !== f.sortField);
+  const active = !!f.sortField2 && f.sortField2 !== f.sortField;
+  return `
+    <div class="sfb-row sfb-row-secondary">
+      <span class="sfb-then-label">then by</span>
+      <div class="sfb-sort-wrap">
+        <select class="sfb-sort-select" aria-label="Then sort by" onchange="updateFilter('${viewId}','sortField2',this.value)">
+          <option value="" ${active?'':'selected'}>—</option>
+          ${opts.map(o => `<option value="${esc(o.value)}" ${f.sortField2===o.value?'selected':''}>${esc(o.label)}</option>`).join('')}
+        </select>
+        <button class="sfb-dir-btn" ${active?'':'disabled'}
+                onclick="updateFilter('${viewId}','sortDir2','${f.sortDir2==='asc'?'desc':'asc'}')"
+                title="Reverse secondary sort" aria-label="Reverse secondary sort order">
+          ${f.sortDir2 === 'asc' ? '↑' : '↓'}
+        </button>
+      </div>
     </div>`;
 }
 

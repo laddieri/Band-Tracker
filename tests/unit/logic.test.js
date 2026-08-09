@@ -639,6 +639,26 @@ describe('filterAndSortStudents', () => {
     assert.deepStrictEqual(out.map(s => s.name), ['Cass', 'Blake', 'Ana']);
     assert.deepStrictEqual(pool, copy);
   });
+  it('breaks ties on a secondary sort field', () => {
+    const tied = [
+      { number: '1', name: 'Sam', grade: '12th' },
+      { number: '2', name: 'Sam', grade: '9th'  },
+      { number: '3', name: 'Amy', grade: '11th' },
+    ];
+    // Primary name asc; ties (both "Sam") ordered by grade asc → 9th before 12th.
+    assert.deepStrictEqual(
+      L.filterAndSortStudents(tied, mkF({ sortField: 'name', sortField2: 'grade', sortDir2: 'asc' })).map(s => s.number),
+      ['3', '2', '1']);
+    // Secondary direction is honored independently of the primary.
+    assert.deepStrictEqual(
+      L.filterAndSortStudents(tied, mkF({ sortField: 'name', sortField2: 'grade', sortDir2: 'desc' })).map(s => s.number),
+      ['3', '1', '2']);
+  });
+  it('ignores a secondary field equal to the primary', () => {
+    assert.deepStrictEqual(
+      L.filterAndSortStudents(pool, mkF({ sortField: 'name', sortField2: 'name' })).map(s => s.name),
+      ['Ana', 'Blake', 'Cass']);
+  });
 });
 
 // ── Printed code-slip order ───────────────────────────────────────────────────
