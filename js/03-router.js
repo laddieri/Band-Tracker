@@ -170,9 +170,10 @@ function _mkFilter(sortField, sortDir) {
   // draft holds the staged instrument/section/grade selections while the filter
   // panel is open; nothing filters the list until "Apply filter" copies it into
   // the arrays above. null when the panel is closed. See applyFilter/cancelFilter.
-  // sortField2 ('' = none) is an optional tie-breaker applied after sortField,
-  // surfaced by views that pass { secondarySort:true } to renderFilterBar.
-  return { search: '', sortField, sortDir, sortField2: '', sortDir2: 'asc', instruments: [], sections: [], grades: [], panelOpen: false, draft: null };
+  // `sorts` holds optional layered tie-breakers ([{field,dir}, …]) applied
+  // after the primary sortField, surfaced by views that pass { multiSort:true }
+  // to renderFilterBar. Empty by default → single-sort behavior.
+  return { search: '', sortField, sortDir, sorts: [], instruments: [], sections: [], grades: [], panelOpen: false, draft: null };
 }
 let _rosterFilter  = _mkFilter('name',     'asc');
 let _trackerFilter = _mkFilter('name',     'asc');
@@ -200,7 +201,7 @@ function debounced(key, fn, ms = 800) {
 // (filterAndSortStudents — the engine behind every list view — lives in
 // js/00-logic.js so it's unit-testable.)
 
-function renderFilterBar(viewId, f, sortOptions, { hideSearch = false, extra = '', secondarySort = false } = {}) {
+function renderFilterBar(viewId, f, sortOptions, { hideSearch = false, extra = '', multiSort = false } = {}) {
   const activeCount = f.instruments.length + f.sections.length + f.grades.length;
   const instruments = instrumentsInRoster();
   const sections    = sectionsInRoster();
@@ -272,32 +273,46 @@ function renderFilterBar(viewId, f, sortOptions, { hideSearch = false, extra = '
         </button>
         ${extra}
       </div>
-      ${secondarySort ? _renderSecondarySortRow(viewId, f, sortOptions) : ''}
+      ${multiSort ? _renderSortLayers(viewId, f, sortOptions) : ''}
       ${panel}
     </div>`;
 }
 
-// A "then by" row for a tie-breaker sort: a field select (with a "none" option,
-// and the primary field omitted since sorting by it twice is a no-op) plus a
-// direction toggle that's disabled until a secondary field is chosen.
-function _renderSecondarySortRow(viewId, f, sortOptions) {
-  const opts = sortOptions.filter(o => o.value !== f.sortField);
-  const active = !!f.sortField2 && f.sortField2 !== f.sortField;
-  return `
-    <div class="sfb-row sfb-row-secondary">
-      <span class="sfb-then-label">then by</span>
-      <div class="sfb-sort-wrap">
-        <select class="sfb-sort-select" aria-label="Then sort by" onchange="updateFilter('${viewId}','sortField2',this.value)">
-          <option value="" ${active?'':'selected'}>—</option>
-          ${opts.map(o => `<option value="${esc(o.value)}" ${f.sortField2===o.value?'selected':''}>${esc(o.label)}</option>`).join('')}
-        </select>
-        <button class="sfb-dir-btn" ${active?'':'disabled'}
-                onclick="updateFilter('${viewId}','sortDir2','${f.sortDir2==='asc'?'desc':'asc'}')"
-                title="Reverse secondary sort" aria-label="Reverse secondary sort order">
-          ${f.sortDir2 === 'asc' ? '↑' : '↓'}
-        </button>
-      </div>
-    </div>`;
+// The layered-sort controls under the primary sort row: one "then by" row per
+// entry in f.sorts (field select + direction toggle + remove), and an
+// "+ Add sort level" button while unused sortable fields remain. Each row's
+// field select omits fields already used by the primary and preceding layers,
+// so you can't stack the same field twice.
+function _renderSortLayers(viewId, f, sortOptions) {
+  const layers = f.sorts || [];
+  const rows = layers.map((layer, idx) => {
+    const usedBefore = new Set([f.sortField, ...layers.slice(0, idx).map(l => l.field)]);
+    // Keep this layer's own field selectable even though it's "used".
+    const opts = sortOptions.filter(o => o.value === layer.field || !usedBefore.has(o.value));
+    return `
+      <div class="sfb-row sfb-row-secondary">
+        <span class="sfb-then-label">then by</span>
+        <div class="sfb-sort-wrap">
+          <select class="sfb-sort-select" aria-label="Then sort by"
+                  onchange="updateSortLayer('${viewId}',${idx},'field',this.value)">
+            ${opts.map(o => `<option value="${esc(o.value)}" ${layer.field===o.value?'selected':''}>${esc(o.label)}</option>`).join('')}
+          </select>
+          <button class="sfb-dir-btn"
+                  onclick="updateSortLayer('${viewId}',${idx},'dir','${layer.dir==='asc'?'desc':'asc'}')"
+                  title="Reverse this sort" aria-label="Reverse this sort order">
+            ${layer.dir === 'asc' ? '↑' : '↓'}
+          </button>
+        </div>
+        <button class="sfb-sort-remove" onclick="removeSortLayer('${viewId}',${idx})"
+                title="Remove this sort level" aria-label="Remove this sort level">×</button>
+      </div>`;
+  }).join('');
+  const used = new Set([f.sortField, ...layers.map(l => l.field)]);
+  const canAdd = sortOptions.some(o => !used.has(o.value));
+  const addBtn = canAdd
+    ? `<button class="sfb-add-sort" onclick="addSortLayer('${viewId}')">+ Add sort level</button>`
+    : '';
+  return rows + addBtn;
 }
 
 // ── Filter event handlers ─────────────────────────────────────────────────────
@@ -538,9 +553,61 @@ function updateFilter(viewId, field, value) {
     return;
   }
   f[field] = value;
+  // Changing the primary field can collide with a layered tie-breaker; drop the
+  // duplicate so the same field never appears in two sort rows.
+  if (field === 'sortField') _dedupeSortLayers(f);
   // While typing in search, update only the list so the input keeps focus
   // (a full re-render would replace the input and dismiss the keyboard).
   if (field === 'search' && _refreshFilterList(viewId)) return;
+  _rerenderForFilter(viewId);
+}
+
+// ── Layered sort handlers ─────────────────────────────────────────────────────
+// The sort options a view offers, needed by the add/update handlers (which,
+// unlike the renderer, aren't handed the list). Only views passing
+// { multiSort:true } to renderFilterBar need an entry here.
+function _sortOptionsFor(viewId) {
+  switch (viewId) {
+    case 'roster': return rosterSortOptions();
+    default:       return [];
+  }
+}
+
+// Keep each sort field to a single row: drop any layer whose field repeats the
+// primary or an earlier layer. Mirrors the de-duplication in sortKeys().
+function _dedupeSortLayers(f) {
+  const seen = new Set([f.sortField]);
+  f.sorts = (f.sorts || []).filter(l => {
+    if (!l.field || seen.has(l.field)) return false;
+    seen.add(l.field);
+    return true;
+  });
+}
+
+// Add a tie-breaker layer defaulted to the first still-unused field, so the new
+// row is meaningful the moment it appears (no placeholder "pick a field" state).
+function addSortLayer(viewId) {
+  const f = _getFilterObj(viewId);
+  if (!f) return;
+  const used = new Set([f.sortField, ...(f.sorts || []).map(l => l.field)]);
+  const next = _sortOptionsFor(viewId).find(o => !used.has(o.value));
+  if (!next) return;
+  f.sorts = [...(f.sorts || []), { field: next.value, dir: 'asc' }];
+  _rerenderForFilter(viewId);
+}
+
+function updateSortLayer(viewId, idx, key, value) {
+  const f = _getFilterObj(viewId);
+  if (!f || !f.sorts || !f.sorts[idx]) return;
+  f.sorts = f.sorts.map((l, i) => i === idx ? { ...l, [key]: value } : l);
+  if (key === 'field') _dedupeSortLayers(f);
+  _rerenderForFilter(viewId);
+}
+
+function removeSortLayer(viewId, idx) {
+  const f = _getFilterObj(viewId);
+  if (!f || !f.sorts) return;
+  f.sorts = f.sorts.filter((_, i) => i !== idx);
   _rerenderForFilter(viewId);
 }
 

@@ -721,12 +721,27 @@ function _studentFieldCmp(a, b, field, dir, scoreMap) {
   return dir === 'asc' ? cmp : -cmp;
 }
 
+// The ordered sort keys for a filter: the primary (f.sortField/f.sortDir)
+// followed by any additional layers in f.sorts ([{field,dir}, …]). Layers that
+// repeat an earlier field are dropped (sorting by the same field twice is a
+// no-op), so the result is de-duplicated and each field appears once.
+function sortKeys(f) {
+  const keys = [];
+  const seen = new Set();
+  for (const k of [{ field: f.sortField, dir: f.sortDir }, ...(f.sorts || [])]) {
+    if (!k || !k.field || seen.has(k.field)) continue;
+    seen.add(k.field);
+    keys.push({ field: k.field, dir: k.dir || 'asc' });
+  }
+  return keys;
+}
+
 // The engine behind every filterable list view (roster, tracker, attendance,
 // leaderboard, songs). `f` is a filter object from _mkFilter (search, sort
-// field/dir, instruments/sections/grades arrays); `scoreMap` supplies the
-// per-student values for score-ish sort fields. When `f.sortField2` is set it
-// acts as a tie-breaker — students equal on the primary field are ordered by
-// the secondary one (its own direction), e.g. "by name, then by grade".
+// field/dir, optional layered `sorts`, instruments/sections/grades arrays);
+// `scoreMap` supplies the per-student values for score-ish sort fields. Each
+// sort key beyond the first breaks ties in the previous one, so "name, then
+// grade, then number" reads left-to-right as layered tie-breakers.
 function filterAndSortStudents(students, f, scoreMap) {
   let pool = [...students];
   // search
@@ -742,12 +757,14 @@ function filterAndSortStudents(students, f, scoreMap) {
   if (f.instruments.length) pool = pool.filter(s => f.instruments.includes(normInstrument(s.instrument)));
   if (f.grades.length)      pool = pool.filter(s => f.grades.includes(s.grade || ''));
   if (f.sections.length)    pool = pool.filter(s => f.sections.includes(s.section || ''));
-  // sort — primary field, with the optional secondary field breaking ties.
-  const hasSecondary = f.sortField2 && f.sortField2 !== f.sortField;
+  // sort — apply each key in order, the first non-tie deciding.
+  const keys = sortKeys(f);
   pool.sort((a, b) => {
-    const cmp = _studentFieldCmp(a, b, f.sortField, f.sortDir, scoreMap);
-    if (cmp !== 0 || !hasSecondary) return cmp;
-    return _studentFieldCmp(a, b, f.sortField2, f.sortDir2 || 'asc', scoreMap);
+    for (const k of keys) {
+      const cmp = _studentFieldCmp(a, b, k.field, k.dir, scoreMap);
+      if (cmp !== 0) return cmp;
+    }
+    return 0;
   });
   return pool;
 }
@@ -1276,7 +1293,7 @@ if (typeof module !== 'undefined' && module.exports) {
     drillMappingDiff, spotHistorySpans,
     drillPositionPairs, drillRelabelMapping,
     suggestSeasonLabel,
-    normInstrument, instrOrder, GRADE_LEVELS, filterAndSortStudents, studentSortValue,
+    normInstrument, instrOrder, GRADE_LEVELS, filterAndSortStudents, studentSortValue, sortKeys,
     studentLastName, compareStudentsByInstrumentThenLastName,
     _hasMarker, _indexOfMarker, _parsePywareFile, _pywareAssembleDrill, _pyware3daPageNote,
     _pyware3daCast,
