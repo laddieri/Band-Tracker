@@ -3639,19 +3639,20 @@ html, body {
 }
 .drill-search-wrap.has-q .drill-search-clear { display:block; }
 
-.drill-view-strip { display:flex; align-items:stretch; gap:4px; padding:0 8px 6px; flex-shrink:0; }
+.drill-view-strip { display:flex; align-items:stretch; gap:6px; padding:0 8px 6px; flex-shrink:0; }
 .drill-nav-arrow {
-  flex:0 0 auto; width:30px; border:1.5px solid var(--border); border-radius:var(--r-sm);
-  background:var(--surface); color:var(--text); font-size:1rem; cursor:pointer;
+  flex:0 0 auto; width:56px; min-height:46px; border:1.5px solid var(--border); border-radius:var(--r-sm);
+  background:var(--surface); color:var(--text); font-size:1.35rem; cursor:pointer;
 }
+.drill-nav-arrow:active:not(:disabled) { background:var(--bg); }
 .drill-nav-arrow:disabled { opacity:.4; }
 
 /* Table-of-contents button between the prev/next arrows: shows the current set
    position and toggles the full list of drill pages below. */
 .drill-toc-btn {
-  flex:1; min-width:0; display:flex; align-items:center; justify-content:center; gap:8px;
+  flex:1; min-width:0; min-height:46px; display:flex; align-items:center; justify-content:center; gap:8px;
   border:1.5px solid var(--border); border-radius:var(--r-sm);
-  background:var(--surface); color:var(--text); font-size:0.86rem; font-weight:700; cursor:pointer;
+  background:var(--surface); color:var(--text); font-size:0.9rem; font-weight:700; cursor:pointer;
   padding:0 10px;
 }
 .drill-toc-btn.is-open { border-color:var(--primary); color:var(--primary); }
