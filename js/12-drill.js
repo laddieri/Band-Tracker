@@ -1775,9 +1775,14 @@ function _drillViewInner() {
 
     <div class="drill-view-strip">
       <button class="drill-nav-arrow" onclick="drillViewNav(-1)"${idx<=0?' disabled':''} aria-label="Previous set">&#8592;</button>
-      <div class="drill-set-strip" id="drill-set-strip">${_drillSetStripHtml()}</div>
+      <button class="drill-toc-btn${_drillTocOpen ? ' is-open' : ''}" id="drill-toc-btn" onclick="drillToggleToc()" aria-expanded="${_drillTocOpen}" aria-controls="drill-set-strip" title="Table of contents">
+        <span class="drill-toc-ico">☰</span>
+        <span class="drill-toc-label">Set ${idx + 1} <span class="drill-toc-of">of ${total}</span></span>
+      </button>
       <button class="drill-nav-arrow" onclick="drillViewNav(1)"${idx>=total-1?' disabled':''} aria-label="Next set">&#8594;</button>
     </div>
+
+    <div class="drill-set-strip${_drillTocOpen ? ' is-open' : ''}" id="drill-set-strip">${_drillSetStripHtml()}</div>
 
     <div class="drill-fs-svg-wrap drill-view-stage" id="drill-stage">${_drillStageInner()}</div>
 
@@ -2138,6 +2143,20 @@ function drillToggleSearch() {
     if (input) input.focus();
   } else {
     drillViewClearSearch();
+  }
+}
+
+// The set list (table of contents) is collapsed by default; the ☰ button reveals
+// the individual drill pages so you can jump straight to one. The prev/next
+// arrows stay out on the main screen either way. DOM toggle — no re-render.
+function drillToggleToc() {
+  _drillTocOpen = !_drillTocOpen;
+  const strip = document.getElementById('drill-set-strip');
+  const btn   = document.getElementById('drill-toc-btn');
+  if (strip) strip.classList.toggle('is-open', _drillTocOpen);
+  if (btn) {
+    btn.classList.toggle('is-open', _drillTocOpen);
+    btn.setAttribute('aria-expanded', _drillTocOpen ? 'true' : 'false');
   }
 }
 

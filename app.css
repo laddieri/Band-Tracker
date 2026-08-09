@@ -3645,10 +3645,27 @@ html, body {
   background:var(--surface); color:var(--text); font-size:1rem; cursor:pointer;
 }
 .drill-nav-arrow:disabled { opacity:.4; }
-.drill-set-strip {
-  flex:1; min-width:0; display:flex; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch;
-  padding:1px 0;
+
+/* Table-of-contents button between the prev/next arrows: shows the current set
+   position and toggles the full list of drill pages below. */
+.drill-toc-btn {
+  flex:1; min-width:0; display:flex; align-items:center; justify-content:center; gap:8px;
+  border:1.5px solid var(--border); border-radius:var(--r-sm);
+  background:var(--surface); color:var(--text); font-size:0.86rem; font-weight:700; cursor:pointer;
+  padding:0 10px;
 }
+.drill-toc-btn.is-open { border-color:var(--primary); color:var(--primary); }
+.drill-toc-ico { font-size:0.95rem; line-height:1; }
+.drill-toc-of { font-weight:400; color:var(--text-muted); }
+.drill-toc-btn.is-open .drill-toc-of { color:inherit; }
+
+/* The drill pages (sets), collapsed by default and revealed by the ☰ button as a
+   wrapping grid so the whole chart's contents are visible at a glance. */
+.drill-set-strip {
+  display:none; flex-wrap:wrap; gap:6px; padding:2px 8px 8px; flex-shrink:0;
+  max-height:38vh; overflow-y:auto; -webkit-overflow-scrolling:touch;
+}
+.drill-set-strip.is-open { display:flex; }
 .drill-set-chip {
   flex:0 0 auto; display:flex; flex-direction:column; align-items:center; justify-content:center;
   min-width:34px; padding:5px 8px; border:1.5px solid var(--border); border-radius:var(--r-sm);
