@@ -3567,12 +3567,24 @@ html, body {
 .drill-view { display:flex; flex-direction:column; height:100%; min-height:0; }
 
 /* Active-drill switcher — prominent on the tab so changing drills is one tap. */
+.drill-switcher-row { display:flex; align-items:stretch; gap:6px; margin:8px 10px 0; flex-shrink:0; }
 .drill-switcher {
-  display:flex; align-items:center; gap:10px; width:auto; margin:8px 10px 0; padding:8px 12px;
+  display:flex; align-items:center; gap:10px; flex:1; min-width:0; padding:8px 12px;
   background:var(--surface); border:1px solid var(--border); border-radius:var(--r-sm);
-  cursor:pointer; text-align:left; color:var(--text); flex-shrink:0;
+  cursor:pointer; text-align:left; color:var(--text);
 }
 .drill-switcher:active { background:var(--surface-alt); }
+/* Gear next to the chart name: reveals/hides the chart control row below. */
+.drill-gear-btn {
+  flex:0 0 auto; display:flex; align-items:center; justify-content:center; width:46px;
+  border:1px solid var(--border); border-radius:var(--r-sm);
+  background:var(--surface); color:var(--text); font-size:1.15rem; cursor:pointer;
+}
+.drill-gear-btn:active { background:var(--surface-alt); }
+.drill-gear-btn.is-open {
+  border-color:var(--primary); color:var(--primary);
+  background:color-mix(in srgb, var(--primary) 8%, var(--surface));
+}
 .drill-switcher-ico { font-size:1.1rem; flex-shrink:0; }
 .drill-switcher-text { flex:1; min-width:0; }
 .drill-switcher-name { display:block; font-weight:700; font-size:0.95rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -3624,7 +3636,8 @@ html, body {
 }
 .spot-hist-dates { font-size:0.76rem; color:var(--text-muted); margin-top:1px; }
 
-.drill-view-bar { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:8px 10px 6px; flex-shrink:0; }
+.drill-view-bar { display:none; flex-wrap:wrap; gap:6px; align-items:center; padding:8px 10px 6px; flex-shrink:0; }
+.drill-view-bar.is-open { display:flex; }
 .drill-view-bar .btn { white-space:nowrap; flex-shrink:0; }
 /* Search box is hidden until the 🔍 toggle reveals it (.is-open); when shown it
    takes its own full-width row so it stays comfortably tappable on phones. */

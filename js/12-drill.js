@@ -1748,16 +1748,19 @@ function _drillViewInner() {
     : (count > 1 ? `${count} charts · tap to switch` : 'Tap to manage library');
 
   return `
-    <button class="drill-switcher" onclick="showDrillLibraryModal()">
-      <span class="drill-switcher-ico">📚</span>
-      <span class="drill-switcher-text">
-        <span class="drill-switcher-name">${esc(name)}</span>
-        <span class="drill-switcher-meta">${meta}</span>
-      </span>
-      <span class="drill-switcher-caret">▾</span>
-    </button>
+    <div class="drill-switcher-row">
+      <button class="drill-switcher" onclick="showDrillLibraryModal()">
+        <span class="drill-switcher-ico">📚</span>
+        <span class="drill-switcher-text">
+          <span class="drill-switcher-name">${esc(name)}</span>
+          <span class="drill-switcher-meta">${meta}</span>
+        </span>
+        <span class="drill-switcher-caret">▾</span>
+      </button>
+      <button class="drill-gear-btn${_drillControlsOpen ? ' is-open' : ''}" id="drill-gear-btn" onclick="drillToggleControls()" aria-expanded="${_drillControlsOpen}" aria-controls="drill-view-bar" title="Chart controls" aria-label="Chart controls">⚙</button>
+    </div>
 
-    <div class="drill-view-bar">
+    <div class="drill-view-bar${_drillControlsOpen ? ' is-open' : ''}" id="drill-view-bar">
       <div id="drill-unassigned-bar" class="drill-unassigned-slot">${_drillUnassignedBarHtml()}</div>
       <button class="btn btn-sm ${_drillSearchOpen ? 'btn-primary' : 'btn-secondary'}" id="drill-search-toggle" onclick="drillToggleSearch()" title="Find a performer" aria-label="Find a performer" aria-expanded="${_drillSearchOpen}">🔍</button>
       <button class="btn btn-sm ${_drillPlaying ? 'btn-primary' : 'btn-secondary'}" onclick="drillPlayToggle()" title="Play / pause" aria-label="Play or pause animation">${_drillPlaying ? '⏸' : '▶'}</button>
@@ -2158,6 +2161,20 @@ function drillToggleToc() {
   if (btn) {
     btn.classList.toggle('is-open', _drillTocOpen);
     btn.setAttribute('aria-expanded', _drillTocOpen ? 'true' : 'false');
+  }
+}
+
+// The chart control row (search, play, fullscreen, unassigned, more) is hidden
+// by default behind the ⚙ button next to the loaded chart's name. DOM toggle —
+// no re-render.
+function drillToggleControls() {
+  _drillControlsOpen = !_drillControlsOpen;
+  const bar = document.getElementById('drill-view-bar');
+  const btn = document.getElementById('drill-gear-btn');
+  if (bar) bar.classList.toggle('is-open', _drillControlsOpen);
+  if (btn) {
+    btn.classList.toggle('is-open', _drillControlsOpen);
+    btn.setAttribute('aria-expanded', _drillControlsOpen ? 'true' : 'false');
   }
 }
 
