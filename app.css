@@ -3294,6 +3294,12 @@ html, body {
 .sfb-sort-select { flex: 1; border: none; background: transparent; font-family: inherit; font-size: 0.85rem; color: var(--text); padding: 8px 10px; outline: none; cursor: pointer; min-width: 0; }
 .sfb-dir-btn { border: none; border-left: 1.5px solid var(--border); background: transparent; font-size: 1rem; font-weight: 700; color: var(--text-muted); padding: 0 12px; cursor: pointer; transition: background .15s; flex-shrink: 0; }
 .sfb-dir-btn:hover { background: var(--bg); }
+.sfb-row-secondary { margin-top: 8px; }
+.sfb-then-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted); flex-shrink: 0; width: 52px; }
+.sfb-sort-remove { border: 1.5px solid var(--border); border-radius: var(--r-sm); background: var(--surface); color: var(--text-muted); font-size: 1.1rem; line-height: 1; padding: 0 10px; align-self: stretch; cursor: pointer; flex-shrink: 0; transition: background .15s, border-color .15s, color .15s; }
+.sfb-sort-remove:hover { background: var(--danger-bg, var(--bg)); border-color: var(--danger); color: var(--danger); }
+.sfb-add-sort { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; margin-left: 52px; padding: 6px 10px; border: 1.5px dashed var(--border); border-radius: var(--r-sm); background: transparent; font-family: inherit; font-size: 0.8rem; font-weight: 600; color: var(--primary); cursor: pointer; transition: background .15s, border-color .15s; }
+.sfb-add-sort:hover { background: var(--primary-bg); border-color: var(--primary); }
 .sfb-filter-btn { display: inline-flex; align-items: center; gap: 5px; padding: 8px 12px; border: 1.5px solid var(--border); border-radius: var(--r-sm); background: var(--surface); font-family: inherit; font-size: 0.85rem; font-weight: 500; color: var(--text-muted); cursor: pointer; white-space: nowrap; transition: background .15s, border-color .15s, color .15s; flex-shrink: 0; }
 .sfb-filter-btn:hover { background: var(--bg); }
 .sfb-filter-btn.sfb-filter-active { border-color: var(--primary); color: var(--primary); background: var(--primary-bg); }

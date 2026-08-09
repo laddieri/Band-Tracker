@@ -117,13 +117,11 @@ function instrumentFilterChips(activeFilter, fnName, fnFirstArg) {
     </div>`;
 }
 
-function viewRoster() {
-  const students = DB.getStudents();
-  const allStudents = Object.values(students);
-  const scoreMap = _rosterScoreMap();
-  const filtered = filterAndSortStudents(allStudents, _rosterFilter, scoreMap);
-
-  const rosterSortOpts = [
+// The roster's sort fields, gated by which student fields and features are on.
+// Shared by the roster view and the layered-sort handlers in js/03-router.js
+// (addSortLayer needs the same list to default a new layer's field).
+function rosterSortOptions() {
+  return [
     {value:'name',   label:'Name'},
     {value:'number', label:'Number'},
     ...(hasField('instrument') ? [{value:'instrument', label:'Instrument'}] : []),
@@ -135,12 +133,20 @@ function viewRoster() {
     ] : []),
     ...(featureOn('songs') && STATE.songs.length ? [{value:'passed', label:'Songs Completed'}] : []),
   ];
+}
+
+function viewRoster() {
+  const students = DB.getStudents();
+  const allStudents = Object.values(students);
+  const scoreMap = _rosterScoreMap();
+  const filtered = filterAndSortStudents(allStudents, _rosterFilter, scoreMap);
+
   if (STATE.isAdmin && allStudents.length === 0) {
     return viewRosterOnboarding();
   }
 
   return `
-    ${renderFilterBar('roster', _rosterFilter, rosterSortOpts)}
+    ${renderFilterBar('roster', _rosterFilter, rosterSortOptions(), { multiSort: true })}
     <div id="roster-list">${rosterRows(filtered, scoreMap)}</div>
   `;
 }
