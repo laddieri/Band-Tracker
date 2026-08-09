@@ -1765,7 +1765,6 @@ function _drillViewInner() {
       <button class="btn btn-sm ${_drillSearchOpen ? 'btn-primary' : 'btn-secondary'}" id="drill-search-toggle" onclick="drillToggleSearch()" title="Find a performer" aria-label="Find a performer" aria-expanded="${_drillSearchOpen}">🔍</button>
       <button class="btn btn-sm ${_drillPlaying ? 'btn-primary' : 'btn-secondary'}" onclick="drillPlayToggle()" title="Play / pause" aria-label="Play or pause animation">${_drillPlaying ? '⏸' : '▶'}</button>
       <button class="btn btn-sm btn-secondary" onclick="drillViewExpand()" title="Fullscreen" aria-label="Fullscreen">⤢</button>
-      <button class="btn btn-sm ${(_drillSelectMode || _drillFlipV || _drillShowNotes) ? 'btn-primary' : 'btn-secondary'}" onclick="showDrillOptionsModal()" title="More options" aria-label="More options">⋯</button>
       <div class="drill-search-wrap${_drillSearchOpen ? ' is-open' : ''}${_drillSearchQuery.trim() ? ' has-q' : ''}" id="drill-search-wrap">
         <input class="drill-search form-input" type="search" id="drill-search-input"
                placeholder="Find a performer or student…"
