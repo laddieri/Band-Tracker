@@ -3617,17 +3617,25 @@ html, body {
 }
 .spot-hist-dates { font-size:0.76rem; color:var(--text-muted); margin-top:1px; }
 
-.drill-view-bar { display:flex; gap:6px; align-items:center; padding:8px 10px 6px; flex-shrink:0; }
+.drill-view-bar { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:8px 10px 6px; flex-shrink:0; }
 .drill-view-bar .btn { white-space:nowrap; flex-shrink:0; }
-.drill-search-wrap { position:relative; flex:1; min-width:0; }
-.drill-search { width:100%; padding-right:30px; }
+.drill-search-wrap { position:relative; flex:1; min-width:180px; }
+.drill-search { width:100%; padding-right:34px; }
 .drill-search-clear {
-  position:absolute; right:6px; top:50%; transform:translateY(-50%);
+  position:absolute; right:4px; top:50%; transform:translateY(-50%);
   border:none; background:var(--surface-raised); color:var(--text-muted);
-  width:20px; height:20px; border-radius:50%; cursor:pointer; font-size:0.7rem; line-height:1;
+  width:26px; height:26px; border-radius:50%; cursor:pointer; font-size:0.72rem; line-height:1;
   display:none;
 }
 .drill-search-wrap.has-q .drill-search-clear { display:block; }
+
+/* On phones the search box + action buttons don't fit one row: give the search
+   its own full-width row so it stays comfortably tappable, and let the buttons
+   wrap below it. */
+@media (max-width: 767px) {
+  .drill-search-wrap { flex-basis:100%; }
+  .drill-search { min-height:40px; }
+}
 
 .drill-view-strip { display:flex; align-items:stretch; gap:4px; padding:0 8px 6px; flex-shrink:0; }
 .drill-nav-arrow {
