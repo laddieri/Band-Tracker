@@ -686,10 +686,47 @@ function compareStudentsByInstrumentThenLastName(a, b) {
 
 const GRADE_LEVELS = ['8th','9th','10th','11th','12th'];
 
+// The comparable value for one student under one sort field: a string for
+// alphabetical fields, a number for ordinal/score ones. Missing values sort to
+// the end of an ascending list (score-ish → -1, so descending puts them last).
+// `scoreMap` supplies the per-student values for score-ish fields.
+function studentSortValue(s, field, scoreMap) {
+  switch (field) {
+    case 'name':       return (s.name||'').toLowerCase();
+    case 'number':     return +s.number||0;
+    case 'instrument': return instrOrder(s.instrument);
+    case 'section':    return (s.section||'').toLowerCase();
+    case 'grade':      return GRADE_LEVELS.indexOf(s.grade||'');
+    case 'score': case 'positives': case 'mistakes': case 'passed': case 'missing': case 'done':
+      return scoreMap?.[s.number]?.[field] ?? -1;
+    case 'absences':   return scoreMap?.[s.number]?.absences ?? 0;
+    case 'lates':      return scoreMap?.[s.number]?.lates ?? 0;
+    case 'attStatus': {
+      const order = { absent: 0, late: 1, present: 2, undefined: 2 };
+      return order[scoreMap?.[s.number]?.att] ?? 2;
+    }
+    case 'songStatus': {
+      const order = { passed: 0, failed: 1, not_attempted: 2 };
+      return order[scoreMap?.[s.number]?.status] ?? 2;
+    }
+    default: return (s.name||'').toLowerCase();
+  }
+}
+
+// One field's contribution to the sort, honoring direction.
+function _studentFieldCmp(a, b, field, dir, scoreMap) {
+  const va = studentSortValue(a, field, scoreMap);
+  const vb = studentSortValue(b, field, scoreMap);
+  const cmp = typeof va === 'string' ? va.localeCompare(vb) : (va - vb);
+  return dir === 'asc' ? cmp : -cmp;
+}
+
 // The engine behind every filterable list view (roster, tracker, attendance,
 // leaderboard, songs). `f` is a filter object from _mkFilter (search, sort
 // field/dir, instruments/sections/grades arrays); `scoreMap` supplies the
-// per-student values for score-ish sort fields.
+// per-student values for score-ish sort fields. When `f.sortField2` is set it
+// acts as a tie-breaker — students equal on the primary field are ordered by
+// the secondary one (its own direction), e.g. "by name, then by grade".
 function filterAndSortStudents(students, f, scoreMap) {
   let pool = [...students];
   // search
@@ -705,38 +742,12 @@ function filterAndSortStudents(students, f, scoreMap) {
   if (f.instruments.length) pool = pool.filter(s => f.instruments.includes(normInstrument(s.instrument)));
   if (f.grades.length)      pool = pool.filter(s => f.grades.includes(s.grade || ''));
   if (f.sections.length)    pool = pool.filter(s => f.sections.includes(s.section || ''));
-  // sort
+  // sort — primary field, with the optional secondary field breaking ties.
+  const hasSecondary = f.sortField2 && f.sortField2 !== f.sortField;
   pool.sort((a, b) => {
-    let va, vb;
-    switch (f.sortField) {
-      case 'name':       va = (a.name||'').toLowerCase();          vb = (b.name||'').toLowerCase(); break;
-      case 'number':     va = +a.number||0;                        vb = +b.number||0; break;
-      case 'instrument': va = instrOrder(a.instrument); vb = instrOrder(b.instrument); break;
-      case 'section':    va = (a.section||'').toLowerCase();       vb = (b.section||'').toLowerCase(); break;
-      case 'grade':      va = GRADE_LEVELS.indexOf(a.grade||'');   vb = GRADE_LEVELS.indexOf(b.grade||''); break;
-      case 'score': case 'positives': case 'mistakes': case 'passed': case 'missing': case 'done': {
-        va = scoreMap?.[a.number]?.[f.sortField] ?? -1;
-        vb = scoreMap?.[b.number]?.[f.sortField] ?? -1;
-        break;
-      }
-      case 'absences':   va = scoreMap?.[a.number]?.absences ?? 0; vb = scoreMap?.[b.number]?.absences ?? 0; break;
-      case 'lates':      va = scoreMap?.[a.number]?.lates ?? 0;    vb = scoreMap?.[b.number]?.lates ?? 0; break;
-      case 'attStatus': {
-        const order = { absent: 0, late: 1, present: 2, undefined: 2 };
-        va = order[scoreMap?.[a.number]?.att] ?? 2;
-        vb = order[scoreMap?.[b.number]?.att] ?? 2;
-        break;
-      }
-      case 'songStatus': {
-        const order = { passed: 0, failed: 1, not_attempted: 2 };
-        va = order[scoreMap?.[a.number]?.status] ?? 2;
-        vb = order[scoreMap?.[b.number]?.status] ?? 2;
-        break;
-      }
-      default: va = (a.name||'').toLowerCase(); vb = (b.name||'').toLowerCase();
-    }
-    const cmp = typeof va === 'string' ? va.localeCompare(vb) : (va - vb);
-    return f.sortDir === 'asc' ? cmp : -cmp;
+    const cmp = _studentFieldCmp(a, b, f.sortField, f.sortDir, scoreMap);
+    if (cmp !== 0 || !hasSecondary) return cmp;
+    return _studentFieldCmp(a, b, f.sortField2, f.sortDir2 || 'asc', scoreMap);
   });
   return pool;
 }
@@ -1265,7 +1276,7 @@ if (typeof module !== 'undefined' && module.exports) {
     drillMappingDiff, spotHistorySpans,
     drillPositionPairs, drillRelabelMapping,
     suggestSeasonLabel,
-    normInstrument, instrOrder, GRADE_LEVELS, filterAndSortStudents,
+    normInstrument, instrOrder, GRADE_LEVELS, filterAndSortStudents, studentSortValue,
     studentLastName, compareStudentsByInstrumentThenLastName,
     _hasMarker, _indexOfMarker, _parsePywareFile, _pywareAssembleDrill, _pyware3daPageNote,
     _pyware3daCast,
