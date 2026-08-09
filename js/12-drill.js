@@ -1760,11 +1760,9 @@ function _drillViewInner() {
                oninput="drillViewSearch(this.value)">
         <button class="drill-search-clear" onclick="drillViewClearSearch()" aria-label="Clear">✕</button>
       </div>
-      <button class="btn btn-sm ${_drillPlaying ? 'btn-primary' : 'btn-secondary'}" onclick="drillPlayToggle()" title="Play / pause">${_drillPlaying ? '⏸' : '▶'}</button>
-      <button class="btn btn-sm ${_drillSelectMode ? 'btn-primary' : 'btn-secondary'}" onclick="drillToggleSelectMode()" title="Select sets to trace/play">⛶</button>
-      <button class="btn btn-sm btn-secondary" onclick="drillViewFlip()" title="Flip facing">⇅</button>
-      ${_drillHasNotes() ? `<button class="btn btn-sm ${_drillShowNotes ? 'btn-primary' : 'btn-secondary'}" onclick="drillToggleNotes()" title="Show set instructions">📝</button>` : ''}
-      <button class="btn btn-sm btn-secondary" onclick="drillViewExpand()" title="Hide header &amp; tabs">⤢</button>
+      <button class="btn btn-sm ${_drillPlaying ? 'btn-primary' : 'btn-secondary'}" onclick="drillPlayToggle()" title="Play / pause" aria-label="Play or pause animation">${_drillPlaying ? '⏸' : '▶'}</button>
+      <button class="btn btn-sm btn-secondary" onclick="drillViewExpand()" title="Fullscreen" aria-label="Fullscreen">⤢</button>
+      <button class="btn btn-sm ${(_drillSelectMode || _drillFlipV || _drillShowNotes) ? 'btn-primary' : 'btn-secondary'}" onclick="showDrillOptionsModal()" title="More options" aria-label="More options">⋯</button>
     </div>
 
     ${_drillSelStatusHtml()}
@@ -2042,12 +2040,6 @@ function drillViewGoToSet(i) {
   _drillViewRerender();
 }
 
-function drillToggleSelectMode() {
-  _drillSelectMode = !_drillSelectMode;
-  if (_drillPlaying) _drillPlayStop();
-  _drillViewRerender();
-}
-
 function drillClearSets() {
   _drillTraceSets = [];
   _drillViewRerender();
@@ -2088,12 +2080,6 @@ function _drillPlayStop() {
   _drillPlaying = false;
   if (_drillPlayTimer) clearInterval(_drillPlayTimer);
   _drillPlayTimer = null;
-}
-
-function drillViewFlip() {
-  _drillFlipV = !_drillFlipV;
-  _drillPersistFlip();
-  _drillViewRerender();
 }
 
 // Facing is per-drill, stored on its library metadata doc (live for everyone).
@@ -2270,6 +2256,11 @@ function showDrillOptionsModal() {
         <div class="options-menu-icon">🔗</div>
         <div><div class="options-menu-label">Assign Spots</div><div class="options-menu-sub">This show's spots → students · tap or CSV</div></div>
       </button>` : ''}
+      ${(has && _drillPages.length > 1) ? `
+      <button class="options-menu-item" onclick="drillMenuSelectSets()">
+        <div class="options-menu-icon">⛶</div>
+        <div><div class="options-menu-label">Choose sets to animate</div><div class="options-menu-sub">Tap sets in the strip, then press play${_drillTraceSets.length ? ` · ${_drillTraceSets.length} selected` : ''}</div></div>
+      </button>` : ''}
     </div>
     ${has ? `
     <div class="drill-opt-section">
@@ -2280,6 +2271,21 @@ function showDrillOptionsModal() {
         ).join('')}
       </div>
     </div>
+    <div class="drill-opt-section">
+      <div class="drill-opt-label">Facing</div>
+      <div class="drill-lblseg-group" id="drill-flipseg-group">
+        <button class="drill-lblseg${!_drillFlipV ? ' drill-lblseg--on' : ''}" onclick="drillSetFlip(false)">Front</button>
+        <button class="drill-lblseg${_drillFlipV ? ' drill-lblseg--on' : ''}" onclick="drillSetFlip(true)">Flipped</button>
+      </div>
+    </div>
+    ${_drillHasNotes() ? `
+    <div class="drill-opt-section">
+      <div class="drill-opt-label">Set instructions</div>
+      <div class="drill-lblseg-group" id="drill-notesseg-group">
+        <button class="drill-lblseg${!_drillShowNotes ? ' drill-lblseg--on' : ''}" onclick="drillSetNotes(false)">Hide</button>
+        <button class="drill-lblseg${_drillShowNotes ? ' drill-lblseg--on' : ''}" onclick="drillSetNotes(true)">Show</button>
+      </div>
+    </div>` : ''}
     <div class="drill-opt-section">
       <div class="drill-opt-label">Field color</div>
       <div class="drill-lblseg-group" id="drill-fieldseg-group">
@@ -2312,6 +2318,42 @@ function drillSetLabelMode(n) {
   document.querySelectorAll('#drill-lblseg-group .drill-lblseg')
     .forEach((b, i) => b.classList.toggle('drill-lblseg--on', i === n));
   if (_view === 'drill' && document.getElementById('drill-view-root')) _drillViewRerender();
+}
+
+// Set facing (per-drill, persisted) from the options menu: update the segmented
+// control in place and re-render every surface showing the chart.
+function drillSetFlip(flip) {
+  flip = !!flip;
+  if (_drillFlipV !== flip) { _drillFlipV = flip; _drillPersistFlip(); }
+  document.querySelectorAll('#drill-flipseg-group .drill-lblseg')
+    .forEach((b, i) => b.classList.toggle('drill-lblseg--on', i === (flip ? 1 : 0)));
+  if (_view === 'drill' && document.getElementById('drill-view-root')) _drillViewRerender();
+  const fs = document.getElementById('drill-chart-fs');
+  if (fs && !fs.classList.contains('hidden')) _drillChartRefresh();
+}
+
+// Toggle the set-instruction overlay from the options menu (persisted like the
+// old inline 📝 button).
+function drillSetNotes(show) {
+  show = !!show;
+  if (_drillShowNotes !== show) {
+    _drillShowNotes = show;
+    try { localStorage.setItem('drillShowNotes', show ? '1' : '0'); } catch {}
+  }
+  document.querySelectorAll('#drill-notesseg-group .drill-lblseg')
+    .forEach((b, i) => b.classList.toggle('drill-lblseg--on', i === (show ? 1 : 0)));
+  if (_view === 'drill' && document.getElementById('drill-view-root')) _drillViewRerender();
+  const fs = document.getElementById('drill-chart-fs');
+  if (fs && !fs.classList.contains('hidden')) _drillChartRefresh();
+}
+
+// From the options menu: enter set-selection mode and return to the chart so the
+// director can tap sets in the strip to build an animation range, then press play.
+function drillMenuSelectSets() {
+  closeModal();
+  if (_drillPlaying) _drillPlayStop();
+  _drillSelectMode = true;
+  _drillViewRerender();
 }
 
 // ── Drill library (multiple stored drills) ────────────────────────────────────
