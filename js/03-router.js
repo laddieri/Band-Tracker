@@ -145,6 +145,7 @@ let _drillHighlightShared = (typeof localStorage === 'undefined' || localStorage
 let _drillSearchQuery = '';   // text in the Drill-tab performer search box
 let _drillSearchOpen  = false; // Drill-tab search box revealed (tap 🔍 to open)
 let _drillTocOpen     = false; // Drill-tab set list (table of contents) revealed
+let _drillControlsOpen = false; // Drill-tab control row (⚙ next to the chart name)
 let _drillSelectMode  = false; // strip taps select sets (for trace/playback) vs navigate
 let _drillTraceSets   = [];    // selected page indices to trace/animate through (<2 = all)
 let _drillPlaying     = false; // animation running
