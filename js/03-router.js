@@ -141,6 +141,7 @@ let _drillSelLabel    = null; // performer tapped for the info panel (gets a bol
 let _drillInfoEdit    = false; // info panel: false = marking (default), true = edit who's on the spot
 let _drillFieldWhite  = (typeof localStorage !== 'undefined' && localStorage.getItem('drillFieldWhite') === '1'); // field fill: white vs green
 let _drillShowNotes   = (typeof localStorage === 'undefined' || localStorage.getItem('drillShowNotes') !== '0'); // show a set's Pyware instruction text (default on)
+let _drillHighlightShared = (typeof localStorage === 'undefined' || localStorage.getItem('drillHighlightShared') !== '0'); // ring + count badge on spots shared by 2+ students (default on)
 let _drillSearchQuery = '';   // text in the Drill-tab performer search box
 let _drillSearchOpen  = false; // Drill-tab search box revealed (tap 🔍 to open)
 let _drillTocOpen     = false; // Drill-tab set list (table of contents) revealed

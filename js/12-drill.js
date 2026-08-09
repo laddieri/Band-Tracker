@@ -725,7 +725,7 @@ function _drillFieldSvg(positions, opts = {}) {
     // A spot shared by 2+ students gets a distinct marker below so double-
     // assigned dots are obvious at a glance.
     const spotCount = drillStudentNumsByLabel(p.label).length;
-    const shared    = spotCount > 1;
+    const shared    = spotCount > 1 && _drillHighlightShared;
     const sel     = selectMode && _drillChecked.has(p.label);
     const isTrace = traceLabel && p.label === traceLabel;
     const isFocus = focusLabel && p.label === focusLabel;
@@ -804,8 +804,9 @@ function _drillLegendHtml() {
     const c = _DRILL_COLORS[i % _DRILL_COLORS.length];
     return `<span class="drill-chart-leg-item"><svg width="10" height="10" style="flex-shrink:0"><circle cx="5" cy="5" r="4" fill="${c}"/></svg>${esc(sec.letter)}</span>`;
   }).join('');
-  // Key for the shared-spot ring, shown only when there's a shared spot to explain.
-  const shared = _drillHasSharedSpots()
+  // Key for the shared-spot ring, shown only when there's a shared spot to explain
+  // and the highlight is turned on.
+  const shared = (_drillHighlightShared && _drillHasSharedSpots())
     ? `<span class="drill-chart-leg-item"><svg width="12" height="12" style="flex-shrink:0"><circle cx="6" cy="6" r="3.1" fill="#888"/><circle cx="6" cy="6" r="5" fill="none" stroke="#ff8c1a" stroke-width="1.4"/></svg>Shared spot</span>`
     : '';
   return sections + shared;
@@ -2332,6 +2333,14 @@ function showDrillOptionsModal() {
         <button class="drill-lblseg${_drillShowNotes ? ' drill-lblseg--on' : ''}" onclick="drillSetNotes(true)">Show</button>
       </div>
     </div>` : ''}
+    ${_drillHasSharedSpots() ? `
+    <div class="drill-opt-section">
+      <div class="drill-opt-label">Shared spots (2+ students)</div>
+      <div class="drill-lblseg-group" id="drill-sharedseg-group">
+        <button class="drill-lblseg${!_drillHighlightShared ? ' drill-lblseg--on' : ''}" onclick="drillSetHighlightShared(false)">Off</button>
+        <button class="drill-lblseg${_drillHighlightShared ? ' drill-lblseg--on' : ''}" onclick="drillSetHighlightShared(true)">Highlight</button>
+      </div>
+    </div>` : ''}
     <div class="drill-opt-section">
       <div class="drill-opt-label">Field color</div>
       <div class="drill-lblseg-group" id="drill-fieldseg-group">
@@ -2388,6 +2397,21 @@ function drillSetNotes(show) {
   }
   document.querySelectorAll('#drill-notesseg-group .drill-lblseg')
     .forEach((b, i) => b.classList.toggle('drill-lblseg--on', i === (show ? 1 : 0)));
+  if (_view === 'drill' && document.getElementById('drill-view-root')) _drillViewRerender();
+  const fs = document.getElementById('drill-chart-fs');
+  if (fs && !fs.classList.contains('hidden')) _drillChartRefresh();
+}
+
+// Toggle the ring + count badge on spots shared by 2+ students, from the options
+// menu (persisted). Updates the segmented control in place and re-renders.
+function drillSetHighlightShared(on) {
+  on = !!on;
+  if (_drillHighlightShared !== on) {
+    _drillHighlightShared = on;
+    try { localStorage.setItem('drillHighlightShared', on ? '1' : '0'); } catch {}
+  }
+  document.querySelectorAll('#drill-sharedseg-group .drill-lblseg')
+    .forEach((b, i) => b.classList.toggle('drill-lblseg--on', i === (on ? 1 : 0)));
   if (_view === 'drill' && document.getElementById('drill-view-root')) _drillViewRerender();
   const fs = document.getElementById('drill-chart-fs');
   if (fs && !fs.classList.contains('hidden')) _drillChartRefresh();
