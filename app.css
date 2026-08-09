@@ -3580,21 +3580,28 @@ html, body {
 .drill-switcher-caret { flex-shrink:0; color:var(--text-muted); font-size:0.9rem; }
 
 /* "N students unassigned" pill under the switcher + its list modal. */
-.drill-unassigned {
-  display:flex; align-items:center; gap:8px; width:auto; margin:8px 10px 0; padding:7px 12px;
-  background:color-mix(in srgb, var(--warning, #e0a800) 12%, var(--surface));
-  border:1px solid color-mix(in srgb, var(--warning, #e0a800) 45%, var(--border));
-  border-radius:var(--r-sm); cursor:pointer; text-align:left; color:var(--text);
-  font-size:0.8rem; flex-shrink:0;
+/* Compact "students not assigned to a spot" indicator: a person icon in the
+   view bar with a count badge (some unplaced) or a green tick (all placed).
+   Tapping opens the full list. Replaces the old full-width banner. */
+.drill-unassigned-slot { display:inline-flex; align-items:center; flex-shrink:0; }
+.drill-unassigned-slot:empty { display:none; }
+.drill-unassigned-icon {
+  position:relative; flex-shrink:0; display:inline-flex; align-items:center; justify-content:center;
+  width:34px; height:34px; padding:0; border:1.5px solid var(--border); border-radius:var(--r-sm);
+  background:var(--surface); color:var(--text); cursor:pointer; font-size:1.05rem; line-height:1;
 }
-.drill-unassigned:active { filter:brightness(0.97); }
-.drill-unassigned--ok { cursor:default; background:var(--surface); border-color:var(--border); color:var(--text-muted); }
+.drill-unassigned-icon:active { filter:brightness(0.97); }
+.drill-unassigned-icon.has-missing { border-color:color-mix(in srgb, var(--warning, #e0a800) 55%, var(--border)); }
 .drill-unassigned-badge {
-  flex-shrink:0; min-width:22px; height:22px; padding:0 6px; border-radius:11px;
-  background:var(--warning, #e0a800); color:#000; font-weight:700; font-size:0.78rem;
-  display:inline-flex; align-items:center; justify-content:center;
+  position:absolute; top:-6px; right:-6px; min-width:17px; height:17px; padding:0 4px;
+  border-radius:9px; background:var(--warning, #e0a800); color:#000; font-weight:800; font-size:0.62rem;
+  display:inline-flex; align-items:center; justify-content:center; line-height:1;
+  box-shadow:0 0 0 2px var(--surface);
 }
-.drill-unassigned-cta { margin-left:auto; flex-shrink:0; font-weight:600; color:var(--text-muted); }
+.drill-unassigned-tick {
+  position:absolute; top:-5px; right:-5px; font-size:0.64rem; font-weight:900;
+  color:var(--success, #2e9e5b); text-shadow:0 0 2px var(--surface), 0 0 2px var(--surface);
+}
 .drill-unassigned-list { display:flex; flex-direction:column; gap:2px; max-height:50vh; overflow-y:auto; }
 .drill-unassigned-row { display:flex; align-items:center; gap:10px; padding:9px 4px; border-bottom:1px solid var(--border); }
 .drill-unassigned-name { flex:1; min-width:0; font-weight:600; font-size:0.9rem; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -3619,8 +3626,11 @@ html, body {
 
 .drill-view-bar { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:8px 10px 6px; flex-shrink:0; }
 .drill-view-bar .btn { white-space:nowrap; flex-shrink:0; }
-.drill-search-wrap { position:relative; flex:1; min-width:180px; }
-.drill-search { width:100%; padding-right:34px; }
+/* Search box is hidden until the 🔍 toggle reveals it (.is-open); when shown it
+   takes its own full-width row so it stays comfortably tappable on phones. */
+.drill-search-wrap { position:relative; flex:1 0 100%; min-width:0; display:none; order:1; }
+.drill-search-wrap.is-open { display:block; }
+.drill-search { width:100%; padding-right:34px; min-height:40px; }
 .drill-search-clear {
   position:absolute; right:4px; top:50%; transform:translateY(-50%);
   border:none; background:var(--surface-raised); color:var(--text-muted);
@@ -3628,14 +3638,6 @@ html, body {
   display:none;
 }
 .drill-search-wrap.has-q .drill-search-clear { display:block; }
-
-/* On phones the search box + action buttons don't fit one row: give the search
-   its own full-width row so it stays comfortably tappable, and let the buttons
-   wrap below it. */
-@media (max-width: 767px) {
-  .drill-search-wrap { flex-basis:100%; }
-  .drill-search { min-height:40px; }
-}
 
 .drill-view-strip { display:flex; align-items:stretch; gap:4px; padding:0 8px 6px; flex-shrink:0; }
 .drill-nav-arrow {

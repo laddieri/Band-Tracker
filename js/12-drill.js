@@ -1677,19 +1677,25 @@ function _drillUnassignedNums() {
                  || String(a).localeCompare(String(b)));
 }
 
-// A pill under the drill switcher summarising how many students still need a
-// spot in this show, opening the full list. Director-only (they do the placing).
+// A compact person icon in the view bar showing how many students still need a
+// spot in this show; a count badge when some are unplaced, a green tick when all
+// are. Tapping opens the full list. Director-only (they do the placing).
 function _drillUnassignedBarHtml() {
   if (!STATE.isAdmin || !_drillData) return '';
   const total = Object.keys(STATE.students || {}).length;
   if (!total) return '';
   const n = _drillUnassignedNums().length;
-  if (!n) return `<div class="drill-unassigned drill-unassigned--ok">✓ All ${total} students are assigned to a spot</div>`;
+  if (!n) return `
+    <button class="drill-unassigned-icon is-ok" onclick="showDrillUnassignedModal()"
+            title="All ${total} students are assigned to a spot"
+            aria-label="All ${total} students assigned to a spot — view">
+      <span class="drill-unassigned-glyph">🧍</span><span class="drill-unassigned-tick">✓</span>
+    </button>`;
   return `
-    <button class="drill-unassigned" onclick="showDrillUnassignedModal()">
-      <span class="drill-unassigned-badge">${n}</span>
-      <span>student${n !== 1 ? 's' : ''} not assigned to a spot in this show</span>
-      <span class="drill-unassigned-cta">View →</span>
+    <button class="drill-unassigned-icon has-missing" onclick="showDrillUnassignedModal()"
+            title="${n} student${n !== 1 ? 's' : ''} not assigned to a spot in this show"
+            aria-label="${n} student${n !== 1 ? 's' : ''} not assigned to a spot — view list">
+      <span class="drill-unassigned-glyph">🧍</span><span class="drill-unassigned-badge">${n}</span>
     </button>`;
 }
 
@@ -1750,19 +1756,19 @@ function _drillViewInner() {
       <span class="drill-switcher-caret">▾</span>
     </button>
 
-    <div id="drill-unassigned-bar">${_drillUnassignedBarHtml()}</div>
-
     <div class="drill-view-bar">
-      <div class="drill-search-wrap${_drillSearchQuery.trim() ? ' has-q' : ''}" id="drill-search-wrap">
+      <div id="drill-unassigned-bar" class="drill-unassigned-slot">${_drillUnassignedBarHtml()}</div>
+      <button class="btn btn-sm ${_drillSearchOpen ? 'btn-primary' : 'btn-secondary'}" id="drill-search-toggle" onclick="drillToggleSearch()" title="Find a performer" aria-label="Find a performer" aria-expanded="${_drillSearchOpen}">🔍</button>
+      <button class="btn btn-sm ${_drillPlaying ? 'btn-primary' : 'btn-secondary'}" onclick="drillPlayToggle()" title="Play / pause" aria-label="Play or pause animation">${_drillPlaying ? '⏸' : '▶'}</button>
+      <button class="btn btn-sm btn-secondary" onclick="drillViewExpand()" title="Fullscreen" aria-label="Fullscreen">⤢</button>
+      <button class="btn btn-sm ${(_drillSelectMode || _drillFlipV || _drillShowNotes) ? 'btn-primary' : 'btn-secondary'}" onclick="showDrillOptionsModal()" title="More options" aria-label="More options">⋯</button>
+      <div class="drill-search-wrap${_drillSearchOpen ? ' is-open' : ''}${_drillSearchQuery.trim() ? ' has-q' : ''}" id="drill-search-wrap">
         <input class="drill-search form-input" type="search" id="drill-search-input"
                placeholder="Find a performer or student…"
                value="${esc(_drillSearchQuery)}" autocomplete="off"
                oninput="drillViewSearch(this.value)">
         <button class="drill-search-clear" onclick="drillViewClearSearch()" aria-label="Clear">✕</button>
       </div>
-      <button class="btn btn-sm ${_drillPlaying ? 'btn-primary' : 'btn-secondary'}" onclick="drillPlayToggle()" title="Play / pause" aria-label="Play or pause animation">${_drillPlaying ? '⏸' : '▶'}</button>
-      <button class="btn btn-sm btn-secondary" onclick="drillViewExpand()" title="Fullscreen" aria-label="Fullscreen">⤢</button>
-      <button class="btn btn-sm ${(_drillSelectMode || _drillFlipV || _drillShowNotes) ? 'btn-primary' : 'btn-secondary'}" onclick="showDrillOptionsModal()" title="More options" aria-label="More options">⋯</button>
     </div>
 
     ${_drillSelStatusHtml()}
@@ -2112,6 +2118,27 @@ function drillViewClearSearch() {
   if (input) input.value = '';
   const foot = document.getElementById('drill-foot-main');
   if (foot) foot.textContent = _drillFootText();
+}
+
+// The search box is hidden by default; the 🔍 button reveals it (and focuses it
+// so the keyboard opens). Toggle done via DOM so a tap doesn't re-render and
+// slam the mobile keyboard shut. Collapsing clears any active highlight.
+function drillToggleSearch() {
+  _drillSearchOpen = !_drillSearchOpen;
+  const wrap = document.getElementById('drill-search-wrap');
+  const btn  = document.getElementById('drill-search-toggle');
+  if (btn) {
+    btn.classList.toggle('btn-primary', _drillSearchOpen);
+    btn.classList.toggle('btn-secondary', !_drillSearchOpen);
+    btn.setAttribute('aria-expanded', _drillSearchOpen ? 'true' : 'false');
+  }
+  if (wrap) wrap.classList.toggle('is-open', _drillSearchOpen);
+  if (_drillSearchOpen) {
+    const input = wrap && wrap.querySelector('.drill-search');
+    if (input) input.focus();
+  } else {
+    drillViewClearSearch();
+  }
 }
 
 function drillViewExpand() {
