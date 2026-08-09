@@ -143,6 +143,7 @@ let _drillFieldWhite  = (typeof localStorage !== 'undefined' && localStorage.get
 let _drillShowNotes   = (typeof localStorage === 'undefined' || localStorage.getItem('drillShowNotes') !== '0'); // show a set's Pyware instruction text (default on)
 let _drillSearchQuery = '';   // text in the Drill-tab performer search box
 let _drillSearchOpen  = false; // Drill-tab search box revealed (tap 🔍 to open)
+let _drillTocOpen     = false; // Drill-tab set list (table of contents) revealed
 let _drillSelectMode  = false; // strip taps select sets (for trace/playback) vs navigate
 let _drillTraceSets   = [];    // selected page indices to trace/animate through (<2 = all)
 let _drillPlaying     = false; // animation running
