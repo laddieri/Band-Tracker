@@ -639,7 +639,7 @@ describe('filterAndSortStudents', () => {
     assert.deepStrictEqual(out.map(s => s.name), ['Cass', 'Blake', 'Ana']);
     assert.deepStrictEqual(pool, copy);
   });
-  it('breaks ties on a secondary sort field', () => {
+  it('breaks ties on a layered secondary sort field', () => {
     const tied = [
       { number: '1', name: 'Sam', grade: '12th' },
       { number: '2', name: 'Sam', grade: '9th'  },
@@ -647,17 +647,46 @@ describe('filterAndSortStudents', () => {
     ];
     // Primary name asc; ties (both "Sam") ordered by grade asc → 9th before 12th.
     assert.deepStrictEqual(
-      L.filterAndSortStudents(tied, mkF({ sortField: 'name', sortField2: 'grade', sortDir2: 'asc' })).map(s => s.number),
+      L.filterAndSortStudents(tied, mkF({ sortField: 'name', sorts: [{ field: 'grade', dir: 'asc' }] })).map(s => s.number),
       ['3', '2', '1']);
-    // Secondary direction is honored independently of the primary.
+    // Each layer's direction is honored independently of the primary.
     assert.deepStrictEqual(
-      L.filterAndSortStudents(tied, mkF({ sortField: 'name', sortField2: 'grade', sortDir2: 'desc' })).map(s => s.number),
+      L.filterAndSortStudents(tied, mkF({ sortField: 'name', sorts: [{ field: 'grade', dir: 'desc' }] })).map(s => s.number),
       ['3', '1', '2']);
   });
-  it('ignores a secondary field equal to the primary', () => {
+  it('applies three sort layers left-to-right as tie-breakers', () => {
+    const rows = [
+      { number: '10', name: 'Sam', grade: '9th' },
+      { number: '4',  name: 'Sam', grade: '9th' },
+      { number: '7',  name: 'Sam', grade: '12th' },
+    ];
+    // name (all tie) → grade asc (9th before 12th) → number asc within 9th.
     assert.deepStrictEqual(
-      L.filterAndSortStudents(pool, mkF({ sortField: 'name', sortField2: 'name' })).map(s => s.name),
+      L.filterAndSortStudents(rows, mkF({
+        sortField: 'name',
+        sorts: [{ field: 'grade', dir: 'asc' }, { field: 'number', dir: 'asc' }],
+      })).map(s => s.number),
+      ['4', '10', '7']);
+  });
+  it('ignores a layer whose field repeats an earlier key', () => {
+    assert.deepStrictEqual(
+      L.filterAndSortStudents(pool, mkF({ sortField: 'name', sorts: [{ field: 'name', dir: 'desc' }] })).map(s => s.name),
       ['Ana', 'Blake', 'Cass']);
+  });
+});
+
+describe('sortKeys', () => {
+  it('prepends the primary and de-duplicates repeated fields', () => {
+    assert.deepStrictEqual(
+      L.sortKeys({ sortField: 'name', sortDir: 'asc', sorts: [
+        { field: 'grade', dir: 'desc' }, { field: 'name', dir: 'asc' }, { field: 'number' },
+      ] }),
+      [{ field: 'name', dir: 'asc' }, { field: 'grade', dir: 'desc' }, { field: 'number', dir: 'asc' }]);
+  });
+  it('drops empty-field layers and defaults missing direction to asc', () => {
+    assert.deepStrictEqual(
+      L.sortKeys({ sortField: 'grade', sortDir: 'desc', sorts: [{ field: '' }, { field: 'name' }] }),
+      [{ field: 'grade', dir: 'desc' }, { field: 'name', dir: 'asc' }]);
   });
 });
 
