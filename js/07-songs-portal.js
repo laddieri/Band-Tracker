@@ -54,10 +54,11 @@ function showStudentSongProgress(num) {
     const failNote = status === 'failed' ? (entry?.note || '') : '';
     const when     = (status !== 'not_attempted' && entry?.updatedAt)
       ? `${status === 'passed' ? 'Passed' : 'Try Again'} ${fmtDateTime(entry.updatedAt)}` : '';
+    const doneLate = status === 'passed' && isDoneLate(song.dueDate, entry?.updatedAt);
     return `
     <div class="ssp-song-row">
       <div class="ssp-song-info">
-        <div class="ssp-song-title">${esc(song.title)}</div>
+        <div class="ssp-song-title">${esc(song.title)}${doneLate ? ` <span class="late-badge">Done late</span>` : ''}</div>
         ${when ? `<div class="ssp-song-when">${esc(when)}</div>` : ''}
         ${failNote ? `<div class="ssp-fail-note">📝 ${esc(failNote)}</div>` : ''}
       </div>
@@ -279,6 +280,7 @@ function viewSong(sid) {
 }
 
 function songStudentRows(sid, students, statuses) {
+  const dueDate    = STATE.songs.find(s => s.id === sid)?.dueDate || '';
   const getStatus  = num => statuses[String(num)]?.status || 'not_attempted';
   const getMeta    = num => {
     const s = statuses[String(num)];
@@ -300,6 +302,7 @@ function songStudentRows(sid, students, statuses) {
     const status    = getStatus(s.number);
     const meta      = getMeta(s.number);
     const failNote  = status === 'failed' ? (statuses[String(s.number)]?.note || '') : '';
+    const doneLate  = status === 'passed' && isDoneLate(dueDate, statuses[String(s.number)]?.updatedAt);
     const inGroup   = _songGroupMode && _songGroup.has(String(s.number));
     return `
       <div class="song-stu-row ${_songGroupMode ? 'song-stu-groupable' : ''} ${inGroup ? 'song-stu-in-group' : ''}"
@@ -310,6 +313,7 @@ function songStudentRows(sid, students, statuses) {
           <span class="song-stu-status ${status === 'passed' ? 'sss-pass' : status === 'failed' ? 'sss-fail' : 'sss-na'}">
             ${status === 'passed' ? '✓ Passed' : status === 'failed' ? '↻ Try Again' : '— Not Attempted'}
           </span>
+          ${doneLate ? `<span class="late-badge">Done late</span>` : ''}
           ${meta ? `<span class="song-stu-meta">${esc(meta)}</span>` : ''}
           ${failNote ? `<span class="song-stu-fail-note">${esc(failNote)}</span>` : ''}
         </div>
@@ -1215,6 +1219,7 @@ function viewStudentPortal(previewMode = false) {
               const when     = (status !== 'not_attempted' && entry?.updatedAt)
                 ? `${status === 'passed' ? 'Passed' : 'Try Again'} ${fmtDateTime(entry.updatedAt)}` : '';
               const overdue  = song.dueDate && song.dueDate < today() && status !== 'passed';
+              const doneLate = status === 'passed' && isDoneLate(song.dueDate, entry?.updatedAt);
               // Band-wide pass-off progress: same green bar directors/staff see,
               // built purely from aggregate counts (settings/public) — no detail
               // about which other students passed.
@@ -1232,6 +1237,7 @@ function viewStudentPortal(previewMode = false) {
                   <span class="portal-song-status ${status === 'passed' ? 'pss-pass' : status === 'failed' ? 'pss-fail' : 'pss-na'}">
                     ${status === 'passed' ? '✓ Passed' : status === 'failed' ? '↻ Try Again' : '— Not Attempted'}
                   </span>
+                  ${doneLate ? `<span class="late-badge">Done late</span>` : ''}
                   ${total ? `<div class="song-prog-wrap portal-song-prog" title="${song.passed} of ${total} band members passed">
                     <div class="song-prog-bar"><div class="song-prog-fill" style="width:${pct}%"></div></div>
                     <div class="song-prog-lbl">${song.passed} / ${total} passed</div>
@@ -1290,7 +1296,8 @@ function viewStudentPortal(previewMode = false) {
         <div id="portal-sec-tasks" class="sec-collapsed">
           <div class="portal-songs-list">
           ${myTasks.map(task => {
-            const overdue = task.dueDate && task.dueDate < today() && !task.done;
+            const overdue  = task.dueDate && task.dueDate < today() && !task.done;
+            const doneLate = task.done && isDoneLate(task.dueDate, task.doneAt);
             return `
             <div class="portal-song-row">
               <div class="portal-song-info">
@@ -1299,6 +1306,7 @@ function viewStudentPortal(previewMode = false) {
               </div>
               <div class="portal-song-right">
                 <span class="portal-song-status ${task.done ? 'pss-pass' : 'pss-na'}">${task.done ? '✓ Done' : '— Not done'}</span>
+                ${doneLate ? `<span class="late-badge">Done late</span>` : ''}
                 ${task.total ? `<div class="song-prog-wrap portal-song-prog" title="${task.bandDone} of ${task.total} done">
                   <div class="song-prog-bar"><div class="song-prog-fill" style="width:${task.total ? Math.round(task.bandDone / task.total * 100) : 0}%"></div></div>
                   <div class="song-prog-lbl">${task.bandDone} / ${task.total} done</div>
