@@ -789,10 +789,23 @@ function _toastSaveError(e, what = 'A change') {
 }
 
 function handleModalClick(e) {
-  if (e.target === document.getElementById('modal-overlay')) closeModal();
+  if (e.target === document.getElementById('modal-overlay')) dismissModal();
 }
 
 let _modalReturnFocus = null; // element to refocus when the modal closes
+let _modalBackHandler = null; // when set, dismissing returns to a parent modal instead of fully closing
+
+// Dismiss the current modal (✕ button, Escape, backdrop tap). If the modal was
+// opened over a parent modal (e.g. a portal sub-list popped up over the
+// director's "preview student view"), hand back to that parent instead of
+// tearing the whole overlay down — otherwise dismissing a sub-list would drop
+// the user all the way back to the page behind the preview.
+function dismissModal() {
+  const back = _modalBackHandler;
+  _modalBackHandler = null;
+  if (back) { back(); return; }
+  closeModal();
+}
 
 function closeModal() {
   const overlay  = document.getElementById('modal-overlay');
@@ -804,6 +817,7 @@ function closeModal() {
     try { _modalReturnFocus.focus(); } catch {}
   }
   _modalReturnFocus = null;
+  _modalBackHandler = null;
   // Drop the history sentinel openModal pushed so a later Back press goes to the
   // previous view, not off an orphaned modal entry. Deferred a tick: a
   // `closeModal(); navigate(...)` caller replaces the sentinel synchronously in
@@ -818,12 +832,16 @@ function _modalFocusables() {
   )].filter(el => !el.disabled && el.offsetParent !== null);
 }
 
-function openModal(html) {
+// `backHandler`, when given, is invoked instead of closeModal() on dismiss so
+// the modal returns to a parent modal (see dismissModal). Any plain openModal
+// call clears it, so a fresh top-level modal never inherits a stale back path.
+function openModal(html, backHandler = null) {
   _modalReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  _modalBackHandler = backHandler;
   document.getElementById('modal-body').innerHTML = `
     <div class="modal-top-row">
       <div class="modal-handle"></div>
-      <button class="modal-close-btn" onclick="closeModal()" aria-label="Close">✕</button>
+      <button class="modal-close-btn" onclick="dismissModal()" aria-label="${backHandler ? 'Back' : 'Close'}">${backHandler ? '‹' : '✕'}</button>
     </div>
     ${html}`;
   document.getElementById('modal-overlay').classList.remove('hidden');
@@ -845,7 +863,7 @@ document.addEventListener('keydown', e => {
   if (!overlay || overlay.classList.contains('hidden')) return;
   if (e.key === 'Escape') {
     e.preventDefault();
-    closeModal();
+    dismissModal();
     return;
   }
   if (e.key === 'Tab') {

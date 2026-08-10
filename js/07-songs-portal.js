@@ -1022,14 +1022,16 @@ function previewLeaderboard(num) {
   STATE.studentNum = num;
   const html = viewLeaderboardStudent();
   STATE.studentNum = prev;
+  // Opened from the portal preview, so its dismiss returns there rather than
+  // closing all the way back to the roster.
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title" style="font-size:0.85rem;color:var(--text-muted);font-weight:500;margin-bottom:8px">Student View Preview — Band Stats</div>
     <div style="margin: 0 -4px">${html}</div>
     <div class="modal-actions" style="margin-top:12px">
-      <button class="btn btn-secondary btn-full" onclick="closeModal()">Close</button>
+      <button class="btn btn-secondary btn-full" onclick="dismissModal()">Back</button>
     </div>
-  `);
+  `, () => showStudentPortalPreview(num));
 }
 
 // A student's leaderboard pseudonym. Students can't read the pseudonym salt
@@ -1156,7 +1158,7 @@ function viewStudentPortal(previewMode = false) {
             const lates    = hist.filter(({entry:e}) => e.attendance === 'late');
             return `
                 <div class="att-summary-row">
-                  ${_portalAttended.length ? `<button type="button" class="att-summary-chip att-chip-present att-chip-btn" onclick="showPortalAttendedModal('${esc(num)}')">${_portalAttended.length} Attended</button>` : ''}
+                  ${_portalAttended.length ? `<button type="button" class="att-summary-chip att-chip-present att-chip-btn" onclick="showPortalAttendedModal('${esc(num)}'${previewMode ? ', true' : ''})">${_portalAttended.length} Attended</button>` : ''}
                   <span class="att-summary-chip att-chip-absent">${absences.length} Absence${absences.length!==1?'s':''}</span>
                   <span class="att-summary-chip att-chip-late">${lates.length} Late${lates.length!==1?'s':''}</span>
                 </div>
@@ -1184,11 +1186,11 @@ function viewStudentPortal(previewMode = false) {
         <div id="portal-sec-marks" class="sec-collapsed">
           <div class="portal-stats">
             ${!STATE.hideNegativeFromPortal ? `
-            <button type="button" class="portal-stat portal-stat-btn" onclick="showPortalMistakesModal('${esc(num)}')">
+            <button type="button" class="portal-stat portal-stat-btn" onclick="showPortalMistakesModal('${esc(num)}'${previewMode ? ', true' : ''})">
               <div class="portal-stat-value portal-stat-mistake">${totalErr}</div>
               <div class="portal-stat-label">Mistake Marks</div>
             </button>` : ''}
-            <button type="button" class="portal-stat portal-stat-btn" onclick="showPortalPositivesModal('${esc(num)}')">
+            <button type="button" class="portal-stat portal-stat-btn" onclick="showPortalPositivesModal('${esc(num)}'${previewMode ? ', true' : ''})">
               <div class="portal-stat-value portal-stat-positive">${totalPos}</div>
               <div class="portal-stat-label">Positives</div>
             </button>
@@ -1390,11 +1392,14 @@ function viewStudentPortal(previewMode = false) {
     </div>`;
 }
 
-function showPortalMistakesModal(num = STATE.studentNum) {
+function showPortalMistakesModal(num = STATE.studentNum, preview = false) {
+  // In the director's "preview student view" this list pops up over the preview
+  // modal; dismissing it should fall back to the preview, not close everything.
+  const back = preview ? () => showStudentPortalPreview(num) : null;
   const hist = DB.getStudentHistory(num);
   const relevant = hist.filter(({entry: e}) => (e.mistakes || 0) > 0);
   if (!relevant.length) {
-    openModal(`<div class="modal-title">Mistake Marks</div><p class="empty-state" style="padding:24px 0">No mistake marks recorded.</p>`);
+    openModal(`<div class="modal-title">Mistake Marks</div><p class="empty-state" style="padding:24px 0">No mistake marks recorded.</p>`, back);
     return;
   }
   const totalErr = relevant.reduce((sum, {entry: e}) => sum + (e.mistakes || 0), 0);
@@ -1424,14 +1429,15 @@ function showPortalMistakesModal(num = STATE.studentNum) {
   openModal(`
     <div class="modal-title">Mistake Marks</div>
     <div class="portal-modal-total portal-total-mistake">${totalErr} total mistake mark${totalErr!==1?'s':''}</div>
-    <div class="portal-modal-list">${sections}</div>`);
+    <div class="portal-modal-list">${sections}</div>`, back);
 }
 
-function showPortalPositivesModal(num = STATE.studentNum) {
+function showPortalPositivesModal(num = STATE.studentNum, preview = false) {
+  const back = preview ? () => showStudentPortalPreview(num) : null;
   const hist = DB.getStudentHistory(num);
   const relevant = hist.filter(({entry: e}) => (e.positives || 0) > 0);
   if (!relevant.length) {
-    openModal(`<div class="modal-title">Positive Marks</div><p class="empty-state" style="padding:24px 0">No positive marks recorded yet.</p>`);
+    openModal(`<div class="modal-title">Positive Marks</div><p class="empty-state" style="padding:24px 0">No positive marks recorded yet.</p>`, back);
     return;
   }
   const totalPos = relevant.reduce((sum, {entry: e}) => sum + (e.positives || 0), 0);
@@ -1461,17 +1467,18 @@ function showPortalPositivesModal(num = STATE.studentNum) {
   openModal(`
     <div class="modal-title">Positive Marks</div>
     <div class="portal-modal-total portal-total-positive">${totalPos} total positive mark${totalPos!==1?'s':''}</div>
-    <div class="portal-modal-list">${sections}</div>`);
+    <div class="portal-modal-list">${sections}</div>`, back);
 }
 
 // The "N Attended" pill: every rehearsal the student was present or late for,
 // newest-first. Built from the same pure helper the pill count uses, so the
 // list length always matches the pill.
-function showPortalAttendedModal(num = STATE.studentNum) {
+function showPortalAttendedModal(num = STATE.studentNum, preview = false) {
+  const back     = preview ? () => showStudentPortalPreview(num) : null;
   const s        = STATE.students[num];
   const attended = rehearsalsAttended(DB.getRehearsals(), STATE.entries, s);
   if (!attended.length) {
-    openModal(`<div class="modal-title">Events Attended</div><p class="empty-state" style="padding:24px 0">No events attended yet.</p>`);
+    openModal(`<div class="modal-title">Events Attended</div><p class="empty-state" style="padding:24px 0">No events attended yet.</p>`, back);
     return;
   }
   const rows = attended.map(({ rehearsal: r, status }) => `
@@ -1487,7 +1494,7 @@ function showPortalAttendedModal(num = STATE.studentNum) {
   openModal(`
     <div class="modal-title">Events Attended</div>
     <div class="portal-modal-total portal-total-positive">${attended.length} event${attended.length!==1?'s':''} attended</div>
-    <div class="portal-modal-list">${rows}</div>`);
+    <div class="portal-modal-list">${rows}</div>`, back);
 }
 
 function toggleCollapse(id) {
