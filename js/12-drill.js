@@ -1764,6 +1764,7 @@ function _drillViewInner() {
       <div id="drill-unassigned-bar" class="drill-unassigned-slot">${_drillUnassignedBarHtml()}</div>
       <button class="btn btn-sm ${_drillSearchOpen ? 'btn-primary' : 'btn-secondary'}" id="drill-search-toggle" onclick="drillToggleSearch()" title="Find a performer" aria-label="Find a performer" aria-expanded="${_drillSearchOpen}">🔍</button>
       <button class="btn btn-sm ${_drillPlaying ? 'btn-primary' : 'btn-secondary'}" onclick="drillPlayToggle()" title="Play / pause" aria-label="Play or pause animation">${_drillPlaying ? '⏸' : '▶'}</button>
+      ${(_drillPages && _drillPages.length > 1) ? `<button class="btn btn-sm ${_drillSelectMode ? 'btn-primary' : 'btn-secondary'}" onclick="drillToggleSelectMode()" title="Choose sets to animate" aria-label="Choose sets to animate">⛶</button>` : ''}
       <button class="btn btn-sm btn-secondary" onclick="drillViewExpand()" title="Fullscreen" aria-label="Fullscreen">⤢</button>
       <div class="drill-search-wrap${_drillSearchOpen ? ' is-open' : ''}${_drillSearchQuery.trim() ? ' has-q' : ''}" id="drill-search-wrap">
         <input class="drill-search form-input" type="search" id="drill-search-input"
@@ -2319,11 +2320,6 @@ function showDrillOptionsModal() {
         <div class="options-menu-icon">🔗</div>
         <div><div class="options-menu-label">Assign Spots</div><div class="options-menu-sub">This show's spots → students · tap or CSV</div></div>
       </button>` : ''}
-      ${(has && _drillPages.length > 1) ? `
-      <button class="options-menu-item" onclick="drillMenuSelectSets()">
-        <div class="options-menu-icon">⛶</div>
-        <div><div class="options-menu-label">Choose sets to animate</div><div class="options-menu-sub">Tap sets in the strip, then press play${_drillTraceSets.length ? ` · ${_drillTraceSets.length} selected` : ''}</div></div>
-      </button>` : ''}
     </div>
     ${has ? `
     <div class="drill-opt-section">
@@ -2433,12 +2429,12 @@ function drillSetHighlightShared(on) {
   if (fs && !fs.classList.contains('hidden')) _drillChartRefresh();
 }
 
-// From the options menu: enter set-selection mode and return to the chart so the
-// director can tap sets in the strip to build an animation range, then press play.
-function drillMenuSelectSets() {
-  closeModal();
+// Toggle set-selection mode (the ⛶ button in the control row): strip taps then
+// pick which sets to trace/animate. Reveals the set list so the sets are tappable.
+function drillToggleSelectMode() {
+  _drillSelectMode = !_drillSelectMode;
   if (_drillPlaying) _drillPlayStop();
-  _drillSelectMode = true;
+  if (_drillSelectMode) _drillTocOpen = true; // show the sets so they can be tapped
   _drillViewRerender();
 }
 
