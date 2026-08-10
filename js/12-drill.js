@@ -1739,6 +1739,10 @@ function showDrillUnassignedModal() {
 function _drillViewInner() {
   const idx   = _drillCurrentSet;
   const total = _drillPages.length;
+  // The ← → arrows flip through sets normally, but step one count at a time
+  // while scrubbing (play toggled on); their disabled edges follow suit.
+  const prevDisabled = _drillPlaying ? _drillPlayCount <= _drillPlayStart : idx <= 0;
+  const nextDisabled = _drillPlaying ? _drillPlayCount >= _drillPlayEnd   : idx >= total - 1;
   const count = Object.keys(STATE.drills || {}).length;
   const name  = STATE.drills[STATE.activeDrillId]?.name || _drillFileName || 'Chart';
   const show  = _activeShow();
@@ -1763,7 +1767,7 @@ function _drillViewInner() {
     <div class="drill-view-bar${_drillControlsOpen ? ' is-open' : ''}" id="drill-view-bar">
       <div id="drill-unassigned-bar" class="drill-unassigned-slot">${_drillUnassignedBarHtml()}</div>
       <button class="btn btn-sm ${_drillSearchOpen ? 'btn-primary' : 'btn-secondary'}" id="drill-search-toggle" onclick="drillToggleSearch()" title="Find a performer" aria-label="Find a performer" aria-expanded="${_drillSearchOpen}">🔍</button>
-      <button class="btn btn-sm ${_drillPlaying ? 'btn-primary' : 'btn-secondary'}" onclick="drillPlayToggle()" title="Play / pause" aria-label="Play or pause animation">${_drillPlaying ? '⏸' : '▶'}</button>
+      <button class="btn btn-sm ${_drillPlaying ? 'btn-primary' : 'btn-secondary'}" onclick="drillPlayToggle()" title="Step through counts with the arrows" aria-label="${_drillPlaying ? 'Exit count-step mode' : 'Step through counts with the arrows'}">${_drillPlaying ? '⏸' : '▶'}</button>
       ${(_drillPages && _drillPages.length > 1) ? `<button class="btn btn-sm ${_drillSelectMode ? 'btn-primary' : 'btn-secondary'}" onclick="drillToggleSelectMode()" title="Choose sets to animate" aria-label="Choose sets to animate">⛶</button>` : ''}
       <button class="btn btn-sm btn-secondary" onclick="drillViewExpand()" title="Fullscreen" aria-label="Fullscreen">⤢</button>
       <div class="drill-search-wrap${_drillSearchOpen ? ' is-open' : ''}${_drillSearchQuery.trim() ? ' has-q' : ''}${_drillMatchLabels.length > 1 ? ' has-multi' : ''}" id="drill-search-wrap">
@@ -1779,12 +1783,12 @@ function _drillViewInner() {
     ${_drillSelStatusHtml()}
 
     <div class="drill-view-strip">
-      <button class="drill-nav-arrow" onclick="drillViewNav(-1)"${idx<=0?' disabled':''} aria-label="Previous set">&#8592;</button>
+      <button class="drill-nav-arrow" onclick="drillViewNav(-1)"${prevDisabled?' disabled':''} aria-label="${_drillPlaying ? 'Back one count' : 'Previous set'}">&#8592;</button>
       <button class="drill-toc-btn${_drillTocOpen ? ' is-open' : ''}" id="drill-toc-btn" onclick="drillToggleToc()" aria-expanded="${_drillTocOpen}" aria-controls="drill-set-strip" title="Table of contents">
         <span class="drill-toc-ico">☰</span>
         <span class="drill-toc-label">Set ${idx + 1} <span class="drill-toc-of">of ${total}</span></span>
       </button>
-      <button class="drill-nav-arrow" onclick="drillViewNav(1)"${idx>=total-1?' disabled':''} aria-label="Next set">&#8594;</button>
+      <button class="drill-nav-arrow" onclick="drillViewNav(1)"${nextDisabled?' disabled':''} aria-label="${_drillPlaying ? 'Forward one count' : 'Next set'}">&#8594;</button>
     </div>
 
     <div class="drill-set-strip${_drillTocOpen ? ' is-open' : ''}" id="drill-set-strip">${_drillSetStripHtml()}</div>
@@ -1800,7 +1804,7 @@ function _drillViewInner() {
 function _drillSelStatusHtml() {
   if (_drillPlaying) {
     return `<div class="drill-sel-status drill-sel-status--play">
-      ▶ Playing · <span id="drill-play-count">count ${_drillPlayCount}</span> of ${_drillPlayEnd}</div>`;
+      ▶ Scrubbing · <span id="drill-play-count">count ${_drillPlayCount}</span> of ${_drillPlayEnd} · ← → to step</div>`;
   }
   if (_drillSelectMode || _drillTraceSets.length) {
     const n = _drillTraceSets.length;
@@ -2044,7 +2048,20 @@ function _drillScrollSetChipIntoView() {
 }
 
 function drillViewNav(delta) {
+  // Scrubbing: the arrows step the animation one count at a time. Otherwise
+  // they flip between sets as before.
+  if (_drillPlaying) { _drillStepCount(delta); return; }
   _drillCurrentSet = Math.max(0, Math.min(_drillPages.length - 1, _drillCurrentSet + delta));
+  _drillViewRerender();
+}
+
+// Move the scrub position one count forward/back, clamped to the active span
+// (the first/last selected set, or the whole chart). The interpolated frame is
+// produced by _drillCurrentPositions()/_drillFrameAt().
+function _drillStepCount(delta) {
+  const next = Math.max(_drillPlayStart, Math.min(_drillPlayEnd, _drillPlayCount + delta));
+  if (next === _drillPlayCount) return;
+  _drillPlayCount = next;
   _drillViewRerender();
 }
 
@@ -2053,6 +2070,14 @@ function drillViewGoToSet(i) {
     // Toggle this set in the trace/playback selection.
     const at = _drillTraceSets.indexOf(i);
     if (at >= 0) _drillTraceSets.splice(at, 1); else _drillTraceSets.push(i);
+    _drillViewRerender();
+    return;
+  }
+  if (_drillPlaying) {
+    // Scrubbing: jump the count straight to this set's keyframe (kept within
+    // the active span) so the set strip still steers the animation.
+    const c = _drillPages[i] ? _drillPages[i].count : _drillPlayCount;
+    _drillPlayCount = Math.max(_drillPlayStart, Math.min(_drillPlayEnd, c));
     _drillViewRerender();
     return;
   }
@@ -2065,9 +2090,11 @@ function drillClearSets() {
   _drillViewRerender();
 }
 
-// ── Playback: animate the formation count-by-count through the active sets ─────
-const _DRILL_PLAY_MS = 450; // one count per tick
-
+// ── Playback: scrub the formation count-by-count through the active sets ───────
+// The play button no longer auto-animates at a fixed rate. Toggling it on enters
+// a manual "scrub" mode: the ← → arrows (which flip between sets when it's off)
+// instead advance the drill one count at a time, forward or backward. The active
+// span honours the "choose sets to animate" selection via _drillActiveIdx().
 function drillPlayToggle() {
   if (_drillPlaying) { _drillPlayStop(); _drillViewRerender(); return; }
   const idxs = _drillActiveIdx();
@@ -2077,28 +2104,13 @@ function drillPlayToggle() {
   _drillPlayEnd    = _drillPages[idxs[idxs.length - 1]].count;
   _drillPlayCount  = _drillPlayStart;
   _drillPlaying    = true;
-  _drillSelLabel   = null; // hide the info panel while playing
+  _drillSelLabel   = null; // hide the info panel while scrubbing
   _drillViewRerender();
-  _drillPlayTimer = setInterval(_drillPlayTick, _DRILL_PLAY_MS);
-}
-
-function _drillPlayTick() {
-  if (_drillPlayCount >= _drillPlayEnd) {
-    const idxs = _drillActiveIdx();
-    _drillCurrentSet = idxs[idxs.length - 1]; // land on the final formation
-    _drillPlayStop();
-    _drillViewRerender();
-    return;
-  }
-  _drillPlayCount += 1;
-  _drillViewRenderSvg(); // cheap: just the field
-  const el = document.getElementById('drill-play-count');
-  if (el) el.textContent = `count ${_drillPlayCount}`;
 }
 
 function _drillPlayStop() {
   _drillPlaying = false;
-  if (_drillPlayTimer) clearInterval(_drillPlayTimer);
+  if (_drillPlayTimer) clearInterval(_drillPlayTimer); // legacy timer safety
   _drillPlayTimer = null;
 }
 
