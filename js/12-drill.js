@@ -1766,11 +1766,12 @@ function _drillViewInner() {
       <button class="btn btn-sm ${_drillPlaying ? 'btn-primary' : 'btn-secondary'}" onclick="drillPlayToggle()" title="Play / pause" aria-label="Play or pause animation">${_drillPlaying ? '⏸' : '▶'}</button>
       ${(_drillPages && _drillPages.length > 1) ? `<button class="btn btn-sm ${_drillSelectMode ? 'btn-primary' : 'btn-secondary'}" onclick="drillToggleSelectMode()" title="Choose sets to animate" aria-label="Choose sets to animate">⛶</button>` : ''}
       <button class="btn btn-sm btn-secondary" onclick="drillViewExpand()" title="Fullscreen" aria-label="Fullscreen">⤢</button>
-      <div class="drill-search-wrap${_drillSearchOpen ? ' is-open' : ''}${_drillSearchQuery.trim() ? ' has-q' : ''}" id="drill-search-wrap">
+      <div class="drill-search-wrap${_drillSearchOpen ? ' is-open' : ''}${_drillSearchQuery.trim() ? ' has-q' : ''}${_drillMatchLabels.length > 1 ? ' has-multi' : ''}" id="drill-search-wrap">
         <input class="drill-search form-input" type="search" id="drill-search-input"
                placeholder="Find a performer or student…"
                value="${esc(_drillSearchQuery)}" autocomplete="off"
-               oninput="drillViewSearch(this.value)">
+               oninput="drillViewSearch(this.value)" onkeydown="drillSearchKey(event)">
+        <button class="drill-search-next" onclick="drillViewSearchNext(1)" title="Next match (Enter)" aria-label="Next match">▾</button>
         <button class="drill-search-clear" onclick="drillViewClearSearch()" aria-label="Clear">✕</button>
       </div>
     </div>
@@ -1967,7 +1968,11 @@ function drillQuickMark(num, type) {
 function _drillFootText() {
   const pg = _drillPages[_drillCurrentSet];
   const base = `Set ${_drillCurrentSet + 1}/${_drillPages.length} · count ${pg.count}`;
-  if (_drillTraceLabel) return `${base} · tracing ${_drillTraceDisplay(_drillTraceLabel)}`;
+  if (_drillTraceLabel) {
+    const more = _drillMatchLabels.length > 1
+      ? ` · match ${_drillMatchIdx + 1} of ${_drillMatchLabels.length} (Enter for next)` : '';
+    return `${base} · tracing ${_drillTraceDisplay(_drillTraceLabel)}${more}`;
+  }
   return `${base} · ${_drillFinePointer() ? 'click a performer for details · scroll to zoom' : 'tap a performer for details'}`;
 }
 
@@ -2107,22 +2112,51 @@ function _drillPersistFlip() {
 
 function drillViewSearch(q) {
   _drillSearchQuery = q;
-  _drillTraceLabel = _drillResolveLabel(q);
+  _drillMatchLabels = _drillResolveMatches(q);
+  _drillMatchIdx    = 0;
+  _drillTraceLabel  = _drillMatchLabels[0] || null;
   _drillViewRenderSvg();
   const wrap = document.getElementById('drill-search-wrap');
-  if (wrap) wrap.classList.toggle('has-q', !!q.trim());
+  if (wrap) {
+    wrap.classList.toggle('has-q', !!q.trim());
+    wrap.classList.toggle('has-multi', _drillMatchLabels.length > 1);
+  }
   const foot = document.getElementById('drill-foot-main');
   if (foot) {
     foot.textContent = (q.trim() && !_drillTraceLabel) ? `No performer matches "${q.trim()}"` : _drillFootText();
   }
 }
 
+// Step to the next (or previous) performer that matches the current search.
+// Lets you reach same-name students the first hit would otherwise hide. Wraps
+// around; the typed query stays put so only the highlighted performer changes.
+function drillViewSearchNext(delta) {
+  const n = _drillMatchLabels.length;
+  if (n < 2) return;
+  _drillMatchIdx   = (_drillMatchIdx + delta + n) % n;
+  _drillTraceLabel = _drillMatchLabels[_drillMatchIdx];
+  _drillViewRenderSvg();
+  const foot = document.getElementById('drill-foot-main');
+  if (foot) foot.textContent = _drillFootText();
+}
+
+// Enter (or ↓) advances to the next match, Shift+Enter (or ↑) the previous.
+function drillSearchKey(event) {
+  if (event.key === 'Enter' || event.key === 'ArrowDown') {
+    event.preventDefault(); drillViewSearchNext(1);
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault(); drillViewSearchNext(-1);
+  }
+}
+
 function drillViewClearSearch() {
   _drillSearchQuery = '';
+  _drillMatchLabels = [];
+  _drillMatchIdx    = 0;
   _drillTraceLabel = null;
   _drillViewRenderSvg();
   const wrap = document.getElementById('drill-search-wrap');
-  if (wrap) wrap.classList.remove('has-q');
+  if (wrap) wrap.classList.remove('has-q', 'has-multi');
   const input = wrap && wrap.querySelector('.drill-search');
   if (input) input.value = '';
   const foot = document.getElementById('drill-foot-main');
@@ -2252,23 +2286,28 @@ function _drillTraceDisplay(label) {
   return st && st.name ? `${label} · ${st.name}` : label;
 }
 
-// Resolve a search string to a performer label in the current set: match the
-// drill label, else a mapped student's number or name.
-function _drillResolveLabel(q) {
+// Resolve a search string to every performer label it matches in the current
+// set, in the order you'd want to step through them: an exact drill label, then
+// label-prefix hits, then mapped students by number or name. Names use a plain
+// substring match so a shared first OR last name (e.g. "smith") surfaces every
+// student who has it — the caller cycles through the list. Deduped by label.
+function _drillResolveMatches(q) {
   q = (q || '').trim().toLowerCase();
-  if (!q) return null;
+  if (!q) return [];
   const perfs = _drillPages[_drillCurrentSet].performers;
-  const byLabel = perfs.find(p => p.label.toLowerCase() === q)
-              || perfs.find(p => p.label.toLowerCase().startsWith(q));
-  if (byLabel) return byLabel.label;
+  const out = [], seen = new Set();
+  const push = label => { if (!seen.has(label)) { seen.add(label); out.push(label); } };
+  const exact = perfs.find(p => p.label.toLowerCase() === q);
+  if (exact) push(exact.label);
+  for (const p of perfs) if (p.label.toLowerCase().startsWith(q)) push(p.label);
   for (const p of perfs) {
     for (const num of drillStudentNumsByLabel(p.label)) {
-      if (String(num) === q) return p.label;
+      if (String(num) === q) { push(p.label); continue; }
       const st = STATE.students[num];
-      if (st && (st.name || '').toLowerCase().includes(q)) return p.label;
+      if (st && (st.name || '').toLowerCase().includes(q)) push(p.label);
     }
   }
-  return null;
+  return out;
 }
 
 // Pyware-style coordinate from step offsets. Returns { lr, fb } strings.

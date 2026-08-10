@@ -3650,13 +3650,24 @@ html, body {
 .drill-search-wrap { position:relative; flex:1 0 100%; min-width:0; display:none; order:1; }
 .drill-search-wrap.is-open { display:block; }
 .drill-search { width:100%; padding-right:34px; min-height:40px; }
-.drill-search-clear {
-  position:absolute; right:4px; top:50%; transform:translateY(-50%);
+/* The custom ✕ below is our clear button; suppress the browser's own
+   type="search" clear control so only one X ever shows. */
+.drill-search::-webkit-search-cancel-button,
+.drill-search::-webkit-search-decoration { -webkit-appearance:none; appearance:none; }
+.drill-search::-ms-clear { display:none; width:0; height:0; }
+.drill-search-clear, .drill-search-next {
+  position:absolute; top:50%; transform:translateY(-50%);
   border:none; background:var(--surface-raised); color:var(--text-muted);
   width:26px; height:26px; border-radius:50%; cursor:pointer; font-size:0.72rem; line-height:1;
   display:none;
 }
+.drill-search-clear { right:4px; }
+.drill-search-next  { right:34px; font-size:0.9rem; }
 .drill-search-wrap.has-q .drill-search-clear { display:block; }
+/* A second, third… student can share a first or last name; when the query
+   matches more than one performer the ▾ button (and Enter) steps through them. */
+.drill-search-wrap.has-multi .drill-search-next { display:block; }
+.drill-search-wrap.has-multi .drill-search { padding-right:64px; }
 
 .drill-view-strip { display:flex; align-items:stretch; gap:6px; padding:0 8px 6px; flex-shrink:0; }
 .drill-nav-arrow {

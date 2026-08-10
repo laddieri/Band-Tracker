@@ -143,6 +143,8 @@ let _drillFieldWhite  = (typeof localStorage !== 'undefined' && localStorage.get
 let _drillShowNotes   = (typeof localStorage === 'undefined' || localStorage.getItem('drillShowNotes') !== '0'); // show a set's Pyware instruction text (default on)
 let _drillHighlightShared = (typeof localStorage === 'undefined' || localStorage.getItem('drillHighlightShared') !== '0'); // ring + count badge on spots shared by 2+ students (default on)
 let _drillSearchQuery = '';   // text in the Drill-tab performer search box
+let _drillMatchLabels = [];   // all performer labels the current search matches (for cycling same-name hits)
+let _drillMatchIdx    = 0;    // which of _drillMatchLabels is currently traced
 let _drillSearchOpen  = false; // Drill-tab search box revealed (tap 🔍 to open)
 let _drillTocOpen     = false; // Drill-tab set list (table of contents) revealed
 let _drillControlsOpen = false; // Drill-tab control row (⚙ next to the chart name)
