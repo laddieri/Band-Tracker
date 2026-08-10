@@ -2409,6 +2409,19 @@ html, body {
 }
 .song-overdue { color: var(--danger) !important; font-weight: 600; }
 
+/* "Done late" — completed, but after the due date had passed. Amber (a warning,
+   not an error): the work is done, just late. Shared by the director song/task
+   detail rows and the student portal. */
+.late-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: var(--amber-bg);
+  color: var(--amber-text);
+  white-space: nowrap;
+}
+
 .song-row-right {
   flex-shrink: 0;
   display: flex;

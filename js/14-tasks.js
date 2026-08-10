@@ -138,13 +138,15 @@ function _taskStudentRows(tid) {
   if (!sorted.length) return `<div class="empty-state" style="padding:24px"><p>No students match the current filter.</p></div>`;
 
   return sorted.map(s => {
-    const done = isDone(s.number);
-    const meta = getMeta(s.number);
+    const done     = isDone(s.number);
+    const doneLate = done && isDoneLate(task.dueDate, statuses[String(s.number)]?.updatedAt);
+    const meta     = getMeta(s.number);
     return `
       <div class="song-stu-row">
         <div class="song-stu-info">
           <span class="song-stu-name song-stu-name-link" onclick="navigate('student',{num:'${esc(s.number)}'});event.stopPropagation()">${esc(s.name || `#${s.number}`)}</span>
           <span class="song-stu-status ${done ? 'sss-pass' : 'sss-na'}">${done ? '✓ Done' : '— Not done'}</span>
+          ${doneLate ? `<span class="late-badge">Done late</span>` : ''}
           ${meta ? `<span class="song-stu-meta">${esc(meta)}</span>` : ''}
         </div>
         <div class="song-stu-btns">
@@ -569,9 +571,10 @@ function _portalTasks(num) {
       .filter(t => t.studentVisible !== false && s && taskAppliesToStudent(s, t))
       .map(task => {
         const applicable = _taskApplicableStudents(task);
+        const mineStatus = task.statuses?.[String(num)];
         return {
           id: task.id, title: task.title, dueDate: task.dueDate || '',
-          done: !!task.statuses?.[String(num)]?.done,
+          done: !!mineStatus?.done, doneAt: mineStatus?.updatedAt || 0,
           bandDone: applicable.filter(a => task.statuses?.[String(a.number)]?.done).length,
           total: applicable.length,
         };
@@ -582,7 +585,7 @@ function _portalTasks(num) {
     .filter(t => mine[t.id] !== undefined)   // mirror entry exists => applies to me
     .map(task => ({
       id: task.id, title: task.title, dueDate: task.dueDate || '',
-      done: !!mine[task.id]?.done,
+      done: !!mine[task.id]?.done, doneAt: mine[task.id]?.updatedAt || 0,
       bandDone: task.done || 0, total: task.total || 0,
     }));
 }

@@ -206,6 +206,23 @@ function taskAppliesToStudent(student, task) {
   return task.applyMode === 'include' ? inGroups : !inGroups;
 }
 
+// ── Done-late flag (songs + tasks) ────────────────────────────────────────────
+
+// Whether a completion recorded at `updatedAt` (epoch ms) landed after its
+// `dueDate` (a 'YYYY-MM-DD' string) had already passed — i.e. it got done, but
+// late. Both must be present. The completion's own local calendar day is
+// compared against the due date, so finishing ON the due date is on time and the
+// day after is late. Pure: shared by songs (passed after due) and tasks (done
+// after due). Returns false when either input is missing, so a song/task with no
+// due date is never flagged.
+function isDoneLate(dueDate, updatedAt) {
+  if (!dueDate || !updatedAt) return false;
+  const d = new Date(updatedAt);
+  if (isNaN(d)) return false;
+  const doneDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  return doneDate > dueDate;
+}
+
 // ── Leaderboard scoring ───────────────────────────────────────────────────────
 
 // Resolve stored weights to effective values (missing → defaults).
@@ -1285,6 +1302,7 @@ if (typeof module !== 'undefined' && module.exports) {
     rehearsalIncludesStudent, rehearsalScopeLabel, compareRehearsalsDesc, rehearsalStreak, rehearsalsAttended,
     isMemorizationExcluded,
     taskAppliesToStudent, _taskMatchesGroups,
+    isDoneLate,
     lbWeights, scoreStudentsCore, buildPublicStats,
     checkAutoMarkCondition, computeAutoMarkEvents,
     parseCSVLine, parseCSV, COL_ALIASES, normalizeGrade, detectCols,

@@ -145,6 +145,34 @@ describe('taskAppliesToStudent', () => {
   });
 });
 
+describe('isDoneLate', () => {
+  // Local-time helper: build an epoch ms for a given local Y-M-D (noon, to dodge
+  // DST edges) so the comparison matches how the app derives the completion day.
+  const at = (y, m, d) => new Date(y, m - 1, d, 12, 0, 0).getTime();
+
+  it('is false when the due date or completion time is missing', () => {
+    assert.strictEqual(L.isDoneLate('', at(2026, 8, 10)), false);
+    assert.strictEqual(L.isDoneLate('2026-08-10', 0), false);
+    assert.strictEqual(L.isDoneLate('2026-08-10', undefined), false);
+    assert.strictEqual(L.isDoneLate('', 0), false);
+  });
+  it('is false when completed before the due date', () => {
+    assert.strictEqual(L.isDoneLate('2026-08-10', at(2026, 8, 1)), false);
+  });
+  it('is false when completed ON the due date (finishing on time)', () => {
+    assert.strictEqual(L.isDoneLate('2026-08-10', at(2026, 8, 10)), false);
+  });
+  it('is true when completed the day after the due date', () => {
+    assert.strictEqual(L.isDoneLate('2026-08-10', at(2026, 8, 11)), true);
+  });
+  it('is true when completed well after the due date (crossing a month)', () => {
+    assert.strictEqual(L.isDoneLate('2026-08-31', at(2026, 9, 1)), true);
+  });
+  it('is false for a bad timestamp', () => {
+    assert.strictEqual(L.isDoneLate('2026-08-10', NaN), false);
+  });
+});
+
 describe('buildPublicStats', () => {
   const flags = { ...ALL_ON, songsOn: true, statsOn: true, leaderboardEnabled: true };
   const args  = { students, entries, songs, weights: W, salt: 'salt', flags,
