@@ -69,6 +69,11 @@ function render() {
     backBtn.classList.add('hidden');
     title.textContent = 'Band Marks';
     actions.innerHTML = userBtn();
+    // Keep the nav hidden until data is loaded and roles are known. Otherwise a
+    // signing-in student briefly sees the default (director/staff) tabs before
+    // their portal render hides the bar — the tab visibility gates below only
+    // run in the loaded path.
+    nav.style.display = 'none';
     main.innerHTML = `<div class="loading-view"><div class="spinner"></div><span>Loading data…</span></div>`;
     return;
   }
