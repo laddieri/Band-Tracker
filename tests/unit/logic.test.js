@@ -782,6 +782,44 @@ describe('buildTasksExportTable', () => {
   });
 });
 
+describe('buildSongRosterExportTable', () => {
+  const students = [{ number: '7', name: 'Riley' }, { number: '9', name: 'Sam' }, { number: '5', name: 'Lee' }];
+  const song = { id: 's1', title: 'Opener', statuses: {
+    '7': { status: 'passed', updatedAt: 1000, note: '' },
+    '9': { status: 'failed', updatedAt: 2000, note: 'watch bar 12' },
+  } };
+  const fmtTs = ts => `t${ts}`;
+
+  it('one row per student: status, formatted date, note', () => {
+    const { columns, rows } = L.buildSongRosterExportTable(students, song, fmtTs);
+    assert.deepStrictEqual(columns.map(c => c.key), ['number', 'name', 'status', 'date', 'note']);
+    assert.deepStrictEqual(rows[0], { number: '7', name: 'Riley', status: 'Passed',    date: 't1000', note: '' });
+    assert.deepStrictEqual(rows[1], { number: '9', name: 'Sam',   status: 'Try Again', date: 't2000', note: 'watch bar 12' });
+    assert.deepStrictEqual(rows[2], { number: '5', name: 'Lee',   status: '',          date: '',      note: '' });
+  });
+});
+
+describe('buildTaskRosterExportTable', () => {
+  const students = [{ number: '7', name: 'Riley' }, { number: '9', name: 'Sam' }];
+  // Applies to everyone; only student 9 excluded via exemptStudents.
+  const task = { id: 't1', title: 'Fees', exemptStudents: ['9'],
+    statuses: { '7': { done: true, updatedAt: 1000 } } };
+  const fmtTs = ts => `t${ts}`;
+
+  it('marks Done with a date, and N/A where the task does not apply', () => {
+    const { columns, rows } = L.buildTaskRosterExportTable(students, task, fmtTs);
+    assert.deepStrictEqual(columns.map(c => c.key), ['number', 'name', 'status', 'date']);
+    assert.deepStrictEqual(rows[0], { number: '7', name: 'Riley', status: 'Done', date: 't1000' });
+    assert.deepStrictEqual(rows[1], { number: '9', name: 'Sam',   status: 'N/A',  date: '' });
+  });
+
+  it('marks Not done with no date when applicable but unrecorded', () => {
+    const t2 = { id: 't2', title: 'Solo', statuses: {} };
+    const { rows } = L.buildTaskRosterExportTable([{ number: '3', name: 'Ash' }], t2, fmtTs);
+    assert.deepStrictEqual(rows[0], { number: '3', name: 'Ash', status: 'Not done', date: '' });
+  });
+});
+
 // ── Filter + sort engine ──────────────────────────────────────────────────────
 
 describe('filterAndSortStudents', () => {

@@ -189,6 +189,7 @@ let _lbFilter      = _mkFilter('score',    'desc');
 let _songFilter       = _mkFilter('name',     'asc');
 let _songRosterFilter = _mkFilter('passed',   'desc');
 let _taskFilter       = _mkFilter('name',     'asc');
+let _exportFilter     = _mkFilter('name',     'asc'); // student picker in the Export Center (modal)
 
 // ── Debounce store for note fields ────────────────────────────────────────────
 
@@ -320,7 +321,7 @@ function _renderSortLayers(viewId, f, sortOptions) {
 // ── Filter event handlers ─────────────────────────────────────────────────────
 
 function _getFilterObj(viewId) {
-  return { roster: _rosterFilter, tracker: _trackerFilter, att: _attFilter, 'att-tab': _attTabFilter, lb: _lbFilter, song: _songFilter, 'song-roster': _songRosterFilter, task: _taskFilter }[viewId];
+  return { roster: _rosterFilter, tracker: _trackerFilter, att: _attFilter, 'att-tab': _attTabFilter, lb: _lbFilter, song: _songFilter, 'song-roster': _songRosterFilter, task: _taskFilter, export: _exportFilter }[viewId];
 }
 
 // Re-renders replace the whole view, so anything the user was typing in loses
@@ -481,6 +482,7 @@ function _rerenderForFilter(viewId) {
     case 'song':         mc.innerHTML = viewSong(_params.sid); break;
     case 'song-roster':  mc.innerHTML = viewSongs(); break;
     case 'task':         mc.innerHTML = viewTask(_params.tid); break;
+    case 'export':       _exportRerender(); break; // Export Center lives in a modal, not main-content
   }
   if (mc) mc.scrollTop = st;
 }
@@ -530,6 +532,7 @@ function _refreshFilterList(viewId) {
       return song ? songStudentRows(_params.sid, Object.values(DB.getStudents()).filter(s => !memExcluded(s)), song.statuses || {}) : '';
     }],
     task:         ['task-student-list', () => _taskStudentRows(_params.tid)],
+    export:       ['exp-student-preview', () => _exportStudentPreviewRows()],
   };
   const entry = lists[viewId];
   if (!entry) return false;
