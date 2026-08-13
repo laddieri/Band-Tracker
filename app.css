@@ -658,6 +658,9 @@ html, body {
 .badge-success { background: var(--success-bg); color: var(--success); }
 .badge-danger { background: var(--danger-bg); color: var(--danger); }
 .badge-neutral { background: var(--surface-raised); color: var(--text-muted); }
+/* Absence tally on roster rows — amber so it reads apart from the red
+   negative-marks tick. */
+.badge-warn { background: var(--amber-bg); color: var(--warning); }
 /* Songs-passed tally on roster rows — band-colored so it reads apart from the
    green positives tick. */
 .badge-song { background: var(--primary-tint); color: var(--primary); }
