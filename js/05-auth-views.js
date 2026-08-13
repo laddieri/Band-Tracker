@@ -983,9 +983,9 @@ function saveBrandSettings() {
   try { localStorage.setItem('bandColor', bandColor); } catch {}
   // Close optimistically. STATE is already updated above, so the UI is correct;
   // the write must NOT hold the modal open waiting on a server ack — on a flaky
-  // connection Firestore queues it locally (the header "Saving…" pill reflects
-  // that) and syncs when back online, exactly like every other write in the app.
-  // Awaiting here left the modal stuck open and the pill stuck on until sync.
+  // connection Firestore queues it locally and syncs when back online, exactly
+  // like every other write in the app. Awaiting here left the modal stuck open
+  // until sync.
   closeModal();
   showToast('Band settings saved.');
   render();

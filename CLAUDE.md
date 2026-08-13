@@ -75,9 +75,7 @@ app doesn't show it" is never a justification. Full model:
   handler (`js/13-boot.js`) toasts rejected writes via `_toastSaveError()`.
   Don't add `.catch(() => {})` unless a failure is genuinely best-effort —
   that swallows the error before the safety net sees it. Writes needing
-  bespoke error UI use their own try/catch. Director listeners also feed the
-  header "Saving…" pill from `hasPendingWrites` (`_notePendingWrites()` in
-  `js/02-data.js`).
+  bespoke error UI use their own try/catch.
 - **Never call `render()` from a Firestore listener or any other code that can
   fire while the user is mid-interaction** (snapshot callbacks, async loads,
   timers) — use `renderFromData()` (`js/03-router.js`) instead. A direct render
