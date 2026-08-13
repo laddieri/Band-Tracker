@@ -456,6 +456,229 @@ function buildStudentCodesCsv(students, { includeInstrument = true } = {}) {
   return [header.join(','), ...rows].join('\n');
 }
 
+// ── Customizable data export (tables → CSV / printable PDF) ───────────────────
+// A "table" is { columns:[{key,label}], rows:[{<key>:value}] }. Two renderers
+// turn one into a CSV string (tableToCsv) or a self-contained printable HTML
+// document (tableToPrintHtml — the app "exports PDF" by printing this). The
+// per-dataset builders below produce full tables from plain data; the
+// STATE-gathering wrappers and the column-picker UI live in js/15-export.js.
+// All pure — no Firebase, STATE or DOM — so they're unit-testable from Node.
+
+function tableToCsv(columns, rows) {
+  const header = columns.map(c => csvCell(c.label)).join(',');
+  const body   = rows.map(r => columns.map(c => csvCell(r[c.key] ?? '')).join(','));
+  return [header, ...body].join('\n');
+}
+
+// HTML-escape for the printable document. esc() lives in a view file; keep
+// 00-logic.js free of cross-file deps so it stays requireable from Node.
+function _escHtml(v) {
+  return String(v ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function tableToPrintHtml({ title, subtitle, columns, rows }) {
+  const head = columns.map(c => `<th>${_escHtml(c.label)}</th>`).join('');
+  const body = rows.length
+    ? rows.map(r => `<tr>${columns.map(c => `<td>${_escHtml(r[c.key] ?? '')}</td>`).join('')}</tr>`).join('')
+    : `<tr><td colspan="${columns.length}" class="none-msg">No data for this selection.</td></tr>`;
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>${_escHtml(title)}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; color: #1a1a1a; background: #fff; padding: 32px; }
+  h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  .meta { color: #666; font-size: 12px; margin-bottom: 24px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #f3f4f6; text-align: left; padding: 8px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #555; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
+  td { padding: 7px 10px; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  .none-msg { color: #666; font-style: italic; }
+  @media print {
+    body { padding: 16px; }
+    @page { margin: 1cm; }
+    thead { display: table-header-group; }
+    tr { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+  <h1>${_escHtml(title)}</h1>
+  ${subtitle ? `<div class="meta">${_escHtml(subtitle)}</div>` : ''}
+  <table>
+    <thead><tr>${head}</tr></thead>
+    <tbody>${body}</tbody>
+  </table>
+</body>
+</html>`;
+}
+
+// Narrow a full table to the caller's chosen columns (rows are untouched — the
+// renderers only read the keys they're given). `keys` null/undefined = keep all.
+function pickColumns(table, keys) {
+  if (!keys) return table;
+  const set = new Set(keys);
+  return { columns: table.columns.filter(c => set.has(c.key)), rows: table.rows };
+}
+
+// Roster export. `columns` is the available column set (the wrapper builds it
+// from the band's enabled + custom fields); values read straight off the student
+// doc, with instrument normalized and the sign-in code upper-cased.
+function buildRosterExportTable(students, columns) {
+  const rows = students.map(s => {
+    const row = {};
+    for (const c of columns) {
+      if (c.key === 'instrument')       row[c.key] = normInstrument(s.instrument);
+      else if (c.key === 'studentCode') row[c.key] = (s.studentCode || '').toUpperCase();
+      else                              row[c.key] = s[c.key] ?? '';
+    }
+    return row;
+  });
+  return { columns, rows };
+}
+
+const MARKS_DETAIL_COLS = [
+  { key: 'date',       label: 'Date' },
+  { key: 'label',      label: 'Event' },
+  { key: 'number',     label: 'Student Number' },
+  { key: 'name',       label: 'Name' },
+  { key: 'attendance', label: 'Attendance' },
+  { key: 'positives',  label: 'Positive Marks' },
+  { key: 'mistakes',   label: 'Mistake Marks' },
+  { key: 'recordedBy', label: 'Recorded By' },
+];
+const MARKS_SUMMARY_COLS = [
+  { key: 'number',    label: 'Student Number' },
+  { key: 'name',      label: 'Name' },
+  { key: 'positives', label: 'Positive Marks' },
+  { key: 'mistakes',  label: 'Mistake Marks' },
+  { key: 'absences',  label: 'Absences' },
+  { key: 'lates',     label: 'Lates' },
+];
+
+// Marks / attendance export. `rehearsals` should already be date-filtered by the
+// caller; `entries` is keyed rehearsalId → { studentNumber → entry }.
+//   mode 'detail'  — one row per recorded student×event.
+//   mode 'summary' — one row per student, totals across the range.
+// `authorLabel` maps an author uid to a display label (dirLabel) — never emails.
+function buildMarksExportTable(rehearsals, entries, students, opts = {}) {
+  const { mode = 'detail', authorLabel = (x => x) } = opts;
+  const byNum = {};
+  for (const s of students) byNum[String(s.number)] = s;
+
+  if (mode === 'summary') {
+    const agg = {};
+    const ensure = num => (agg[num] || (agg[num] = { positives: 0, mistakes: 0, absences: 0, lates: 0 }));
+    for (const s of students) ensure(String(s.number));
+    for (const r of rehearsals) {
+      for (const [num, e] of Object.entries(entries[r.id] || {})) {
+        const a = ensure(num);
+        a.positives += e.positives || 0;
+        a.mistakes  += e.mistakes  || 0;
+        if (e.attendance === 'absent') a.absences++;
+        else if (e.attendance === 'late') a.lates++;
+      }
+    }
+    const rows = students.map(s => {
+      const a = agg[String(s.number)];
+      return { number: s.number, name: s.name || '', positives: a.positives,
+               mistakes: a.mistakes, absences: a.absences, lates: a.lates };
+    });
+    return { columns: MARKS_SUMMARY_COLS, rows };
+  }
+
+  const rows = [];
+  for (const r of rehearsals) {
+    for (const [num, e] of Object.entries(entries[r.id] || {})) {
+      const att = e.attendance ? e.attendance.charAt(0).toUpperCase() + e.attendance.slice(1) : '';
+      rows.push({
+        date:       r.date || '',
+        label:      r.label || '',
+        number:     num,
+        name:       byNum[num]?.name || '',
+        attendance: att,
+        positives:  e.positives || 0,
+        mistakes:   e.mistakes || 0,
+        recordedBy: authorLabel(e.by || e.updatedBy || ''),
+      });
+    }
+  }
+  return { columns: MARKS_DETAIL_COLS, rows };
+}
+
+// Leaderboard export from scoreStudentsCore() output (director view — real
+// names, not the student-facing pseudonyms). Ranked by score, highest first.
+function buildLeaderboardExportTable(scored) {
+  const columns = [
+    { key: 'rank',      label: 'Rank' },
+    { key: 'name',      label: 'Name' },
+    { key: 'number',    label: 'Student Number' },
+    { key: 'score',     label: 'Score' },
+    { key: 'positives', label: 'Positive Marks' },
+    { key: 'mistakes',  label: 'Mistake Marks' },
+  ];
+  const rows = scored.slice()
+    .sort((a, b) => (b.score || 0) - (a.score || 0))
+    .map((e, i) => ({
+      rank:      i + 1,
+      name:      e.s?.name || '',
+      number:    e.s?.number ?? '',
+      score:     Math.round((e.score || 0) * 100) / 100,
+      positives: e.positives || 0,
+      mistakes:  e.mistakes || 0,
+    }));
+  return { columns, rows };
+}
+
+// Song memorization matrix: one row per student, one column per song
+// (Passed / Try Again / blank), plus a passed count.
+function buildSongsExportTable(students, songs) {
+  const columns = [
+    { key: 'number', label: 'Student Number' },
+    { key: 'name',   label: 'Name' },
+    ...songs.map(sg => ({ key: `song:${sg.id}`, label: sg.title || 'Untitled' })),
+    { key: 'passedCount', label: 'Songs Passed' },
+  ];
+  const rows = students.map(s => {
+    const num = String(s.number);
+    const row = { number: s.number, name: s.name || '' };
+    let passed = 0;
+    for (const sg of songs) {
+      const st = sg.statuses?.[num]?.status;
+      row[`song:${sg.id}`] = st === 'passed' ? 'Passed' : st === 'failed' ? 'Try Again' : '';
+      if (st === 'passed') passed++;
+    }
+    row.passedCount = passed;
+    return row;
+  });
+  return { columns, rows };
+}
+
+// Task check-off matrix: one row per student, one column per task
+// (Done / Not done, or blank when the task doesn't apply to that student).
+function buildTasksExportTable(students, tasks) {
+  const columns = [
+    { key: 'number', label: 'Student Number' },
+    { key: 'name',   label: 'Name' },
+    ...tasks.map(t => ({ key: `task:${t.id}`, label: t.title || 'Untitled' })),
+  ];
+  const rows = students.map(s => {
+    const num = String(s.number);
+    const row = { number: s.number, name: s.name || '' };
+    for (const t of tasks) {
+      row[`task:${t.id}`] = taskAppliesToStudent(s, t)
+        ? (t.statuses?.[num]?.done ? 'Done' : 'Not done')
+        : '';
+    }
+    return row;
+  });
+  return { columns, rows };
+}
+
 // ── Per-drill spot assignments (CSV) ─────────────────────────────────────────
 // A drill's spot map links each performer label ("A1", "M1") to a student
 // number, per show. Bulk-assigned from a two-column CSV (label + student
@@ -1307,6 +1530,9 @@ if (typeof module !== 'undefined' && module.exports) {
     checkAutoMarkCondition, computeAutoMarkEvents,
     parseCSVLine, parseCSV, COL_ALIASES, normalizeGrade, detectCols,
     csvCell, buildStudentCodesCsv,
+    tableToCsv, tableToPrintHtml, _escHtml, pickColumns,
+    buildRosterExportTable, buildMarksExportTable, MARKS_DETAIL_COLS, MARKS_SUMMARY_COLS,
+    buildLeaderboardExportTable, buildSongsExportTable, buildTasksExportTable,
     DRILL_LABEL_ALIASES, drillSpotNums, drillSpotStripOthers, drillSpotLabelParts, applyDrillSpotCsv,
     drillMappingDiff, spotHistorySpans,
     drillPositionPairs, drillRelabelMapping,
