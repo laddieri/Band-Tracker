@@ -130,6 +130,14 @@ describe('roles within an org', () => {
   it('a student CANNOT write org data', async () => {
     await assertFails(director('studA').doc('orgs/a/students/42').set({ name: 'hacked' }));
   });
+  it('a student can stamp lastLogin on their OWN doc (and nothing else)', async () => {
+    await assertSucceeds(director('studA').doc('orgs/a/students/42').update({ lastLogin: 1234 }));
+    await assertSucceeds(claimsStudent('cStud', 'a', '42').doc('orgs/a/students/42').update({ lastLogin: 5678 }));
+    // Only lastLogin may change, it must be a number, and never another student's doc.
+    await assertFails(director('studA').doc('orgs/a/students/42').update({ lastLogin: 1, name: 'hacked' }));
+    await assertFails(director('studA').doc('orgs/a/students/42').update({ lastLogin: 'now' }));
+    await assertFails(director('studA').doc('orgs/a/students/7').update({ lastLogin: 1 }));
+  });
 });
 
 describe('student data visibility', () => {

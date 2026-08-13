@@ -425,6 +425,14 @@ function _purgeBlockSpots() {
 // Listeners for student accounts — limited to exactly what the rules allow.
 function studentListeners() {
   const num = String(STATE.studentNum);
+
+  // Stamp this student's last portal login on their own roster doc so directors
+  // can see login activity (Band Settings → Student Login Activity). The rules
+  // allow the matching student a single-field 'lastLogin' update on their own
+  // doc; it's best-effort telemetry (the doc always exists — a director created
+  // it to mint the code), so a failure must never surface to the student.
+  orgCol('students').doc(num).update({ lastLogin: Date.now() }).catch(() => {});
+
   const loaded = new Set();
   function tick(key) {
     loaded.add(key);

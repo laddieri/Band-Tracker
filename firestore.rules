@@ -131,12 +131,18 @@ service cloud.firestore {
       // A student may read only their own roster doc (doc id == their number).
       // Staff read the whole roster; their only write is the songStatuses
       // mirror kept in sync by _applySongStatus (roster management — names,
-      // codes, everything else — stays director-only).
+      // codes, everything else — stays director-only). The matching student may
+      // additionally stamp their own last-portal-login time on their own doc —
+      // 'lastLogin' only, no other field — so directors can see login activity
+      // in Band Settings; it carries no PII (an epoch-ms number).
       match /students/{doc} {
         allow read:   if canRecord() || (canRead() && myStudentNumber() == doc);
         allow write:  if canWrite();
         allow update: if isStaffOf(orgId)
                       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['songStatuses', 'taskStatuses']);
+        allow update: if canRead() && myStudentNumber() == doc
+                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastLogin'])
+                      && request.resource.data.lastLogin is int;
       }
 
       // Rehearsal metadata (dates/labels) is schedule info — safe for members.
