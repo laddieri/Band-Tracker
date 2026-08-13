@@ -613,9 +613,6 @@ const _SONG_FLUSH_MS = 2000;
 
 function _bufferSongStatus(sid, num, entry) {
   (_songStatusBuf[sid] = _songStatusBuf[sid] || {})[String(num)] = entry;
-  // Buffered taps count as unsaved work so the header "Saving…" pill stays
-  // honest (see _notePendingWrites in js/02-data.js).
-  _notePendingWrites('songStatusBuf', true);
   // Fixed-interval, not restarted per tap — continuous marking must not
   // starve the flush.
   if (!_songFlushTimer) _songFlushTimer = setTimeout(_flushSongStatusWrites, _SONG_FLUSH_MS);
@@ -626,7 +623,6 @@ function _flushSongStatusWrites() {
   _songFlushTimer = null;
   const buf = _songStatusBuf;
   _songStatusBuf = {};
-  _notePendingWrites('songStatusBuf', false);
   const sids = Object.keys(buf);
   if (!sids.length) return;
 

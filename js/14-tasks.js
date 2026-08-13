@@ -232,7 +232,6 @@ const _TASK_FLUSH_MS = 2000;
 function _bufferTaskStatus(tid, num, done) {
   (_taskStatusBuf[tid] = _taskStatusBuf[tid] || {})[String(num)] =
     { done, updatedAt: Date.now(), updatedBy: STATE.user?.uid || '' };
-  _notePendingWrites('taskStatusBuf', true);
   if (!_taskFlushTimer) _taskFlushTimer = setTimeout(_flushTaskStatusWrites, _TASK_FLUSH_MS);
 }
 
@@ -241,7 +240,6 @@ function _flushTaskStatusWrites() {
   _taskFlushTimer = null;
   const buf = _taskStatusBuf;
   _taskStatusBuf = {};
-  _notePendingWrites('taskStatusBuf', false);
   const tids = Object.keys(buf);
   if (!tids.length) return;
 

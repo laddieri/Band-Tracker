@@ -1,35 +1,6 @@
 // Band Tracker — js/02-data.js — Firestore listeners (director + student), settings/public publisher, auth state.
 // Plain script sharing global scope; load order is set in index.html.
 
-// ── Pending-sync indicator ────────────────────────────────────────────────────
-// Director clients queue writes locally when offline (attendance on a field
-// with bad reception is the core use case), and Firestore gives no visible
-// signal that they haven't reached the server yet. Each director listener
-// reports its snapshot's hasPendingWrites here; the header shows a "Saving…"
-// pill while anything is still unacknowledged. The pill only appears when a
-// write stays pending for over a second — online acks land faster than that
-// and shouldn't flash it.
-
-let _pendingSync   = {};
-let _syncPillTimer = null;
-
-function _notePendingWrites(key, pending) {
-  if (!!_pendingSync[key] === !!pending) return;
-  _pendingSync[key] = !!pending;
-  const el = document.getElementById('sync-indicator');
-  if (!el) return;
-  const any = Object.values(_pendingSync).some(Boolean);
-  clearTimeout(_syncPillTimer);
-  if (any) _syncPillTimer = setTimeout(() => el.classList.remove('hidden'), 1200);
-  else     el.classList.add('hidden');
-}
-
-function _resetPendingWrites() {
-  _pendingSync = {};
-  clearTimeout(_syncPillTimer);
-  document.getElementById('sync-indicator')?.classList.add('hidden');
-}
-
 // ── Season scoping ────────────────────────────────────────────────────────────
 // Rehearsals and entries accumulate forever, so their listeners are bounded to
 // the active season (see "Seasons" in docs/DATA_MODEL.md): docs are stamped
@@ -64,7 +35,6 @@ async function startListeners() {
   STATE._unsubs = [];
   STATE.loading = true;
   _lastPublishedJson = '';
-  _resetPendingWrites();
   _restartSeasonScoped = null;
   _scopedReady = null;
   // Drop any drill state from a previous session/org; listeners repopulate it.
@@ -115,10 +85,8 @@ async function startListeners() {
     const entQ = scopedSeason ? orgCol('entries').where('season', '==', scopedSeason)    : orgCol('entries');
 
     const unsubs = [
-      rehQ.onSnapshot({ includeMetadataChanges: true }, snap => {
+      rehQ.onSnapshot(snap => {
         _scopedReady.reh = true;
-        _notePendingWrites('rehearsals', snap.metadata.hasPendingWrites);
-        if (!snap.docChanges().length && !STATE.loading) return; // metadata-only
         STATE.rehearsals = snap.docs
           .map(d => ({ ...d.data(), id: d.id }))
           .sort(compareRehearsalsDesc);
@@ -126,11 +94,9 @@ async function startListeners() {
         schedulePublishPublicStats();
       }),
 
-      entQ.onSnapshot({ includeMetadataChanges: true }, snap => {
+      entQ.onSnapshot(snap => {
         _scopedReady.ent = true;
-        _notePendingWrites('entries', snap.metadata.hasPendingWrites);
         const changes = snap.docChanges();
-        if (!changes.length && !STATE.loading) return; // metadata-only
         changes.forEach(ch => {
           const d = ch.doc.data();
           if (!d.rehearsalId || !d.studentNumber) return;
@@ -244,15 +210,8 @@ async function startListeners() {
       rescopeIfNeeded();
     }),
 
-    // High-churn collections listen with metadata so the "Saving…" pill can
-    // track unacknowledged local writes. docChanges() excludes metadata-only
-    // emissions by default, so the `changes.length` guards keep write acks
-    // from triggering full re-renders — only the pill updates. (Rehearsals and
-    // entries follow the same pattern inside subscribeScoped above.)
-    orgCol('students').onSnapshot({ includeMetadataChanges: true }, snap => {
-      _notePendingWrites('students', snap.metadata.hasPendingWrites);
+    orgCol('students').onSnapshot(snap => {
       const changes = snap.docChanges();
-      if (!changes.length && !STATE.loading) return; // metadata-only
       changes.forEach(ch => {
         if (ch.type === 'removed') delete STATE.students[ch.doc.id];
         else STATE.students[ch.doc.id] = { ...ch.doc.data(), _id: ch.doc.id };
@@ -264,9 +223,7 @@ async function startListeners() {
       schedulePublishPublicStats();
     }),
 
-    orgCol('songs').onSnapshot({ includeMetadataChanges: true }, snap => {
-      _notePendingWrites('songs', snap.metadata.hasPendingWrites);
-      if (!snap.docChanges().length && !STATE.loading) return; // metadata-only
+    orgCol('songs').onSnapshot(snap => {
       STATE.songs = snap.docs
         .map(d => ({ ...d.data(), id: d.id }))
         .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
@@ -282,9 +239,7 @@ async function startListeners() {
     // the task docs, but staff may record completion (statuses). Each snapshot
     // re-syncs the per-student taskStatuses mirror (director-only) so the portal
     // stays current. See js/14-tasks.js.
-    orgCol('tasks').onSnapshot({ includeMetadataChanges: true }, snap => {
-      _notePendingWrites('tasks', snap.metadata.hasPendingWrites);
-      if (!snap.docChanges().length && !STATE.loading) return; // metadata-only
+    orgCol('tasks').onSnapshot(snap => {
       STATE.tasks = snap.docs
         .map(d => ({ ...d.data(), id: d.id }))
         .sort((a, b) => (a.dueDate || 'z').localeCompare(b.dueDate || 'z')
@@ -748,7 +703,6 @@ auth.onAuthStateChanged(user => {
     _userInitiatedSignOut = false;
     STATE._unsubs.forEach(u => u());
     STATE._unsubs = [];
-    _resetPendingWrites();
     STATE.loading    = false;
     STATE.orgId      = null;
     STATE.org        = null;
