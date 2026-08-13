@@ -290,6 +290,8 @@ function _studentSpotBadges(s) {
 // song tick).
 function _rosterScoreMap() {
   const map = {};
+  const attendanceOn = featureOn('attendance');
+  const { mon, fri } = currentWeekRange(); // current-week bounds for absence tally
   for (const s of Object.values(DB.getStudents())) {
     const hist = DB.getStudentHistory(s.number);
     const mistakes  = hist.reduce((sum,e)=>sum+(e.entry.mistakes||0),0);
@@ -297,7 +299,16 @@ function _rosterScoreMap() {
     const passed = (featureOn('songs') && !memExcluded(s))
       ? STATE.songs.filter(song => song.statuses?.[String(s.number)]?.status === 'passed').length
       : 0;
-    map[s.number] = { mistakes, positives, passed };
+    // Absences: total and just-this-week, scanned from the same history.
+    let absences = 0, weekAbsences = 0;
+    if (attendanceOn) {
+      for (const { rehearsal: r, entry: e } of hist) {
+        if (e.attendance !== 'absent') continue;
+        absences++;
+        if (r.date >= mon && r.date <= fri) weekAbsences++;
+      }
+    }
+    map[s.number] = { mistakes, positives, passed, absences, weekAbsences };
   }
   return map;
 }
@@ -310,10 +321,15 @@ function rosterRows(list, scoreMap = _rosterScoreMap()) {
   // Total songs assigned to memorizing students — computed once for the whole
   // list rather than per row.
   const songsTotal = STATE.songs.length;
+  const showAbsences = featureOn('attendance');
   return list.map(s => {
-    const sc   = scoreMap[s.number] || { mistakes: 0, positives: 0, passed: 0 };
+    const sc   = scoreMap[s.number] || { mistakes: 0, positives: 0, passed: 0, absences: 0, weekAbsences: 0 };
     const errs = sc.mistakes;
     const pos  = sc.positives;
+    // Absence summary: total across the season, with this week's count called
+    // out. Shown only once a student has actually missed something.
+    const absences     = showAbsences ? (sc.absences || 0) : 0;
+    const weekAbsences = showAbsences ? (sc.weekAbsences || 0) : 0;
     // Songs passed off out of the total assigned. Excluded groups (e.g.
     // majorettes) don't memorize music, so they get no song tick.
     const showSongs   = featureOn('songs') && songsTotal > 0 && !memExcluded(s);
@@ -333,6 +349,7 @@ function rosterRows(list, scoreMap = _rosterScoreMap()) {
           ${featureOn('marks') ? `
           ${errs > 0 ? `<span class="badge badge-danger">${errs}✗</span>` : ''}
           ${pos > 0  ? `<span class="badge badge-success">${pos}✓</span>` : ''}` : ''}
+          ${absences > 0 ? `<span class="badge badge-warn" title="Absences — ${absences} total${weekAbsences > 0 ? `, ${weekAbsences} this week` : ''}">${absences} absent${weekAbsences > 0 ? `<span style="font-weight:600;opacity:.82"> · ${weekAbsences} wk</span>` : ''}</span>` : ''}
           ${showSongs ? `<span class="badge badge-song" title="Songs passed off">${songsPassed}/${songsTotal} 🎵</span>` : ''}
         </div>
       </div>`;
