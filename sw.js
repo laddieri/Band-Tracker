@@ -1,4 +1,4 @@
-const CACHE = 'band-tracker-v86';
+const CACHE = 'band-tracker-v87';
 
 const PRECACHE = [
   '/',

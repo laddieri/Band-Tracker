@@ -3426,16 +3426,13 @@ html, body {
 
   .dash-stat-grid { grid-template-columns: repeat(3, 1fr); }
 
-  /* ── Two-column roster ────────────────────────────────────────────────── */
+  /* ── Single-column roster (constrained reading width) ─────────────────── */
 
-  #roster-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  #roster-list .roster-row { margin-bottom: 0; }
+  #roster-list { max-width: 860px; margin: 0 auto; }
 
-  /* ── Two-column rehearsal cards (open cards span full width) ──────────── */
+  /* ── Single-column rehearsal cards ────────────────────────────────────── */
 
   .rh-view { max-width: 860px; margin: 0 auto; }
-  .rh-cards-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .rh-cards-grid .card { margin-bottom: 0; }
 
   /* ── Two-column song list ─────────────────────────────────────────────── */
 
