@@ -131,6 +131,7 @@ function rosterSortOptions() {
       {value:'positives', label:'Positive Marks'},
       {value:'mistakes',  label:'Negative Marks'},
     ] : []),
+    ...(featureOn('attendance') ? [{value:'absences', label:'Absences'}] : []),
     ...(featureOn('songs') && STATE.songs.length ? [{value:'passed', label:'Songs Completed'}] : []),
   ];
 }
