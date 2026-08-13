@@ -679,6 +679,47 @@ function buildTasksExportTable(students, tasks) {
   return { columns, rows };
 }
 
+// One song across a (usually filtered) set of students — "who has passed this
+// song?" One row per student: status, when it was recorded, and any note.
+// `fmtTs` formats an epoch-ms stamp for display (kept out of 00-logic.js).
+function buildSongRosterExportTable(students, song, fmtTs = (x => x)) {
+  const columns = [
+    { key: 'number', label: 'Student Number' },
+    { key: 'name',   label: 'Name' },
+    { key: 'status', label: 'Status' },
+    { key: 'date',   label: 'Date' },
+    { key: 'note',   label: 'Note' },
+  ];
+  const statuses = song?.statuses || {};
+  const rows = students.map(s => {
+    const st = statuses[String(s.number)] || {};
+    const status = st.status === 'passed' ? 'Passed' : st.status === 'failed' ? 'Try Again' : '';
+    return { number: s.number, name: s.name || '', status,
+             date: st.updatedAt ? fmtTs(st.updatedAt) : '', note: st.note || '' };
+  });
+  return { columns, rows };
+}
+
+// One task across a (usually filtered) set of students — "who has completed this
+// task?" One row per student: Done / Not done, or N/A where the task doesn't
+// apply to that student (see taskAppliesToStudent). `fmtTs` as above.
+function buildTaskRosterExportTable(students, task, fmtTs = (x => x)) {
+  const columns = [
+    { key: 'number', label: 'Student Number' },
+    { key: 'name',   label: 'Name' },
+    { key: 'status', label: 'Status' },
+    { key: 'date',   label: 'Date' },
+  ];
+  const statuses = task?.statuses || {};
+  const rows = students.map(s => {
+    if (!taskAppliesToStudent(s, task)) return { number: s.number, name: s.name || '', status: 'N/A', date: '' };
+    const st = statuses[String(s.number)] || {};
+    return { number: s.number, name: s.name || '', status: st.done ? 'Done' : 'Not done',
+             date: st.done && st.updatedAt ? fmtTs(st.updatedAt) : '' };
+  });
+  return { columns, rows };
+}
+
 // ── Per-drill spot assignments (CSV) ─────────────────────────────────────────
 // A drill's spot map links each performer label ("A1", "M1") to a student
 // number, per show. Bulk-assigned from a two-column CSV (label + student
@@ -1533,6 +1574,7 @@ if (typeof module !== 'undefined' && module.exports) {
     tableToCsv, tableToPrintHtml, _escHtml, pickColumns,
     buildRosterExportTable, buildMarksExportTable, MARKS_DETAIL_COLS, MARKS_SUMMARY_COLS,
     buildLeaderboardExportTable, buildSongsExportTable, buildTasksExportTable,
+    buildSongRosterExportTable, buildTaskRosterExportTable,
     DRILL_LABEL_ALIASES, drillSpotNums, drillSpotStripOthers, drillSpotLabelParts, applyDrillSpotCsv,
     drillMappingDiff, spotHistorySpans,
     drillPositionPairs, drillRelabelMapping,
