@@ -734,6 +734,17 @@ function showBrandSettingsModal() {
     </div>
 
     <div class="form-group">
+      <label class="form-label">Export Data</label>
+      <p style="font-size:.75rem;color:var(--text-muted);margin:-2px 0 8px">
+        Download the roster, attendance, marks, leaderboard, songs or tasks as a
+        spreadsheet (CSV) or printable PDF — pick exactly which columns to include.
+      </p>
+      <button class="btn btn-secondary" onclick="showExportModal()">
+        Export Data…
+      </button>
+    </div>
+
+    <div class="form-group">
       <label class="form-label">Season</label>
       <p style="font-size:.75rem;color:var(--text-muted);margin:-2px 0 8px">
         ${STATE.activeSeason

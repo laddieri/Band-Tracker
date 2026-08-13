@@ -621,6 +621,167 @@ describe('buildStudentCodesCsv', () => {
   });
 });
 
+// ── Customizable data export (tables → CSV / PDF) ─────────────────────────────
+
+describe('tableToCsv', () => {
+  const cols = [{ key: 'a', label: 'Col A' }, { key: 'b', label: 'Col B' }];
+
+  it('writes the header from labels and one row per record, reading by key', () => {
+    assert.deepStrictEqual(
+      L.tableToCsv(cols, [{ a: '1', b: 'x' }, { a: '2', b: 'y' }]).split('\n'),
+      ['Col A,Col B', '1,x', '2,y']);
+  });
+
+  it('quotes values and treats missing keys as blank', () => {
+    assert.deepStrictEqual(
+      L.tableToCsv(cols, [{ a: 'a,b' }]).split('\n'),
+      ['Col A,Col B', '"a,b",']);
+  });
+
+  it('keeps a header-only file for no rows', () => {
+    assert.strictEqual(L.tableToCsv(cols, []), 'Col A,Col B');
+  });
+});
+
+describe('pickColumns', () => {
+  const table = { columns: [{ key: 'a', label: 'A' }, { key: 'b', label: 'B' }, { key: 'c', label: 'C' }],
+                  rows: [{ a: 1, b: 2, c: 3 }] };
+
+  it('keeps only the chosen columns, in the table order, rows untouched', () => {
+    const out = L.pickColumns(table, ['c', 'a']);
+    assert.deepStrictEqual(out.columns.map(c => c.key), ['a', 'c']);
+    assert.strictEqual(out.rows, table.rows);
+  });
+
+  it('keeps everything when keys is null', () => {
+    assert.strictEqual(L.pickColumns(table, null), table);
+  });
+});
+
+describe('tableToPrintHtml', () => {
+  it('escapes labels and values into a self-contained document', () => {
+    const html = L.tableToPrintHtml({
+      title: 'A & B', subtitle: 'sub',
+      columns: [{ key: 'n', label: '<Name>' }],
+      rows: [{ n: 'Tom & "Jerry"' }],
+    });
+    assert.match(html, /<!DOCTYPE html>/);
+    assert.match(html, /&lt;Name&gt;/);
+    assert.match(html, /Tom &amp; &quot;Jerry&quot;/);
+    assert.match(html, /<title>A &amp; B<\/title>/);
+  });
+
+  it('shows a placeholder row when there is no data', () => {
+    const html = L.tableToPrintHtml({ title: 'T', columns: [{ key: 'a', label: 'A' }], rows: [] });
+    assert.match(html, /No data for this selection/);
+  });
+});
+
+describe('buildRosterExportTable', () => {
+  const students = [
+    { number: '7',  name: 'Riley Ames', instrument: '12 Trumpet', section: 'Brass', grade: '10',
+      shirt: 'M', notes: 'captain', studentCode: 'ab3k9xzq' },
+    { number: '42', name: 'Sam',        instrument: 'Flute' },
+  ];
+
+  it('normalizes instrument, upper-cases the code, reads custom fields by key', () => {
+    const cols = [
+      { key: 'number', label: 'Student Number' },
+      { key: 'name', label: 'Name' },
+      { key: 'instrument', label: 'Instrument' },
+      { key: 'shirt', label: 'Shirt Size' }, // custom field, value at s.shirt
+      { key: 'studentCode', label: 'Student Code' },
+    ];
+    const { rows } = L.buildRosterExportTable(students, cols);
+    assert.deepStrictEqual(rows[0], { number: '7', name: 'Riley Ames', instrument: 'Trumpet', shirt: 'M', studentCode: 'AB3K9XZQ' });
+    assert.deepStrictEqual(rows[1], { number: '42', name: 'Sam', instrument: 'Flute', shirt: '', studentCode: '' });
+  });
+
+  it('returns exactly the columns it was given', () => {
+    const cols = [{ key: 'number', label: 'Student Number' }];
+    assert.deepStrictEqual(L.buildRosterExportTable(students, cols).columns, cols);
+  });
+});
+
+describe('buildMarksExportTable', () => {
+  const students = [{ number: '7', name: 'Riley' }, { number: '9', name: 'Sam' }];
+  const rehearsals = [
+    { id: 'r1', date: '2026-08-01', label: 'Camp' },
+    { id: 'r2', date: '2026-08-05', label: '' },
+  ];
+  const entries = {
+    r1: { '7': { positives: 2, mistakes: 1, attendance: 'late', by: 'uid1' } },
+    r2: { '9': { positives: 0, mistakes: 0, attendance: 'absent' } },
+  };
+  const authorLabel = uid => (uid === 'uid1' ? 'director-j' : '');
+
+  it('detail mode: one row per recorded student×event, author via label not uid', () => {
+    const { columns, rows } = L.buildMarksExportTable(rehearsals, entries, students, { mode: 'detail', authorLabel });
+    assert.deepStrictEqual(columns, L.MARKS_DETAIL_COLS);
+    assert.strictEqual(rows.length, 2);
+    assert.deepStrictEqual(rows[0], {
+      date: '2026-08-01', label: 'Camp', number: '7', name: 'Riley',
+      attendance: 'Late', positives: 2, mistakes: 1, recordedBy: 'director-j',
+    });
+    assert.strictEqual(rows[1].attendance, 'Absent');
+    assert.strictEqual(rows[1].recordedBy, ''); // no author stamped
+    // never emits a raw uid
+    assert.ok(!rows.some(r => r.recordedBy === 'uid1'));
+  });
+
+  it('summary mode: one row per student, totals across the range', () => {
+    const { columns, rows } = L.buildMarksExportTable(rehearsals, entries, students, { mode: 'summary' });
+    assert.deepStrictEqual(columns, L.MARKS_SUMMARY_COLS);
+    assert.deepStrictEqual(rows[0], { number: '7', name: 'Riley', positives: 2, mistakes: 1, absences: 0, lates: 1 });
+    assert.deepStrictEqual(rows[1], { number: '9', name: 'Sam',   positives: 0, mistakes: 0, absences: 1, lates: 0 });
+  });
+});
+
+describe('buildLeaderboardExportTable', () => {
+  it('ranks by score descending with real names', () => {
+    const scored = [
+      { s: { number: '7', name: 'Riley' }, score: 3.14159, positives: 4, mistakes: 1 },
+      { s: { number: '9', name: 'Sam' },   score: 9,       positives: 9, mistakes: 0 },
+    ];
+    const { rows } = L.buildLeaderboardExportTable(scored);
+    assert.deepStrictEqual(rows[0], { rank: 1, name: 'Sam',   number: '9', score: 9,    positives: 9, mistakes: 0 });
+    assert.deepStrictEqual(rows[1], { rank: 2, name: 'Riley', number: '7', score: 3.14, positives: 4, mistakes: 1 });
+  });
+});
+
+describe('buildSongsExportTable', () => {
+  const students = [{ number: '7', name: 'Riley' }, { number: '9', name: 'Sam' }];
+  const songs = [
+    { id: 's1', title: 'Opener', statuses: { '7': { status: 'passed' }, '9': { status: 'failed' } } },
+    { id: 's2', title: 'Ballad', statuses: { '7': { status: 'passed' } } },
+  ];
+
+  it('builds a per-song matrix with a passed count', () => {
+    const { columns, rows } = L.buildSongsExportTable(students, songs);
+    assert.deepStrictEqual(columns.map(c => c.label), ['Student Number', 'Name', 'Opener', 'Ballad', 'Songs Passed']);
+    assert.deepStrictEqual(rows[0], { number: '7', name: 'Riley', 'song:s1': 'Passed', 'song:s2': 'Passed', passedCount: 2 });
+    assert.deepStrictEqual(rows[1], { number: '9', name: 'Sam',   'song:s1': 'Try Again', 'song:s2': '', passedCount: 0 });
+  });
+});
+
+describe('buildTasksExportTable', () => {
+  const students = [{ number: '7', name: 'Riley' }, { number: '9', name: 'Sam' }];
+  // Task applies to everyone by default; task t2 only includes student 7.
+  const tasks = [
+    { id: 't1', title: 'Fees', statuses: { '7': { done: true } } },
+    { id: 't2', title: 'Solo', includeStudents: ['7'], applyMode: 'include', statuses: {} },
+  ];
+
+  it('marks Done/Not done, and blank where a task does not apply', () => {
+    const { columns, rows } = L.buildTasksExportTable(students, tasks);
+    assert.deepStrictEqual(columns.map(c => c.label), ['Student Number', 'Name', 'Fees', 'Solo']);
+    assert.strictEqual(rows[0]['task:t1'], 'Done');
+    assert.strictEqual(rows[0]['task:t2'], 'Not done'); // applies to 7, not done
+    assert.strictEqual(rows[1]['task:t1'], 'Not done'); // applies, no status
+    assert.strictEqual(rows[1]['task:t2'], '');         // does not apply to 9
+  });
+});
+
 // ── Filter + sort engine ──────────────────────────────────────────────────────
 
 describe('filterAndSortStudents', () => {
