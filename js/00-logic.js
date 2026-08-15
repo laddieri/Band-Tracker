@@ -111,6 +111,25 @@ function compareRehearsalsDesc(a, b) {
 
 // ── Rehearsal attendance streak ───────────────────────────────────────────────
 
+// Whether a rehearsal happened before a student joined the roster, so a missing
+// entry doc can NOT be read as "present". The "present" case writes no entry, so
+// the attendance helpers treat "no entry" as attended — but that only holds for
+// students who were on the roster when attendance was taken. A student created
+// afterwards never had the chance to attend, and without this guard inherits a
+// full streak (and "attended" history) from every historical rehearsal.
+// Applies only when we know when the student was created (`createdAt`, epoch ms);
+// students predating that field keep the old behavior. Compared by calendar date
+// (the rehearsal's primary sort key) so a rehearsal held on the student's join
+// day still counts.
+function rehearsalPredatesStudent(rehearsal, student) {
+  const created = Number(student?.createdAt);
+  const date = rehearsal?.date;
+  if (!created || !date) return false;
+  const d = new Date(created);
+  const createdDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return String(date) < createdDate;
+}
+
 // How many of the most recent consecutive rehearsals a student attended without
 // an absence. Only rehearsals where attendance was actually taken
 // (`attendanceSubmitted`) and that include the student (rehearsal scope) count;
@@ -120,7 +139,10 @@ function compareRehearsalsDesc(a, b) {
 // doc) counts as attended too. Rehearsals a director hid from students
 // (`hiddenFromStudents`) are skipped entirely — they "shouldn't count", so they
 // neither break nor extend the streak — keeping the number identical in the
-// director roster and the student's own portal.
+// director roster and the student's own portal. Rehearsals that predate the
+// student (`rehearsalPredatesStudent`) are skipped as well unless the student has
+// an explicit entry for them — a newly added student didn't miss rehearsals held
+// before they existed, but an explicit record from a director is honored.
 //   `rehearsals` — array of rehearsal docs; `entries` — STATE.entries shape
 //   ({ [rehearsalId]: { [studentNumber]: entry } }); `student` — the student doc
 //   (needs its number + scope fields).
@@ -129,7 +151,8 @@ function rehearsalStreak(rehearsals, entries, student) {
   const num = String(student.number);
   const ordered = (rehearsals || [])
     .filter(r => r && r.attendanceSubmitted && !r.hiddenFromStudents
-              && rehearsalIncludesStudent(student, r.scope))
+              && rehearsalIncludesStudent(student, r.scope)
+              && (entries?.[r.id]?.[num] || !rehearsalPredatesStudent(r, student)))
     .sort(compareRehearsalsDesc);
   let streak = 0;
   for (const r of ordered) {
@@ -145,15 +168,18 @@ function rehearsalStreak(rehearsals, entries, student) {
 // from students — minus the ones they were marked absent for. A 'late' still
 // counts as attended (it isn't an absence), and a rehearsal with no entry for
 // the student (the common "present" case, which writes no entry doc) counts as
-// attended too. Each returned item is `{ rehearsal, status }`, where `status` is
-// 'present' or 'late'. The portal's "N Attended" pill is this list's length and
-// its modal is the list itself.
+// attended too. Rehearsals that predate the student (`rehearsalPredatesStudent`)
+// are excluded unless they carry an explicit entry, mirroring the streak — a new
+// student didn't attend rehearsals held before they joined. Each returned item is
+// `{ rehearsal, status }`, where `status` is 'present' or 'late'. The portal's
+// "N Attended" pill is this list's length and its modal is the list itself.
 function rehearsalsAttended(rehearsals, entries, student) {
   if (!student) return [];
   const num = String(student.number);
   return (rehearsals || [])
     .filter(r => r && r.attendanceSubmitted && !r.hiddenFromStudents
               && rehearsalIncludesStudent(student, r.scope)
+              && (entries?.[r.id]?.[num] || !rehearsalPredatesStudent(r, student))
               && entries?.[r.id]?.[num]?.attendance !== 'absent')
     .sort(compareRehearsalsDesc)
     .map(r => ({ rehearsal: r, status: entries?.[r.id]?.[num]?.attendance === 'late' ? 'late' : 'present' }));
@@ -1563,7 +1589,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     FAKE_ADJECTIVES, FAKE_ANIMALS, _strHash, pseudonymFor,
     eventType, isPerformance, eventTypeLabel,
-    rehearsalIncludesStudent, rehearsalScopeLabel, compareRehearsalsDesc, rehearsalStreak, rehearsalsAttended,
+    rehearsalIncludesStudent, rehearsalScopeLabel, compareRehearsalsDesc, rehearsalPredatesStudent, rehearsalStreak, rehearsalsAttended,
     isMemorizationExcluded,
     taskAppliesToStudent, _taskMatchesGroups,
     isDoneLate,

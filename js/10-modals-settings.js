@@ -104,7 +104,10 @@ function saveNewStudent() {
   const student = {
     number: num,
     name:   document.getElementById('m-name').value.trim(),
-    songs:  []
+    songs:  [],
+    // Stamp when the student joined the roster so attendance streak/history don't
+    // credit them for rehearsals held before they existed (rehearsalPredatesStudent).
+    createdAt: Date.now()
   };
   if (hasField('instrument')) student.instrument = document.getElementById('m-instrument')?.value || '';
   if (hasField('section'))    student.section    = document.getElementById('m-section')?.value    || '';
@@ -1387,6 +1390,9 @@ async function executeImport() {
         skipped++;
       }
     } else {
+      // Stamp roster arrival so a mid-season import doesn't inherit streaks from
+      // rehearsals held before these students joined (rehearsalPredatesStudent).
+      incoming.createdAt = Date.now();
       STATE.students[num] = incoming;
       batch.set(orgCol('students').doc(num), incoming);
       added++;
