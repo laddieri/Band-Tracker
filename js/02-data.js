@@ -211,11 +211,16 @@ async function startListeners() {
     }),
 
     orgCol('students').onSnapshot(snap => {
-      const changes = snap.docChanges();
-      changes.forEach(ch => {
-        if (ch.type === 'removed') delete STATE.students[ch.doc.id];
-        else STATE.students[ch.doc.id] = { ...ch.doc.data(), _id: ch.doc.id };
-      });
+      // Rebuild the whole map from the snapshot rather than applying docChanges
+      // deltas. A resumed/rebound listener (startListeners re-runs on every auth
+      // refresh) delivers only current docs as 'added' — a student deleted while
+      // this client was disconnected produces no 'removed' event, so an
+      // incremental map would keep the ghost until a full reload. Rebuilding
+      // self-heals like the songs/rehearsals/tasks listeners. Pending local
+      // writes (add-student, the spot/task mirrors) already appear in snap.docs
+      // via latency compensation, so a rebuild never drops them.
+      STATE.students = {};
+      snap.docs.forEach(d => { STATE.students[d.id] = { ...d.data(), _id: d.id }; });
       tick('students');
       _purgeBlockSpots();        // director-only: drop obsolete roster column/row
       _syncStudentSpotsMirror(); // director-only: keep each student's spot mirror current
@@ -334,8 +339,11 @@ function _syncStudentSpotsMirror() {
     const num  = String(s.number);
     const want = desired[num] || {};
     if (_studentSpotsKey(want) === _studentSpotsKey(s.spots || {})) return;
-    if (Object.keys(want).length) { s.spots = want; pending.push([num, { spots: want }]); }
-    else { delete s.spots; pending.push([num, { spots: del }]); }
+    // No optimistic `s.spots = want`: the students listener rebuilds from
+    // snap.docs, and this commit's pending write is already reflected there via
+    // latency compensation, so the next snapshot converges without churn.
+    if (Object.keys(want).length) pending.push([num, { spots: want }]);
+    else pending.push([num, { spots: del }]);
   });
   if (!pending.length) return;
 
@@ -384,8 +392,11 @@ function _syncTaskMirror() {
     const num  = String(s.number);
     const want = desired[num] || {};
     if (_studentTasksKey(want) === _studentTasksKey(s.taskStatuses || {})) return;
-    if (Object.keys(want).length) { s.taskStatuses = want; pending.push([num, { taskStatuses: want }]); }
-    else { delete s.taskStatuses; pending.push([num, { taskStatuses: del }]); }
+    // No optimistic `s.taskStatuses = want`: the students listener rebuilds from
+    // snap.docs, and this commit's pending write is already reflected there via
+    // latency compensation, so the next snapshot converges without churn.
+    if (Object.keys(want).length) pending.push([num, { taskStatuses: want }]);
+    else pending.push([num, { taskStatuses: del }]);
   });
   if (!pending.length) return;
 
