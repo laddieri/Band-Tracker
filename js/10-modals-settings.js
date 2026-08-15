@@ -1,6 +1,49 @@
 // Band Tracker — js/10-modals-settings.js — Student/rehearsal modals, CSV import, instrument/section/preset/auto-mark settings.
 // Plain script sharing global scope; load order is set in index.html.
 
+// ── Modals: Student portal login activity ─────────────────────────────────────
+// Directors see the last time each student signed in to their portal. Each
+// student stamps students/{num}.lastLogin (epoch ms) on their own doc when the
+// portal loads (studentListeners in js/02-data.js); directors read the whole
+// roster, so no publishing is needed — the field is already in STATE.students.
+
+function showStudentLoginsModal() {
+  if (!STATE.isAdmin) return;
+  const rows = Object.entries(STATE.students)
+    .map(([num, s]) => ({ num, name: s.name || '', lastLogin: Number(s.lastLogin) || 0 }))
+    // Most-recent logins first; never-logged-in students sink to the bottom,
+    // ordered by number so the list is stable.
+    .sort((a, b) =>
+      (b.lastLogin - a.lastLogin) ||
+      (String(a.num).localeCompare(String(b.num), undefined, { numeric: true })));
+
+  const loggedIn = rows.filter(r => r.lastLogin).length;
+  const body = rows.length
+    ? rows.map(r => `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border,#eee)">
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            ${esc(r.name || '—')} <span style="color:var(--text-muted)">#${esc(String(r.num))}</span>
+          </span>
+          <span style="flex-shrink:0;font-size:.85rem;${r.lastLogin ? '' : 'color:var(--text-muted);font-style:italic'}">
+            ${r.lastLogin ? esc(fmtDateTime(r.lastLogin)) : 'Never'}
+          </span>
+        </div>`).join('')
+    : '<p style="color:var(--text-muted)">No students on the roster yet.</p>';
+
+  openModal(`
+    <div class="modal-title">Student Portal Logins</div>
+    <p style="font-size:.8rem;color:var(--text-muted);margin:-6px 0 14px">
+      ${loggedIn} of ${rows.length} student${rows.length === 1 ? '' : 's'} have signed in.
+      Login times update the next time a student opens the app.
+    </p>
+    <div style="max-height:52vh;overflow-y:auto">${body}</div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="showBrandSettingsModal()">← Band Settings</button>
+      <button class="btn btn-primary" onclick="closeModal()">Done</button>
+    </div>
+  `);
+}
+
 // ── Modals: Students ──────────────────────────────────────────────────────────
 
 function showAddStudentModal(prefill = '') {

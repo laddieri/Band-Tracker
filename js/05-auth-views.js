@@ -734,6 +734,17 @@ function showBrandSettingsModal() {
     </div>
 
     <div class="form-group">
+      <label class="form-label">Student Portal Logins</label>
+      <p style="font-size:.75rem;color:var(--text-muted);margin:-2px 0 8px">
+        See the last time each student signed in to their portal — handy for
+        spotting who hasn't set up their account yet.
+      </p>
+      <button class="btn btn-secondary" onclick="showStudentLoginsModal()">
+        View Login Activity…
+      </button>
+    </div>
+
+    <div class="form-group">
       <label class="form-label">Export Data</label>
       <p style="font-size:.75rem;color:var(--text-muted);margin:-2px 0 8px">
         Download the roster, attendance, marks, leaderboard, songs or tasks as a
