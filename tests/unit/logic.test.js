@@ -444,6 +444,31 @@ describe('rehearsalStreak', () => {
   it('returns 0 with no student', () => {
     assert.strictEqual(L.rehearsalStreak(rehs, {}, null), 0);
   });
+
+  it('does not credit a student for rehearsals held before they joined', () => {
+    // Joined 2026-03-16 — only r4 (2026-03-22) is on/after that date.
+    const joined = { number: '42', name: 'Newbie', createdAt: Date.parse('2026-03-16T09:00:00') };
+    assert.strictEqual(L.rehearsalStreak(rehs, {}, joined), 1);
+  });
+
+  it('counts a rehearsal held on the join day', () => {
+    const joined = { number: '42', name: 'Newbie', createdAt: Date.parse('2026-03-15T20:00:00') };
+    // r3 (2026-03-15) and r4 (2026-03-22) count; r1/r2 predate the join.
+    assert.strictEqual(L.rehearsalStreak(rehs, {}, joined), 2);
+  });
+
+  it('honors an explicit entry even on a rehearsal that predates the student', () => {
+    const joined = { number: '42', name: 'Newbie', createdAt: Date.parse('2026-03-22T09:00:00') };
+    // Only r4 is on/after the join, but a director recorded r1 as absent — that
+    // explicit record is honored, so walking newest-first stops the streak at r1.
+    const entries = { r1: { '42': { attendance: 'absent' } } };
+    // r4 counts (+1), r3/r2 predate with no entry (skipped), r1 explicit absence → stop.
+    assert.strictEqual(L.rehearsalStreak(rehs, entries, joined), 1);
+  });
+
+  it('keeps the old behavior for students without a createdAt', () => {
+    assert.strictEqual(L.rehearsalStreak(rehs, {}, sam), 4);
+  });
 });
 
 describe('rehearsalsAttended', () => {
@@ -483,6 +508,21 @@ describe('rehearsalsAttended', () => {
     const entries = { a: { '9': { attendance: 'absent' } } };
     const res = L.rehearsalsAttended(list, entries, flute);
     assert.deepStrictEqual(res.map(x => x.rehearsal.id), ['e']);
+  });
+
+  it('excludes rehearsals held before the student joined the roster', () => {
+    // Joined 2026-03-15 — r3 and r4 are on/after; r1/r2 predate and are dropped.
+    const joined = { number: '42', name: 'Newbie', createdAt: Date.parse('2026-03-15T09:00:00') };
+    const res = L.rehearsalsAttended(rehs, {}, joined);
+    assert.deepStrictEqual(res.map(x => x.rehearsal.id), ['r4', 'r3']);
+  });
+
+  it('still lists a pre-join rehearsal that carries an explicit entry', () => {
+    const joined = { number: '42', name: 'Newbie', createdAt: Date.parse('2026-03-22T09:00:00') };
+    const entries = { r1: { '42': { attendance: 'late' } } };
+    const res = L.rehearsalsAttended(rehs, entries, joined);
+    assert.deepStrictEqual(res.map(x => x.rehearsal.id), ['r4', 'r1']);
+    assert.deepStrictEqual(res.map(x => x.status), ['present', 'late']);
   });
 
   it('returns [] with no student', () => {

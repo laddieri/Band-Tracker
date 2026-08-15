@@ -33,6 +33,11 @@ orgs/{orgId}                          # org metadata
   ├─ settings/public                  # director-published student-safe snapshot
   ├─ settings/drill                   # pointer: { activeId } — the school-wide active drill
   ├─ students/{studentNumber}         # was: /students/{studentNumber}
+  │    (fields) number, name, …, createdAt?   # createdAt (epoch ms) = roster join time;
+  │                                    #   attendance streak/history skip rehearsals held
+  │                                    #   before it, so a new student isn't credited for
+  │                                    #   rehearsals they never attended (absent createdAt
+  │                                    #   = legacy student, no cutoff applied)
   ├─ rehearsals/{rehearsalId}         # was: /rehearsals/{rehearsalId} — a rehearsal OR performance
   │    (fields) date, label, season, scope?, ended?, attendanceSubmitted?,
   │    type?,                          # 'performance' marks a performance; absent = rehearsal
