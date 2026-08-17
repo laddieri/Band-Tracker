@@ -142,6 +142,7 @@ let _drillInfoEdit    = false; // info panel: false = marking (default), true = 
 let _drillFieldWhite  = (typeof localStorage !== 'undefined' && localStorage.getItem('drillFieldWhite') === '1'); // field fill: white vs green
 let _drillShowNotes   = (typeof localStorage === 'undefined' || localStorage.getItem('drillShowNotes') !== '0'); // show a set's Pyware instruction text (default on)
 let _drillHighlightShared = (typeof localStorage === 'undefined' || localStorage.getItem('drillHighlightShared') !== '0'); // ring + count badge on spots shared by 2+ students (default on)
+let _drillHighlightUnassigned = (typeof localStorage !== 'undefined' && localStorage.getItem('drillHighlightUnassigned') === '1'); // dashed ring on spots with no student assigned (default off)
 let _drillSearchQuery = '';   // text in the Drill-tab performer search box
 let _drillMatchLabels = [];   // all performer labels the current search matches (for cycling same-name hits)
 let _drillMatchIdx    = 0;    // which of _drillMatchLabels is currently traced

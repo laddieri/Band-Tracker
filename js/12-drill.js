@@ -726,6 +726,7 @@ function _drillFieldSvg(positions, opts = {}) {
     // assigned dots are obvious at a glance.
     const spotCount = drillStudentNumsByLabel(p.label).length;
     const shared    = spotCount > 1 && _drillHighlightShared;
+    const unassigned = spotCount === 0 && _drillHighlightUnassigned;
     const sel     = selectMode && _drillChecked.has(p.label);
     const isTrace = traceLabel && p.label === traceLabel;
     const isFocus = focusLabel && p.label === focusLabel;
@@ -745,6 +746,14 @@ function _drillFieldSvg(positions, opts = {}) {
       const rr = (dotR + 1.7).toFixed(1);
       dots += `<circle cx="${sx}" cy="${sy}" r="${rr}" fill="none" stroke="#000" stroke-width="1.7" opacity="0.45" pointer-events="none"/>`
            +  `<circle cx="${sx}" cy="${sy}" r="${rr}" fill="none" stroke="#ff8c1a" stroke-width="1" pointer-events="none"/>`;
+    }
+    // Unassigned-spot ring: a red dashed ring with a dark halo so it reads on both
+    // fields. Dashed (vs the solid shared ring) keeps the two apart at a glance; a
+    // spot can't be both (shared needs 2+, unassigned needs 0). Always drawn.
+    if (unassigned) {
+      const rr = (dotR + 1.7).toFixed(1);
+      dots += `<circle cx="${sx}" cy="${sy}" r="${rr}" fill="none" stroke="#000" stroke-width="1.7" opacity="0.45" pointer-events="none"/>`
+           +  `<circle cx="${sx}" cy="${sy}" r="${rr}" fill="none" stroke="#ff3b30" stroke-width="1" stroke-dasharray="2 1.4" pointer-events="none"/>`;
     }
     if (_drillDotLabelsOn && !isFocus) {
       // The spot label (letter + number) centered inside the dot. Shrinks a
@@ -799,6 +808,11 @@ function _drillHasSharedSpots() {
   return Object.keys(m).some(k => drillSpotNums(m[k]).length > 1);
 }
 
+// True when any performer in the loaded chart has no student assigned to its spot.
+function _drillHasUnassignedSpots() {
+  return (_drillData || []).some(sec => sec.performers.some(lbl => !drillStudentNumsByLabel(lbl).length));
+}
+
 function _drillLegendHtml() {
   const sections = (_drillData || []).map((sec, i) => {
     const c = _DRILL_COLORS[i % _DRILL_COLORS.length];
@@ -809,7 +823,12 @@ function _drillLegendHtml() {
   const shared = (_drillHighlightShared && _drillHasSharedSpots())
     ? `<span class="drill-chart-leg-item"><svg width="12" height="12" style="flex-shrink:0"><circle cx="6" cy="6" r="3.1" fill="#888"/><circle cx="6" cy="6" r="5" fill="none" stroke="#ff8c1a" stroke-width="1.4"/></svg>Shared spot</span>`
     : '';
-  return sections + shared;
+  // Key for the unassigned-spot ring, shown only when the highlight is on and
+  // there's an unassigned spot to explain.
+  const unassigned = (_drillHighlightUnassigned && _drillHasUnassignedSpots())
+    ? `<span class="drill-chart-leg-item"><svg width="12" height="12" style="flex-shrink:0"><circle cx="6" cy="6" r="3.1" fill="#888"/><circle cx="6" cy="6" r="5" fill="none" stroke="#ff3b30" stroke-width="1.4" stroke-dasharray="2.2 1.6"/></svg>Unassigned</span>`
+    : '';
+  return sections + shared + unassigned;
 }
 
 // Cycle text for the labels toggle button.
@@ -2404,6 +2423,14 @@ function showDrillOptionsModal() {
         <button class="drill-lblseg${_drillHighlightShared ? ' drill-lblseg--on' : ''}" onclick="drillSetHighlightShared(true)">Highlight</button>
       </div>
     </div>` : ''}
+    ${_drillHasUnassignedSpots() ? `
+    <div class="drill-opt-section">
+      <div class="drill-opt-label">Unassigned spots (no student)</div>
+      <div class="drill-lblseg-group" id="drill-unassignedseg-group">
+        <button class="drill-lblseg${!_drillHighlightUnassigned ? ' drill-lblseg--on' : ''}" onclick="drillSetHighlightUnassigned(false)">Off</button>
+        <button class="drill-lblseg${_drillHighlightUnassigned ? ' drill-lblseg--on' : ''}" onclick="drillSetHighlightUnassigned(true)">Highlight</button>
+      </div>
+    </div>` : ''}
     <div class="drill-opt-section">
       <div class="drill-opt-label">Field color</div>
       <div class="drill-lblseg-group" id="drill-fieldseg-group">
@@ -2474,6 +2501,21 @@ function drillSetHighlightShared(on) {
     try { localStorage.setItem('drillHighlightShared', on ? '1' : '0'); } catch {}
   }
   document.querySelectorAll('#drill-sharedseg-group .drill-lblseg')
+    .forEach((b, i) => b.classList.toggle('drill-lblseg--on', i === (on ? 1 : 0)));
+  if (_view === 'drill' && document.getElementById('drill-view-root')) _drillViewRerender();
+  const fs = document.getElementById('drill-chart-fs');
+  if (fs && !fs.classList.contains('hidden')) _drillChartRefresh();
+}
+
+// Toggle the dashed ring on spots with no student assigned, from the options menu
+// (persisted). Updates the segmented control in place and re-renders.
+function drillSetHighlightUnassigned(on) {
+  on = !!on;
+  if (_drillHighlightUnassigned !== on) {
+    _drillHighlightUnassigned = on;
+    try { localStorage.setItem('drillHighlightUnassigned', on ? '1' : '0'); } catch {}
+  }
+  document.querySelectorAll('#drill-unassignedseg-group .drill-lblseg')
     .forEach((b, i) => b.classList.toggle('drill-lblseg--on', i === (on ? 1 : 0)));
   if (_view === 'drill' && document.getElementById('drill-view-root')) _drillViewRerender();
   const fs = document.getElementById('drill-chart-fs');
