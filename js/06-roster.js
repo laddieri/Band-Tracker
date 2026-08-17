@@ -133,6 +133,7 @@ function rosterSortOptions() {
     ] : []),
     ...(featureOn('attendance') ? [{value:'absences', label:'Absences'}] : []),
     ...(featureOn('songs') && STATE.songs.length ? [{value:'passed', label:'Songs Completed'}] : []),
+    ...(featureOn('songs') && STATE.songs.some(s => s.dueDate) ? [{value:'overdue', label:'Overdue Songs'}] : []),
   ];
 }
 
@@ -292,13 +293,22 @@ function _studentSpotBadges(s) {
 function _rosterScoreMap() {
   const map = {};
   const attendanceOn = featureOn('attendance');
+  const songsOn      = featureOn('songs');
+  const td           = today(); // for overdue-song tally
   const { mon, fri } = currentWeekRange(); // current-week bounds for absence tally
   for (const s of Object.values(DB.getStudents())) {
     const hist = DB.getStudentHistory(s.number);
     const mistakes  = hist.reduce((sum,e)=>sum+(e.entry.mistakes||0),0);
     const positives = hist.reduce((sum,e)=>sum+(e.entry.positives||0),0);
-    const passed = (featureOn('songs') && !memExcluded(s))
-      ? STATE.songs.filter(song => song.statuses?.[String(s.number)]?.status === 'passed').length
+    const memorizes = songsOn && !memExcluded(s);
+    const num       = String(s.number);
+    const passed = memorizes
+      ? STATE.songs.filter(song => song.statuses?.[num]?.status === 'passed').length
+      : 0;
+    // Songs past their due date that this student hasn't passed yet.
+    const overdue = memorizes
+      ? STATE.songs.filter(song =>
+          song.dueDate && song.dueDate < td && song.statuses?.[num]?.status !== 'passed').length
       : 0;
     // Absences: total and just-this-week, scanned from the same history.
     let absences = 0, weekAbsences = 0;
@@ -309,7 +319,7 @@ function _rosterScoreMap() {
         if (r.date >= mon && r.date <= fri) weekAbsences++;
       }
     }
-    map[s.number] = { mistakes, positives, passed, absences, weekAbsences };
+    map[s.number] = { mistakes, positives, passed, overdue, absences, weekAbsences };
   }
   return map;
 }
@@ -324,7 +334,7 @@ function rosterRows(list, scoreMap = _rosterScoreMap()) {
   const songsTotal = STATE.songs.length;
   const showAbsences = featureOn('attendance');
   return list.map(s => {
-    const sc   = scoreMap[s.number] || { mistakes: 0, positives: 0, passed: 0, absences: 0, weekAbsences: 0 };
+    const sc   = scoreMap[s.number] || { mistakes: 0, positives: 0, passed: 0, overdue: 0, absences: 0, weekAbsences: 0 };
     const errs = sc.mistakes;
     const pos  = sc.positives;
     // Absence summary: total across the season, with this week's count called
@@ -335,6 +345,9 @@ function rosterRows(list, scoreMap = _rosterScoreMap()) {
     // majorettes) don't memorize music, so they get no song tick.
     const showSongs   = featureOn('songs') && songsTotal > 0 && !memExcluded(s);
     const songsPassed = showSongs ? sc.passed : 0;
+    // Overdue: songs past their due date this student hasn't passed. Only shown
+    // for memorizing students who actually have one or more overdue.
+    const overdue     = showSongs ? (sc.overdue || 0) : 0;
     return `
       <div class="roster-row" onclick="navigate('student',{num:'${esc(s.number)}'})">
         <div class="student-info">
@@ -352,6 +365,7 @@ function rosterRows(list, scoreMap = _rosterScoreMap()) {
           ${pos > 0  ? `<span class="badge badge-success">${pos}✓</span>` : ''}` : ''}
           ${absences > 0 ? `<span class="badge badge-warn" title="Absences — ${absences} total${weekAbsences > 0 ? `, ${weekAbsences} this week` : ''}">${absences} absent${weekAbsences > 0 ? `<span style="font-weight:600;opacity:.82"> · ${weekAbsences} wk</span>` : ''}</span>` : ''}
           ${showSongs ? `<span class="badge badge-song" title="Songs passed off">${songsPassed}/${songsTotal} 🎵</span>` : ''}
+          ${overdue > 0 ? `<span class="badge badge-overdue" title="Songs past due, not passed">⏰ ${overdue} overdue</span>` : ''}
         </div>
       </div>`;
   }).join('');
