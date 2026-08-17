@@ -8,11 +8,17 @@ function _buildSongRosterRows() {
   const students = Object.values(DB.getStudents()).filter(s => !memExcluded(s));
   const total    = songs.length;
 
+  const td       = today();
   const scoreMap = {};
   students.forEach(s => {
-    const passed  = songs.filter(song => song.statuses?.[String(s.number)]?.status === 'passed').length;
+    const num     = String(s.number);
+    const passed  = songs.filter(song => song.statuses?.[num]?.status === 'passed').length;
     const missing = total - passed;
-    scoreMap[s.number] = { passed, missing };
+    // Songs past their due date that this student hasn't passed yet.
+    const overdue = songs.filter(song =>
+      song.dueDate && song.dueDate < td && song.statuses?.[num]?.status !== 'passed'
+    ).length;
+    scoreMap[s.number] = { passed, missing, overdue };
   });
 
   const sorted = filterAndSortStudents(students, _songRosterFilter, scoreMap);
@@ -20,7 +26,7 @@ function _buildSongRosterRows() {
     return `<div class="empty-state" style="padding:24px"><p>No students match the current filter.</p></div>`;
 
   return sorted.map(s => {
-    const { passed, missing } = scoreMap[s.number];
+    const { passed, missing, overdue } = scoreMap[s.number];
     const pct = total ? Math.round(passed / total * 100) : 0;
     const meta = [normInstrument(s.instrument), s.section].filter(Boolean).map(esc).join(' · ');
     return `
@@ -36,6 +42,7 @@ function _buildSongRosterRows() {
         <div class="song-roster-counts">
           <span class="src-passed">${passed} ✓</span>
           <span class="src-missing">${missing} left</span>
+          ${overdue ? `<span class="src-overdue">${overdue} overdue</span>` : ''}
         </div>
       </div>
     </div>`;
@@ -160,6 +167,7 @@ function viewSongs() {
       ${renderFilterBar('song-roster', _songRosterFilter, [
         {value:'passed',     label:'Most Passed'},
         {value:'missing',    label:'Most Missing'},
+        {value:'overdue',    label:'Most Overdue'},
         {value:'name',       label:'Name'},
         {value:'instrument', label:'Instrument'},
         {value:'grade',      label:'Grade'},

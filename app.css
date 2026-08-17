@@ -2793,6 +2793,7 @@ html, body {
 }
 .src-passed  { color: var(--success); }
 .src-missing { color: var(--text-muted); }
+.src-overdue { color: var(--danger); }
 
 /* ── Student song progress modal ────────────────────────────────────────────── */
 
