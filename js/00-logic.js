@@ -1004,7 +1004,7 @@ function studentSortValue(s, field, scoreMap) {
     case 'instrument': return instrOrder(s.instrument);
     case 'section':    return (s.section||'').toLowerCase();
     case 'grade':      return GRADE_LEVELS.indexOf(s.grade||'');
-    case 'score': case 'positives': case 'mistakes': case 'passed': case 'missing': case 'done':
+    case 'score': case 'positives': case 'mistakes': case 'passed': case 'missing': case 'done': case 'overdue':
       return scoreMap?.[s.number]?.[field] ?? -1;
     case 'absences':   return scoreMap?.[s.number]?.absences ?? 0;
     case 'lates':      return scoreMap?.[s.number]?.lates ?? 0;
