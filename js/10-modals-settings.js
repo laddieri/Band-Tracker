@@ -350,6 +350,19 @@ function _deleteStudent(num) {
     }
   });
   if (songDirty) songBatch.commit().catch(() => {});
+  // Remove their results from task docs too (mirrors the song cleanup above);
+  // otherwise their {done} marks linger orphaned in every task's statuses map.
+  const taskBatch = db.batch();
+  let taskDirty = false;
+  (STATE.tasks || []).forEach(task => {
+    if (task.statuses && task.statuses[String(num)] !== undefined) {
+      taskBatch.update(orgCol('tasks').doc(task.id), {
+        [`statuses.${num}`]: firebase.firestore.FieldValue.delete()
+      });
+      taskDirty = true;
+    }
+  });
+  if (taskDirty) taskBatch.commit().catch(() => {});
   closeModal();
   showToast(`${sName} deleted`);
   navigate('roster');

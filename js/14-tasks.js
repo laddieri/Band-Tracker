@@ -249,6 +249,13 @@ function _flushTaskStatusWrites() {
   tids.forEach(tid => {
     const statuses = {};
     Object.keys(buf[tid]).forEach(num => {
+      // Never record for a student who's no longer on the roster: the mirror
+      // write below is a set-merge, which would RE-CREATE a just-deleted
+      // student's doc (a nameless zombie that reappears in the roster and
+      // attendance-by-block). _deleteStudent drops the student from
+      // STATE.students first, so a buffered mark flushing after a delete is
+      // skipped here. See docs/DATA_MODEL.md "Student data visibility".
+      if (!STATE.students[String(num)]) return;
       const e = buf[tid][num];
       // Task doc keeps only "done" marks (absence = not done).
       statuses[num] = e.done ? { done: true, updatedAt: e.updatedAt, updatedBy: e.updatedBy } : gone();

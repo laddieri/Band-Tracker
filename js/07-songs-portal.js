@@ -640,6 +640,13 @@ function _flushSongStatusWrites() {
   sids.forEach(sid => {
     const statuses = {};
     Object.keys(buf[sid]).forEach(num => {
+      // Never record for a student who's no longer on the roster: the mirror
+      // write below is a set-merge, which would RE-CREATE a just-deleted
+      // student's doc (a nameless zombie that reappears in the roster and
+      // attendance-by-block). _deleteStudent drops the student from
+      // STATE.students first, so a buffered mark flushing after a delete is
+      // skipped here. See docs/DATA_MODEL.md "Student data visibility".
+      if (!STATE.students[String(num)]) return;
       const e = buf[sid][num];
       statuses[num] = e || gone();
       // Mirror status/note/updatedAt only — the mirror is student-readable,
