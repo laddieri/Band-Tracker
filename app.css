@@ -898,6 +898,15 @@ html, body {
 @keyframes toast-in { to { opacity: 1; } }
 @keyframes toast-out { to { opacity: 0; } }
 
+/* Confetti burst on a student's first portal open after a new song pass-off.
+   Full-screen, click-through overlay above the toast; self-removes in JS. */
+.confetti-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 2500;
+  pointer-events: none;
+}
+
 /* ── Roster rows ────────────────────────────────────────────────────────── */
 
 .roster-row {
