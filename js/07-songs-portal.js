@@ -1115,6 +1115,125 @@ function _portalBandAttendance() {
   return STATE.publicStats?.rehearsals || [];
 }
 
+// ── Song pass-off confetti ────────────────────────────────────────────────────
+// A student who opens their portal after passing a new song gets a one-time
+// confetti burst. The set of song IDs already celebrated is persisted per
+// org+student in localStorage; the FIRST time we ever see a student on this
+// device we record their current passes as a silent baseline, so a returning
+// student isn't showered for songs they passed long ago. Called from render()
+// on the student-portal branch — only real students reach it (the director
+// "preview student view" renders through a modal, never render()).
+function _songCelebrateKey(num) {
+  return `bandSongCelebrated:${STATE.orgId || ''}:${num}`;
+}
+
+function maybeCelebrateSongPassoffs() {
+  const num = STATE.studentNum;
+  if (!num || STATE.isAdmin || canRecord() || !portalFeatureOn('songs')) return;
+
+  const statuses  = STATE.students[String(num)]?.songStatuses || {};
+  const passedIds = Object.keys(statuses).filter(id => statuses[id]?.status === 'passed');
+  const key = _songCelebrateKey(num);
+
+  let seen = null;
+  try { const raw = localStorage.getItem(key); if (raw != null) seen = JSON.parse(raw); } catch {}
+
+  // First time on this device: record a silent baseline, don't celebrate.
+  if (!Array.isArray(seen)) {
+    try { localStorage.setItem(key, JSON.stringify(passedIds)); } catch {}
+    return;
+  }
+
+  const fresh = newlyPassedSongIds(passedIds, seen);
+  // Persist the current set either way (drops songs a director un-passed).
+  try { localStorage.setItem(key, JSON.stringify(passedIds)); } catch {}
+  if (!fresh.length) return;
+
+  const titles = fresh
+    .map(id => (STATE.publicStats?.songs || []).find(s => s.id === id)?.title)
+    .filter(Boolean);
+  const msg = titles.length === 1
+    ? `🎉 You passed “${titles[0]}”! Nice work!`
+    : `🎉 You passed ${fresh.length} new songs! Nice work!`;
+  showToast(msg);
+  fireConfetti();
+}
+
+// Lightweight, dependency-free confetti burst: a fixed, click-through canvas
+// overlay that rains colored paper and removes itself when the pieces settle.
+// Skipped entirely under prefers-reduced-motion.
+function fireConfetti() {
+  try {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  } catch {}
+
+  const prior = document.getElementById('confetti-canvas');
+  if (prior) prior.remove();
+
+  const canvas = document.createElement('canvas');
+  canvas.id = 'confetti-canvas';
+  canvas.className = 'confetti-canvas';
+  canvas.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(canvas);
+
+  const ctx = canvas.getContext('2d');
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  let W, H;
+  const resize = () => {
+    W = canvas.width  = Math.floor(window.innerWidth  * dpr);
+    H = canvas.height = Math.floor(window.innerHeight * dpr);
+    canvas.style.width  = window.innerWidth  + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+  };
+  resize();
+  window.addEventListener('resize', resize);
+
+  const colors = ['#ef4444', '#f59e0b', '#facc15', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'];
+  const parts = [];
+  for (let i = 0; i < 140; i++) {
+    parts.push({
+      x: (0.1 + 0.8 * Math.random()) * W,
+      y: -(0.05 + Math.random() * 0.35) * H,
+      w: (5 + Math.random() * 6) * dpr,
+      h: (8 + Math.random() * 8) * dpr,
+      color: colors[(Math.random() * colors.length) | 0],
+      vx: (Math.random() - 0.5) * 3 * dpr,
+      vy: (2 + Math.random() * 3) * dpr,
+      rot: Math.random() * Math.PI * 2,
+      vrot: (Math.random() - 0.5) * 0.3,
+      sway: Math.random() * Math.PI * 2,
+    });
+  }
+
+  const start = performance.now();
+  const DURATION = 3200;
+  const cleanup = () => { window.removeEventListener('resize', resize); canvas.remove(); };
+  const step = now => {
+    const t = now - start;
+    ctx.clearRect(0, 0, W, H);
+    const fade = t > DURATION - 700 ? Math.max(0, (DURATION - t) / 700) : 1;
+    let alive = 0;
+    parts.forEach(p => {
+      p.sway += 0.05;
+      p.x += p.vx + Math.sin(p.sway) * 0.6 * dpr;
+      p.y += p.vy;
+      p.vy += 0.05 * dpr; // gravity
+      p.rot += p.vrot;
+      if (p.y < H + 40 * dpr) alive++;
+      ctx.save();
+      ctx.globalAlpha = fade;
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+    });
+    if (t < DURATION && alive > 0) requestAnimationFrame(step);
+    else cleanup();
+  };
+  requestAnimationFrame(step);
+}
+
 function viewStudentPortal(previewMode = false) {
   const num  = STATE.studentNum;
   const s    = STATE.students[num];

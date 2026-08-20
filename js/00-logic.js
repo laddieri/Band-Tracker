@@ -1652,6 +1652,17 @@ function pastAbsences(list, todayStr, studentNumber) {
                  || ABSENCE_TYPES.indexOf(a.type) - ABSENCE_TYPES.indexOf(b.type));
 }
 
+// Which of the currently-passed song IDs haven't been celebrated yet — the
+// set difference `current \ seen`. Order follows `currentPassedIds`. The portal
+// persists `seen` between opens so a student is only showered with confetti for
+// songs passed since they last looked (the caller records a silent baseline the
+// first time it ever sees a student, so old passes never fire). Pure so it can
+// be unit-tested; the localStorage/DOM side lives in js/07-songs-portal.js.
+function newlyPassedSongIds(currentPassedIds, seenIds) {
+  const seen = new Set(seenIds || []);
+  return (currentPassedIds || []).filter(id => !seen.has(id));
+}
+
 // ── Node export (browser ignores this) ────────────────────────────────────────
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -1662,6 +1673,7 @@ if (typeof module !== 'undefined' && module.exports) {
     eventType, isPerformance, eventTypeLabel,
     rehearsalIncludesStudent, rehearsalScopeLabel, compareRehearsalsDesc, rehearsalPredatesStudent, rehearsalStreak, rehearsalsAttended,
     isMemorizationExcluded,
+    newlyPassedSongIds,
     taskAppliesToStudent, _taskMatchesGroups,
     isDoneLate,
     lbWeights, scoreStudentsCore, buildPublicStats,
