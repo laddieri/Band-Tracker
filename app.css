@@ -2906,6 +2906,7 @@ html, body {
 }
 .att-chip-absent { background: var(--danger-bg); color: var(--danger); }
 .att-chip-late   { background: var(--late-bg); color: var(--late-text); }
+.att-chip-leave  { background: var(--purple-bg); color: var(--purple-text); }
 .att-chip-btn {
   cursor: pointer;
   border: none;
@@ -2916,6 +2917,58 @@ html, body {
 }
 .att-chip-btn:hover { opacity: 0.8; }
 .att-chip-btn-active { outline-color: currentColor; }
+
+/* Anticipated-absence "reported" badge on an attendance row / block button. */
+.att-anticipated {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: normal;
+}
+.blk-att-stu .att-anticipated { margin-top: 6px; }
+
+/* Anticipated-absence management rows (Attendance tab + student detail) and
+   the student portal's read-only "Absences You Reported" list. */
+.abs-row {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 12px);
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.abs-row:hover { border-color: var(--primary); background: var(--primary-bg); }
+.abs-row-main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.abs-row-name { font-weight: 700; }
+.abs-row-when { font-size: 0.82rem; color: var(--text-muted); margin-top: 4px; }
+.abs-row-note { font-size: 0.82rem; color: var(--text-muted); margin-top: 3px; }
+
+/* The student picker inside the add/edit notice modal. */
+.abs-student-chosen {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 12px);
+  font-weight: 700;
+}
+.abs-student-change {
+  border: none; background: none; color: var(--primary);
+  font-weight: 700; font-family: inherit; cursor: pointer; font-size: 0.85rem;
+}
+.abs-student-result {
+  display: block; width: 100%; text-align: left;
+  padding: 8px 10px; margin-top: 4px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card, #fff); color: inherit;
+  font-family: inherit; font-size: 0.9rem; cursor: pointer;
+}
+.abs-student-result:hover { border-color: var(--primary); background: var(--primary-bg); }
 
 .att-date-list {
   display: flex;

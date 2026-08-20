@@ -1192,6 +1192,8 @@ function viewStudentPortal(previewMode = false) {
         </div>
       ` : ''}
 
+      ${portalAbsencesSectionHtml(num)}
+
       ${(hist.length > 0 && portalFeatureOn('marks')) ? `
         <div class="sec-card">
         <div id="portal-sec-marks-hdr" class="sec-hdr" onclick="toggleCollapse('portal-sec-marks')">

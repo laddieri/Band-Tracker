@@ -73,6 +73,9 @@ async function seed() {
       events: [{ label: 'M1', num: '42', action: 'add', at: 1, by: 'dirA' }],
     });
     await db.doc('orgs/a/settings/drill').set({ activeId: 'd1' });
+    await db.doc('orgs/a/anticipatedAbsences/ab1').set({
+      studentNumber: '42', type: 'absent', date: '2026-06-01',
+    });
 
     await db.doc('orgs/b').set({ createdBy: 'dirB', name: 'Org B' });
     await db.doc('members/dirB').set({ orgId: 'b', role: 'director', email: 'dir@b.com' });
@@ -224,6 +227,22 @@ describe('student data visibility', () => {
     await assertFails(director('studA').collection('orgs/a/spotHistory').get());
     await assertFails(director('studA').doc('orgs/a/spotHistory/sh1').set({ events: [] }, { merge: true }));
   });
+  it('a director can read and write anticipated absences', async () => {
+    await assertSucceeds(director('dirA').doc('orgs/a/anticipatedAbsences/ab1').get());
+    await assertSucceeds(director('dirA').collection('orgs/a/anticipatedAbsences').get());
+    await assertSucceeds(director('dirA').doc('orgs/a/anticipatedAbsences/ab2').set({
+      studentNumber: '7', type: 'late', date: '2026-06-05', time: '09:15', note: 'Dentist',
+    }));
+    await assertSucceeds(director('dirA').doc('orgs/a/anticipatedAbsences/ab1').delete());
+  });
+  it('a student CANNOT read or write anticipated absences (they see the mirror instead)', async () => {
+    await assertFails(director('studA').doc('orgs/a/anticipatedAbsences/ab1').get());
+    await assertFails(director('studA').collection('orgs/a/anticipatedAbsences').get());
+    await assertFails(director('studA').doc('orgs/a/anticipatedAbsences/ab1').set({ type: 'late' }, { merge: true }));
+  });
+  it('a director CANNOT read another org\'s anticipated absences', async () => {
+    await assertFails(director('dirB').doc('orgs/a/anticipatedAbsences/ab1').get());
+  });
   it('a student CANNOT write drills', async () => {
     await assertFails(director('studA').doc('orgs/a/drills/d1').set({ name: 'hacked' }));
     await assertFails(director('studA').doc('orgs/a/drills/d1/data/main').set({ pages: [] }));
@@ -348,6 +367,13 @@ describe('staff role (recording access, no admin control)', () => {
     await assertFails(staff().collection('orgs/a/spotHistory').get());
     await assertFails(staff().doc('orgs/a/spotHistory/sh1').set({ events: [] }, { merge: true }));
     await assertFails(staff().doc('orgs/a/spotHistory/sh1').delete());
+  });
+  it('staff can READ anticipated absences (for the badge) but CANNOT manage them', async () => {
+    await assertSucceeds(staff().doc('orgs/a/anticipatedAbsences/ab1').get());
+    await assertSucceeds(staff().collection('orgs/a/anticipatedAbsences').get());
+    await assertFails(staff().doc('orgs/a/anticipatedAbsences/ab2').set({ studentNumber: '7', type: 'late', date: '2026-06-05' }));
+    await assertFails(staff().doc('orgs/a/anticipatedAbsences/ab1').set({ note: 'x' }, { merge: true }));
+    await assertFails(staff().doc('orgs/a/anticipatedAbsences/ab1').delete());
   });
   it('staff can switch the active drill (settings/drill activeId) but not other drill settings', async () => {
     await assertSucceeds(staff().doc('orgs/a/settings/drill').set({ activeId: 'd1' }, { merge: true }));

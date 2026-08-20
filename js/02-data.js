@@ -39,6 +39,7 @@ async function startListeners() {
   _scopedReady = null;
   // Drop any drill state from a previous session/org; listeners repopulate it.
   STATE.drills = {}; STATE.shows = {}; STATE.spotHistory = {}; STATE.activeDrillId = null; _activeDrillLoadedId = null;
+  STATE.anticipatedAbsences = []; _absencesMirrorReady = false;
   _drillData = null; _drillPages = null; _drillFileName = null; _drillFlipV = false;
 
   // Resolve the user's org before reading any data; bail if redirected.
@@ -225,6 +226,7 @@ async function startListeners() {
       _purgeBlockSpots();        // director-only: drop obsolete roster column/row
       _syncStudentSpotsMirror(); // director-only: keep each student's spot mirror current
       _syncTaskMirror();         // director-only: keep each student's task mirror current
+      _syncAbsenceMirror();      // director-only: keep each student's notice mirror current
       schedulePublishPublicStats();
     }),
 
@@ -258,6 +260,19 @@ async function startListeners() {
       console.error('tasks listener error:', err);
       tick('tasks'); // don't hang the app — tasks will be empty
     }),
+
+    // Anticipated absences (advance notices). Directors + staff read (staff see
+    // the "reported" badge while recording attendance); only directors write.
+    // Each snapshot re-syncs the per-student anticipatedAbsences mirror
+    // (director-only) so the student portal stays current. Not part of the
+    // loading gate — the app is fully usable before notices load. See
+    // js/16-absences.js.
+    orgCol('anticipatedAbsences').onSnapshot(snap => {
+      STATE.anticipatedAbsences = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      _absencesMirrorReady = true; // safe to reconcile mirrors now that notices have loaded
+      _syncAbsenceMirror();        // director-only: keep each student's notice mirror current
+      if (!STATE.loading) renderFromData();
+    }, err => console.error('anticipated-absences listener error:', err)),
 
     // Drill library — one small metadata doc per drill (the heavy position
     // payload lives in each drill's data/main subdoc, loaded on demand for the
@@ -412,6 +427,55 @@ function _syncTaskMirror() {
 function _studentTasksKey(obj) {
   return Object.keys(obj || {}).sort()
     .map(k => `${k}=${obj[k].done ? 1 : 0}`).join(';');
+}
+
+// Students can't read the director/staff-only `anticipatedAbsences` collection,
+// so a director client MIRRORS each student's own advance notices onto their own
+// doc (students/{num}.anticipatedAbsences = [{ id, type, date, endDate?, time?,
+// note? }]) — same own-doc-mirror pattern as spots/taskStatuses. The mirror
+// carries no PII (no author uid). Diff-based and idempotent: writes only students
+// whose notice set changed, so steady state is a no-op and it self-heals after
+// any notice/roster edit (the absences/students listeners re-run it).
+let _absencesMirrorReady = false; // don't reconcile before the first notices snapshot
+
+function _syncAbsenceMirror() {
+  if (!STATE.isAdmin || !STATE.students) return; // only directors write student docs
+  // Before notices have loaded STATE.anticipatedAbsences is [], which would
+  // delete every student's mirror; wait for the first snapshot (or a local
+  // create, which sets the flag via the listener) so we never transiently wipe.
+  if (!_absencesMirrorReady) return;
+  const desired = {}; // studentNumber → [ {id, type, date, endDate?, time?, note?} ]
+  (STATE.anticipatedAbsences || []).forEach(a => {
+    const num = String(a.studentNumber);
+    const rec = { id: a.id, type: a.type, date: a.date };
+    if (a.endDate) rec.endDate = a.endDate;
+    if (a.time)    rec.time    = a.time;
+    if (a.note)    rec.note    = a.note;
+    (desired[num] = desired[num] || []).push(rec);
+  });
+
+  const del = firebase.firestore.FieldValue.delete();
+  const pending = [];
+  Object.values(STATE.students).forEach(s => {
+    const num  = String(s.number);
+    const want = desired[num] || [];
+    if (_studentAbsencesKey(want) === _studentAbsencesKey(s.anticipatedAbsences || [])) return;
+    if (want.length) pending.push([num, { anticipatedAbsences: want }]);
+    else pending.push([num, { anticipatedAbsences: del }]);
+  });
+  if (!pending.length) return;
+
+  for (let i = 0; i < pending.length; i += 400) {
+    const batch = db.batch();
+    pending.slice(i, i + 400).forEach(([num, data]) => batch.update(orgCol('students').doc(num), data));
+    batch.commit().catch(e => console.error('student anticipated-absence mirror sync failed:', e));
+  }
+}
+
+// Order-independent signature of a student's notice list, for change detection.
+function _studentAbsencesKey(list) {
+  return (list || []).map(a => `${a.id}=${a.type}|${a.date}|${a.endDate || ''}|${a.time || ''}|${a.note || ''}`)
+    .sort().join(';');
 }
 
 // Retire the legacy block-spot fields: positions are assigned per show now, so
@@ -735,6 +799,8 @@ auth.onAuthStateChanged(user => {
     STATE.songs      = [];
     STATE.tasks      = [];
     _tasksMirrorReady = false;
+    STATE.anticipatedAbsences = [];
+    _absencesMirrorReady = false;
     STATE.spotHistory = {};
     STATE.publicStats = null;
     STATE.dirNames   = {};

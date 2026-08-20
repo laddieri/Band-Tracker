@@ -222,6 +222,12 @@ const STATE = {
   // Director-only spot-assignment history: showId → { name, events } (see
   // _spotHistoryRecord in js/12-drill.js). Staff/students can't read it.
   spotHistory:                {},
+  // Anticipated absences (advance notices a student gave): array of
+  // { id, studentNumber, type, date, endDate?, time?, note?, … }. Directors and
+  // staff read the collection (for the attendance badge + management); students
+  // read their own via the students/{num}.anticipatedAbsences mirror. See
+  // js/16-absences.js.
+  anticipatedAbsences:        [],
   // Per-feature student portal visibility (independent of whether the feature is
   // enabled for directors). Default true = visible; false = hidden from portal.
   portalVisible: { attendance: true, marks: true, songs: true, stats: true, tasks: true },
