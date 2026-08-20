@@ -1505,3 +1505,66 @@ describe('Pyware file format dispatch', () => {
       /does not look like a Pyware/);
   });
 });
+
+// ── Anticipated absences (advance notices) ────────────────────────────────────
+
+describe('anticipated absences', () => {
+  const notices = [
+    { id: 'a', studentNumber: '42', type: 'absent',      date: '2026-06-10' },
+    { id: 'b', studentNumber: '42', type: 'leave-early', date: '2026-06-15', time: '14:30' },
+    { id: 'c', studentNumber: '7',  type: 'late',        date: '2026-06-10' },
+    { id: 'd', studentNumber: '42', type: 'absent',      date: '2026-06-20', endDate: '2026-06-22' }, // range
+  ];
+
+  it('labels each type', () => {
+    assert.equal(L.absenceTypeLabel('absent'), 'Absent');
+    assert.equal(L.absenceTypeLabel('late'), 'Arriving late');
+    assert.equal(L.absenceTypeLabel('leave-early'), 'Leaving early');
+    assert.equal(L.absenceTypeLabel('anything-else'), 'Absent');
+  });
+
+  it('absenceEndDate falls back to the single date', () => {
+    assert.equal(L.absenceEndDate({ date: '2026-06-10' }), '2026-06-10');
+    assert.equal(L.absenceEndDate({ date: '2026-06-20', endDate: '2026-06-22' }), '2026-06-22');
+  });
+
+  it('absenceCoversDate matches single days and ranges', () => {
+    assert.ok(L.absenceCoversDate({ date: '2026-06-10' }, '2026-06-10'));
+    assert.ok(!L.absenceCoversDate({ date: '2026-06-10' }, '2026-06-11'));
+    // Range: inclusive both ends, excluded outside.
+    const range = { date: '2026-06-20', endDate: '2026-06-22' };
+    assert.ok(L.absenceCoversDate(range, '2026-06-20'));
+    assert.ok(L.absenceCoversDate(range, '2026-06-21'));
+    assert.ok(L.absenceCoversDate(range, '2026-06-22'));
+    assert.ok(!L.absenceCoversDate(range, '2026-06-19'));
+    assert.ok(!L.absenceCoversDate(range, '2026-06-23'));
+    // Missing inputs never match.
+    assert.ok(!L.absenceCoversDate(null, '2026-06-20'));
+    assert.ok(!L.absenceCoversDate(range, ''));
+  });
+
+  it('anticipatedForDate returns only that student\'s covering notices', () => {
+    const hit = L.anticipatedForDate(notices, '42', '2026-06-10');
+    assert.deepEqual(hit.map(a => a.id), ['a']);
+    // Number vs string student numbers are compared leniently.
+    assert.equal(L.anticipatedForDate(notices, 42, '2026-06-10').length, 1);
+    // Another student's notice on the same day is not returned.
+    assert.deepEqual(L.anticipatedForDate(notices, '7', '2026-06-10').map(a => a.id), ['c']);
+    // A day inside the range is covered.
+    assert.deepEqual(L.anticipatedForDate(notices, '42', '2026-06-21').map(a => a.id), ['d']);
+    // A day nobody reported.
+    assert.equal(L.anticipatedForDate(notices, '42', '2026-06-11').length, 0);
+  });
+
+  it('upcomingAbsences keeps notices whose window has not fully passed, soonest first', () => {
+    const up = L.upcomingAbsences(notices, '2026-06-12');
+    // 'a' (Jun 10) and 'c' (Jun 10) have passed; 'b' (Jun 15) and 'd' (through Jun 22) remain.
+    assert.deepEqual(up.map(a => a.id), ['b', 'd']);
+    // A range still counts as upcoming while today is inside it.
+    const mid = L.upcomingAbsences(notices, '2026-06-21');
+    assert.deepEqual(mid.map(a => a.id), ['d']);
+    // Scoped to one student.
+    const s7 = L.upcomingAbsences(notices, '2026-06-01', '7');
+    assert.deepEqual(s7.map(a => a.id), ['c']);
+  });
+});

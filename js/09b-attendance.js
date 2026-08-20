@@ -308,6 +308,7 @@ function viewAttendanceTab() {
   return `<div class="att-tab-view">`
     + _renderWeekAbsencesCard()
     + attendanceCta
+    + renderAnticipatedCard()
     + `<div id="att-tab-filtered">${_attTabFilteredContent()}</div>`
     + historySection
     + `</div>`;
@@ -557,11 +558,14 @@ function attStudentRow(rid, s, entries) {
   const att  = entries[s.number]?.attendance || null;
   const meta = [_studentSpotText(s), normInstrument(s.instrument)].filter(Boolean).join(' · ');
   const rowClass = att === 'absent' ? 'att-stu-absent' : att === 'late' ? 'att-stu-late' : att === 'present' ? 'att-stu-present' : '';
+  const r = STATE.rehearsals.find(x => x.id === rid);
+  const badge = absenceRowBadgeHtml(s.number, r?.date);
   return `
     <div class="att-stu-row ${rowClass}">
       <div class="att-stu-info">
         <span class="att-stu-name">${esc(s.name || `#${s.number}`)}</span>
         ${meta ? `<div class="att-stu-meta">${esc(meta)}</div>` : ''}
+        ${badge}
       </div>
       <div class="att-stu-btns">
         <button class="att-btn att-present ${att==='present'?'att-on-present':''}"
@@ -876,14 +880,17 @@ function viewAttendanceBlock(rid) {
     ? (colAbsent ? `${colAbsent} absent. Review` : `Everybody's here. Review`)
     : (colAbsent ? `${colAbsent} absent. Next ${unit}` : `Everybody's here. Next ${unit}`);
 
+  const blkDate = STATE.rehearsals.find(x => x.id === rid)?.date;
   const stuBtns = group.students.map(e => {
     const s = e.s;
     const pos = [e.pos, e.shared ? 'shared' : ''].filter(Boolean).join(' · ');
+    const badge = absenceRowBadgeHtml(s.number, blkDate);
     return `
       <button class="blk-att-stu ${isAbsent(e) ? 'blk-att-absent' : ''}" id="blkstu-${esc(s.number)}"
               onclick="blockToggleAbsent('${esc(rid)}','${esc(s.number)}')">
         <span class="blk-att-stu-name">${esc(s.name || `#${s.number}`)}</span>
         ${pos ? `<span class="blk-att-stu-pos">${esc(pos)}</span>` : ''}
+        ${badge}
       </button>`;
   }).join('');
 

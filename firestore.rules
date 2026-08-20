@@ -233,6 +233,19 @@ service cloud.firestore {
       match /spotHistory/{showId} {
         allow read, write: if canWrite();
       }
+
+      // Anticipated absences: a student's advance notice that they'll miss,
+      // arrive late to, or leave early from an event on a given date (directors
+      // log what students reported in writing). Directors READ/WRITE; staff READ
+      // so the attendance screen can show the "reported" badge while they record
+      // — but only directors manage them (roster-adjacent, not recording).
+      // Students never read this collection: a director client mirrors each
+      // student's own notices onto students/{num}.anticipatedAbsences (no PII)
+      // for the portal, the same own-doc-mirror pattern as spots/tasks.
+      match /anticipatedAbsences/{doc} {
+        allow read:  if canRecord();
+        allow write: if canWrite();
+      }
     }
 
     // ── Membership ────────────────────────────────────────────────────────────

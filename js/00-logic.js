@@ -1583,10 +1583,69 @@ function _pyware3daPageNote(u8, gapStart, gapEnd, N) {
   return '';
 }
 
+// ── Anticipated absences (advance notices) ────────────────────────────────────
+// A student's advance notice that they'll miss, arrive late to, or leave early
+// from events on a given day (or a range of days). Directors log what students
+// report in writing; the attendance screen surfaces a matching notice as a
+// non-binding badge. Pure date logic lives here so it's unit-testable; the
+// Firestore/UI wiring is in js/16-absences.js.
+
+const ABSENCE_TYPES = ['absent', 'late', 'leave-early'];
+
+// Human label for an anticipated-absence type.
+function absenceTypeLabel(type) {
+  return type === 'late'        ? 'Arriving late'
+       : type === 'leave-early' ? 'Leaving early'
+       :                          'Absent';
+}
+
+// Short chip label (for compact badges).
+function absenceTypeShort(type) {
+  return type === 'late' ? 'Late' : type === 'leave-early' ? 'Leaves early' : 'Absent';
+}
+
+// The inclusive last day a notice covers: its endDate if set (a multi-day
+// range), otherwise its single date.
+function absenceEndDate(a) {
+  return (a && (a.endDate || a.date)) || '';
+}
+
+// True when a notice covers the given YYYY-MM-DD date (single day or within a
+// range). Comparison is lexicographic, which is correct for zero-padded ISO
+// dates.
+function absenceCoversDate(a, dateStr) {
+  if (!a || !a.date || !dateStr) return false;
+  return a.date <= dateStr && dateStr <= absenceEndDate(a);
+}
+
+// The notices for one student that cover a given date, most specific first
+// (single-day before range, then by type order).
+function anticipatedForDate(list, studentNumber, dateStr) {
+  const num = String(studentNumber);
+  return (list || [])
+    .filter(a => String(a.studentNumber) === num && absenceCoversDate(a, dateStr))
+    .sort((a, b) => (absenceEndDate(a).length && a.endDate ? 1 : 0) - (b.endDate ? 1 : 0)
+                 || ABSENCE_TYPES.indexOf(a.type) - ABSENCE_TYPES.indexOf(b.type));
+}
+
+// Notices whose coverage window has not yet fully passed (endDate >= today),
+// soonest first — the "upcoming" list directors and students see. Optionally
+// scoped to one student.
+function upcomingAbsences(list, todayStr, studentNumber) {
+  const num = studentNumber != null ? String(studentNumber) : null;
+  return (list || [])
+    .filter(a => a && a.date && absenceEndDate(a) >= todayStr
+                 && (num == null || String(a.studentNumber) === num))
+    .sort((a, b) => a.date.localeCompare(b.date)
+                 || ABSENCE_TYPES.indexOf(a.type) - ABSENCE_TYPES.indexOf(b.type));
+}
+
 // ── Node export (browser ignores this) ────────────────────────────────────────
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    ABSENCE_TYPES, absenceTypeLabel, absenceTypeShort, absenceEndDate,
+    absenceCoversDate, anticipatedForDate, upcomingAbsences,
     FAKE_ADJECTIVES, FAKE_ANIMALS, _strHash, pseudonymFor,
     eventType, isPerformance, eventTypeLabel,
     rehearsalIncludesStudent, rehearsalScopeLabel, compareRehearsalsDesc, rehearsalPredatesStudent, rehearsalStreak, rehearsalsAttended,

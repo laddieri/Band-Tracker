@@ -57,9 +57,12 @@ orgs/{orgId}                          # org metadata
   ├─ shows/{showId}                   # a show groups drills that share ONE spot map (director-write, +staff read)
   │    (fields) name,
   │    mapping:{label→studentNumber | [studentNumbers]}   # a spot may be shared by >1 student
-  └─ spotHistory/{showId}             # who held each spot and when (director-ONLY, both ways)
-       (fields) name,                  #   show name snapshot, so history outlives a deleted show
-       events:[{label, num, action:'add'|'remove', at, by}]   # append-only log of mapping edits
+  ├─ spotHistory/{showId}             # who held each spot and when (director-ONLY, both ways)
+  │    (fields) name,                  #   show name snapshot, so history outlives a deleted show
+  │    events:[{label, num, action:'add'|'remove', at, by}]   # append-only log of mapping edits
+  └─ anticipatedAbsences/{id}         # advance notices (director-write, director+staff read)
+       (fields) studentNumber, type:'absent'|'late'|'leave-early',
+       date, endDate?, time?, note?, createdBy, createdAt
 
 members/{uid}                         # who belongs to which org, and as what
   └─ (fields) orgId, role, email?, studentNumber?, joinCode?
@@ -365,6 +368,7 @@ What a **student** can read (everything else is director-only):
 | `drills/*` (+ `drills/*/data/*`) | ❌ — Pyware field-chart library (director-write; directors + staff read) |
 | `shows/*`                     | ❌ — per-show shared spot map (director-write; directors + staff read) |
 | `spotHistory/*`               | ❌ — who held each spot and when (director-ONLY: staff can't read it either) |
+| `anticipatedAbsences/*`       | ❌ — director-write, director+staff read; students see their own via the `students/{num}.anticipatedAbsences` mirror |
 
 **Hiding a rehearsal from students.** A director can flag a rehearsal
 `hiddenFromStudents: true` (Edit Rehearsal → "Hide from students") — e.g. an
@@ -432,6 +436,32 @@ adding `taskStatuses` to the staff-writable field allowlist on the student doc.
 The task catalog + aggregate `{done, total}` progress (student-visible tasks
 only) come from `settings/public`. `students/{num}` staff-writable fields are
 therefore `songStatuses` and `taskStatuses`.
+
+### Anticipated absences (advance notices)
+
+Students report ahead of time — usually in writing — when they know they'll miss
+an event, arrive late, or leave early. Directors log those notices in
+`orgs/{orgId}/anticipatedAbsences/{id}` = `{ studentNumber, type, date, endDate?,
+time?, note?, createdBy, createdAt }` so they stay organized, and the attendance
+screen surfaces a matching notice as a **non-binding badge** while recording (the
+director/staff still mark the real status — nothing auto-marks). A notice is
+anchored to a **calendar date** (with an optional `endDate` for a multi-day
+range), not to a rehearsal doc, so it can be entered before that day's event
+exists and still light up when it's created.
+
+- **Directors write; directors + staff read** (staff need the badge while
+  recording). Students never read the collection.
+- **Managed by directors only** — it's roster/schedule-adjacent, not recording,
+  so staff can't add/edit/delete (mirrors the `shows`/spot-map split).
+- **Students see their own upcoming notices** in the portal ("Absences You
+  Reported") via the own-doc mirror `students/{num}.anticipatedAbsences` (an
+  array of `{ id, type, date, endDate?, time?, note? }`, no author uid), kept
+  current by `_syncAbsenceMirror()` in `js/02-data.js` — the same diff-based,
+  director-only mirror pattern as `spots`/`taskStatuses`. No new student
+  listener and nothing added to `settings/public`.
+- Pure date logic (`absenceCoversDate` / `anticipatedForDate` /
+  `upcomingAbsences`) lives in `js/00-logic.js`; the Firestore + UI wiring is in
+  `js/16-absences.js`.
 
 Director identity in student-readable data: entries stamp `updatedBy`/`by`
 with the director's **uid**, never their email.

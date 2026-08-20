@@ -696,6 +696,8 @@ function viewStudent(num) {
       `;
     })() : ''}
 
+    ${viewStudentAbsencesCard(num)}
+
     ${(DB.getSongs().length && !memExcluded(s)) ? (() => {
       const allSongs   = DB.getSongs();
       const remaining  = allSongs.filter(song => song.statuses?.[String(num)]?.status !== 'passed');
