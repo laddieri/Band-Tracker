@@ -78,6 +78,7 @@ function _absenceManageRow(a, { showStudent = true } = {}) {
 function renderAnticipatedCard() {
   if (!STATE.isAdmin || !featureOn('attendance')) return '';
   const upcoming = upcomingAbsences(STATE.anticipatedAbsences, today());
+  const past     = pastAbsences(STATE.anticipatedAbsences, today());
   const body = upcoming.length
     ? upcoming.map(a => _absenceManageRow(a)).join('')
     : `<div class="empty-state" style="padding:12px 0"><p>No upcoming anticipated absences.</p></div>`;
@@ -93,7 +94,23 @@ function renderAnticipatedCard() {
         + Add anticipated absence
       </button>
       <div id="att-tab-anticipated-list">${body}</div>
+      ${_pastAbsencesSection('att-tab-anticipated-past', past, {})}
     </div>
+    </div>`;
+}
+
+// A collapsed "Past notices" sub-section for the management cards. Past notices
+// still open the edit modal on tap (so a director can review or delete them).
+// '' when there are none.
+function _pastAbsencesSection(id, past, rowOpts) {
+  if (!past.length) return '';
+  return `
+    <div id="${id}-hdr" class="song-cat-hdr" onclick="toggleCollapse('${id}')" style="margin-top:12px">
+      <span>Past notices (${past.length})</span>
+      <span class="sec-chevron">▾</span>
+    </div>
+    <div id="${id}" class="sec-collapsed">
+      ${past.map(a => _absenceManageRow(a, rowOpts)).join('')}
     </div>`;
 }
 
@@ -101,6 +118,7 @@ function renderAnticipatedCard() {
 function viewStudentAbsencesCard(num) {
   if (!STATE.isAdmin || !featureOn('attendance')) return '';
   const upcoming = upcomingAbsences(STATE.anticipatedAbsences, today(), num);
+  const past     = pastAbsences(STATE.anticipatedAbsences, today(), num);
   const body = upcoming.length
     ? upcoming.map(a => _absenceManageRow(a, { showStudent: false })).join('')
     : `<div class="empty-state" style="padding:8px 0"><p>No upcoming anticipated absences.</p></div>`;
@@ -114,6 +132,7 @@ function viewStudentAbsencesCard(num) {
           + Add anticipated absence
         </button>
         ${body}
+        ${_pastAbsencesSection(`stu-anticipated-past-${esc(String(num))}`, past, { showStudent: false })}
       </div>
     </div>`;
 }
