@@ -1640,12 +1640,24 @@ function upcomingAbsences(list, todayStr, studentNumber) {
                  || ABSENCE_TYPES.indexOf(a.type) - ABSENCE_TYPES.indexOf(b.type));
 }
 
+// Notices whose coverage window has fully passed (endDate < today), most recent
+// first — the "past" list directors can expand to review or clean up. Optionally
+// scoped to one student.
+function pastAbsences(list, todayStr, studentNumber) {
+  const num = studentNumber != null ? String(studentNumber) : null;
+  return (list || [])
+    .filter(a => a && a.date && absenceEndDate(a) < todayStr
+                 && (num == null || String(a.studentNumber) === num))
+    .sort((a, b) => absenceEndDate(b).localeCompare(absenceEndDate(a))
+                 || ABSENCE_TYPES.indexOf(a.type) - ABSENCE_TYPES.indexOf(b.type));
+}
+
 // ── Node export (browser ignores this) ────────────────────────────────────────
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     ABSENCE_TYPES, absenceTypeLabel, absenceTypeShort, absenceEndDate,
-    absenceCoversDate, anticipatedForDate, upcomingAbsences,
+    absenceCoversDate, anticipatedForDate, upcomingAbsences, pastAbsences,
     FAKE_ADJECTIVES, FAKE_ANIMALS, _strHash, pseudonymFor,
     eventType, isPerformance, eventTypeLabel,
     rehearsalIncludesStudent, rehearsalScopeLabel, compareRehearsalsDesc, rehearsalPredatesStudent, rehearsalStreak, rehearsalsAttended,

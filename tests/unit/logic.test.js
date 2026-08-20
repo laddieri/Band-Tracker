@@ -1567,4 +1567,19 @@ describe('anticipated absences', () => {
     const s7 = L.upcomingAbsences(notices, '2026-06-01', '7');
     assert.deepEqual(s7.map(a => a.id), ['c']);
   });
+
+  it('pastAbsences returns fully-elapsed notices, most recent first', () => {
+    const past = L.pastAbsences(notices, '2026-06-12');
+    // 'a' and 'c' (both Jun 10) have passed; 'b' (Jun 15) and 'd' (through Jun 22) have not.
+    assert.deepEqual(past.map(a => a.id).sort(), ['a', 'c']);
+    // A range is "past" only once its end date has elapsed.
+    const later = L.pastAbsences(notices, '2026-06-23');
+    assert.deepEqual(later.map(a => a.id)[0], 'd'); // most-recent end date first
+    assert.equal(later.length, 4);
+    // Nothing is past before the earliest notice.
+    assert.equal(L.pastAbsences(notices, '2026-06-01').length, 0);
+    // upcoming and past partition the list with no overlap.
+    const up = L.upcomingAbsences(notices, '2026-06-12').map(a => a.id);
+    assert.ok(past.every(a => !up.includes(a.id)));
+  });
 });
