@@ -89,10 +89,10 @@ function renderAnticipatedCard() {
     </div>
     <div id="att-tab-anticipated">
       <p class="modal-sub" style="margin:2px 0 10px">Advance notices from students — surfaced while you take attendance.</p>
-      <div id="att-tab-anticipated-list">${body}</div>
-      <button class="btn btn-secondary" style="width:100%;margin-top:10px" onclick="showAddAbsenceModal()">
+      <button class="btn btn-secondary" style="width:100%;margin-bottom:12px" onclick="showAddAbsenceModal()">
         + Add anticipated absence
       </button>
+      <div id="att-tab-anticipated-list">${body}</div>
     </div>
     </div>`;
 }
@@ -110,10 +110,10 @@ function viewStudentAbsencesCard(num) {
         <span class="section-title" style="margin:0">Anticipated Absences</span>
       </div>
       <div>
-        ${body}
-        <button class="btn btn-secondary" style="width:100%;margin-top:10px" onclick="showAddAbsenceModal('${esc(String(num))}')">
+        <button class="btn btn-secondary" style="width:100%;margin-bottom:12px" onclick="showAddAbsenceModal('${esc(String(num))}')">
           + Add anticipated absence
         </button>
+        ${body}
       </div>
     </div>`;
 }
