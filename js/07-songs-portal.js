@@ -193,14 +193,27 @@ function viewSongs() {
     });
 
     // Categories are collapsible sub-sections within the Current Songs card.
+    // Directors/staff also get a "who's still missing one of these songs" button
+    // in the header (opens the sortable/printable song-incomplete list).
+    const showMissingBtn = canRecord();
     const catSection = (catKey, label, rows, idx) => {
       const id          = `song-cat-${idx}`;
       const isCollapsed = _songCatCollapsed.has(catKey);
+      const missingBtn = showMissingBtn ? `
+        <button class="song-cat-missing-btn" title="Students still missing a “${esc(label)}” song"
+                aria-label="Students still missing a ${esc(label)} song"
+                onclick="event.stopPropagation();navigate('song-incomplete',{cat:'${esc(catKey)}'})">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+            <rect x="9" y="3" width="6" height="4" rx="1"/>
+            <line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/>
+          </svg>
+        </button>` : '';
       return `
         <div id="${id}-hdr" class="song-cat-hdr ${isCollapsed ? '' : 'sec-hdr-open'}"
              onclick="toggleSongCat('${esc(catKey)}','${id}')">
           <span>${esc(label)}</span>
-          <span class="sec-chevron">▾</span>
+          <span class="song-cat-hdr-right">${missingBtn}<span class="sec-chevron">▾</span></span>
         </div>
         <div id="${id}" class="song-cat-body ${isCollapsed ? 'sec-collapsed' : ''}">
           ${rows.map(songRow).join('')}
@@ -231,6 +244,151 @@ function viewSongs() {
     </div>`;
 
   return `<div class="songs-page">${currentSongsCard}${rosterSection}</div>`;
+}
+
+// ── View: students still missing a song in one category ────────────────────────
+// Reached from the checklist button on each category header in viewSongs. Lists
+// every memorizing student who hasn't yet passed at least one song in the
+// category, spelling out which song(s) each still owes. Sortable/filterable via
+// the shared filter bar, and printable.
+
+// Resolve a category key — a real category name, or the '\x00other' sentinel for
+// uncategorized songs — to its display label and the songs it holds, using the
+// same grouping rule as viewSongs.
+function _songIncCat(catKey) {
+  const cats = STATE.songCategories;
+  if (catKey === '\x00other')
+    return { label: 'Other', songs: STATE.songs.filter(s => !s.category || !cats.includes(s.category)) };
+  return { label: catKey, songs: STATE.songs.filter(s => s.category === catKey) };
+}
+
+// The songs in the category this student hasn't passed yet.
+function _songsStudentMissing(songs, num) {
+  const n = String(num);
+  return songs.filter(song => song.statuses?.[n]?.status !== 'passed');
+}
+
+function viewSongIncomplete(catKey) {
+  const { label, songs } = _songIncCat(catKey);
+  if (!songs.length) {
+    return `<div class="empty-state" style="padding:48px 24px">
+      <div class="empty-icon">🎵</div>
+      <p>No songs in this category.</p>
+    </div>`;
+  }
+
+  const sortOpts = [
+    {value:'missing', label:'Most Missing'},
+    {value:'overdue', label:'Most Overdue'},
+    {value:'name',    label:'Name'},
+    ...(hasField('instrument') ? [{value:'instrument', label:'Instrument'}] : []),
+    ...(hasField('section')    ? [{value:'section',    label:'Section'}]    : []),
+    ...(hasField('grade')      ? [{value:'grade',      label:'Grade'}]      : []),
+  ];
+
+  return `
+    <div class="song-inc-view">
+      <div class="song-inc-head">
+        <div class="song-inc-sub">${songs.length} song${songs.length !== 1 ? 's' : ''} in “${esc(label)}” — students below still owe at least one.</div>
+      </div>
+      ${renderFilterBar('song-inc', _songIncFilter, sortOpts)}
+      <div id="song-inc-list">
+        ${_buildSongIncompleteRows(catKey)}
+      </div>
+    </div>`;
+}
+
+function _buildSongIncompleteRows(catKey) {
+  const { songs }  = _songIncCat(catKey);
+  const students   = Object.values(DB.getStudents()).filter(s => !memExcluded(s));
+  const td         = today();
+
+  const scoreMap = {};
+  students.forEach(s => {
+    const missing = _songsStudentMissing(songs, s.number);
+    const overdue = missing.filter(song => song.dueDate && song.dueDate < td).length;
+    scoreMap[s.number] = { missing: missing.length, overdue };
+  });
+
+  const pool = students.filter(s => scoreMap[s.number].missing > 0);
+  if (!pool.length)
+    return `<div class="empty-state" style="padding:24px"><p>🎉 Everyone has passed every song in this category.</p></div>`;
+
+  const sorted = filterAndSortStudents(pool, _songIncFilter, scoreMap);
+  if (!sorted.length)
+    return `<div class="empty-state" style="padding:24px"><p>No students match the current filter.</p></div>`;
+
+  return sorted.map(s => {
+    const missing = _songsStudentMissing(songs, s.number);
+    const { overdue } = scoreMap[s.number];
+    const meta  = [normInstrument(s.instrument), s.section].filter(Boolean).map(esc).join(' · ');
+    const chips = missing.map(song => {
+      const st       = song.statuses?.[String(s.number)]?.status;
+      const isOver   = song.dueDate && song.dueDate < td;
+      const cls      = st === 'failed' ? 'song-inc-chip-fail' : 'song-inc-chip-na';
+      return `<span class="song-inc-chip ${cls}${isOver ? ' song-inc-chip-overdue' : ''}">${esc(song.title)}${st === 'failed' ? ' ↻' : ''}${isOver ? ' · overdue' : ''}</span>`;
+    }).join('');
+    return `
+      <div class="song-inc-row">
+        <div class="song-inc-row-head" onclick="showStudentSongProgress('${esc(s.number)}')">
+          <div class="song-inc-info">
+            <div class="song-inc-name">${esc(s.name || `#${s.number}`)}</div>
+            ${meta ? `<div class="song-inc-meta">${meta}</div>` : ''}
+          </div>
+          <div class="song-inc-counts">
+            <span class="src-missing">${missing.length} left</span>
+            ${overdue ? `<span class="src-overdue">${overdue} overdue</span>` : ''}
+          </div>
+        </div>
+        <div class="song-inc-chips">${chips}</div>
+      </div>`;
+  }).join('');
+}
+
+// Print the current (filtered/sorted) missing-songs list as a PDF via the shared
+// table printer. Reads the category from the active route params so nothing
+// user-entered has to be threaded through an inline handler attribute.
+function printSongIncomplete(catKey = _params.cat) {
+  const { label, songs } = _songIncCat(catKey);
+  const students = Object.values(DB.getStudents()).filter(s => !memExcluded(s));
+  const td       = today();
+
+  const scoreMap = {};
+  students.forEach(s => {
+    const missing = _songsStudentMissing(songs, s.number);
+    scoreMap[s.number] = { missing: missing.length, overdue: missing.filter(song => song.dueDate && song.dueDate < td).length };
+  });
+  const pool   = students.filter(s => scoreMap[s.number].missing > 0);
+  const sorted = filterAndSortStudents(pool, _songIncFilter, scoreMap);
+  if (!sorted.length) { showToast('No students to print for the current filter.'); return; }
+
+  const columns = [
+    { key: 'name', label: 'Student' },
+    ...(hasField('instrument') ? [{ key: 'instrument', label: 'Instrument' }] : []),
+    ...(hasField('section')    ? [{ key: 'section',    label: 'Section' }]    : []),
+    { key: 'missing', label: 'Missing Songs' },
+    { key: 'count',   label: '# Left' },
+  ];
+  const rows = sorted.map(s => {
+    const missing = _songsStudentMissing(songs, s.number);
+    const names = missing.map(song => {
+      const st      = song.statuses?.[String(s.number)]?.status;
+      const isOver  = song.dueDate && song.dueDate < td;
+      return song.title + (st === 'failed' ? ' (try again)' : '') + (isOver ? ' (overdue)' : '');
+    }).join(', ');
+    const row = { name: s.name || `#${s.number}`, missing: names, count: String(missing.length) };
+    if (hasField('instrument')) row.instrument = normInstrument(s.instrument);
+    if (hasField('section'))    row.section    = s.section || '';
+    return row;
+  });
+
+  const n = sorted.length;
+  _printHtmlDocument(tableToPrintHtml({
+    title: `Missing “${label}” Songs`,
+    subtitle: `${STATE.bandName || ''} · Generated ${fmtDate(today())} · ${n} student${n !== 1 ? 's' : ''}`,
+    columns,
+    rows,
+  }));
 }
 
 function viewSong(sid) {

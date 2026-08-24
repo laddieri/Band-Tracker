@@ -129,6 +129,7 @@ function render() {
       ((_view === 'attendance' || _view === 'attendance-block') && _params.from === 'rehearsals' && match === 'rehearsals') ||
       ((_view === 'attendance' || _view === 'attendance-block') && _params.from !== 'attendance-tab' && _params.from !== 'rehearsals' && match === 'rehearsals') ||
       (_view === 'song'       && match === 'songs') ||
+      (_view === 'song-incomplete' && match === 'songs') ||
       (_view === 'task'       && match === 'tasks')
     );
     // Hide tabs for disabled features. Staff get the recording surfaces
@@ -280,6 +281,14 @@ function render() {
       break;
     }
 
+    case 'song-incomplete': {
+      const { label } = _songIncCat(_params.cat);
+      title.textContent = label ? `${label} — Missing` : 'Missing Songs';
+      actions.innerHTML = (canRecord() ? printBtn('printSongIncomplete()') : '') + userBtn();
+      main.innerHTML = viewSongIncomplete(_params.cat);
+      break;
+    }
+
     case 'tasks':
       title.textContent = 'Tasks';
       actions.innerHTML = (STATE.isAdmin ? addBtn('showAddTaskModal()') : '') + userBtn();
@@ -348,6 +357,15 @@ function editBtn(fn) {
     <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
       <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+    </svg></button>`;
+}
+
+function printBtn(fn) {
+  return `<button class="icon-btn" onclick="${fn}" title="Print" aria-label="Print">
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <polyline points="6 9 6 2 18 2 18 9"/>
+      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+      <rect x="6" y="14" width="12" height="8"/>
     </svg></button>`;
 }
 
