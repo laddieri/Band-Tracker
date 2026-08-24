@@ -2798,6 +2798,93 @@ html, body {
 .src-missing { color: var(--text-muted); }
 .src-overdue { color: var(--danger); }
 
+/* ── Category header "who's missing a song" button ──────────────────────────── */
+
+.song-cat-hdr-right { display: flex; align-items: center; gap: 6px; }
+.song-cat-missing-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.song-cat-missing-btn:hover { background: var(--hover-bg); color: var(--primary); }
+.song-cat-missing-btn:active { background: var(--hover-bg); }
+.song-cat-missing-btn svg { width: 16px; height: 16px; }
+
+/* ── View: students missing a song in one category ──────────────────────────── */
+
+.song-inc-view { padding: 4px 0 24px; }
+.song-inc-head { margin-bottom: 10px; }
+.song-inc-sub { font-size: 0.8rem; color: var(--text-muted); line-height: 1.4; }
+.song-inc-row {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+.song-inc-row-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background .15s;
+}
+.song-inc-row-head:active { background: var(--hover-bg); }
+.song-inc-info { flex: 1; min-width: 0; }
+.song-inc-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.song-inc-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+.song-inc-counts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.song-inc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 14px 12px;
+}
+.song-inc-chip {
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--hover-bg);
+  color: var(--text);
+}
+.song-inc-chip-fail {
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  color: var(--danger);
+}
+.song-inc-chip-overdue {
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger);
+}
+
 /* ── Student song progress modal ────────────────────────────────────────────── */
 
 .ssp-cat-label {

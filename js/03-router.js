@@ -75,6 +75,9 @@ function navigate(view, params = {}, _fromHistory = false) {
     _taskFilter       = _mkFilter('name', 'asc');
     _taskStatusFilter = null;
   }
+  if (_view === 'song-incomplete' && view !== 'song-incomplete') {
+    _songIncFilter = _mkFilter('missing', 'desc');
+  }
   if (_view === 'leaderboard' && view !== 'leaderboard') {
     _lbFilter = _mkFilter('score', 'desc');
   }
@@ -189,6 +192,7 @@ let _rhCalMonth = ''; // 'YYYY-MM' shown in the rehearsals calendar (set to curr
 let _lbFilter      = _mkFilter('score',    'desc');
 let _songFilter       = _mkFilter('name',     'asc');
 let _songRosterFilter = _mkFilter('passed',   'desc');
+let _songIncFilter    = _mkFilter('missing',  'desc'); // song-incomplete list: students missing a song in one category
 let _taskFilter       = _mkFilter('name',     'asc');
 let _exportFilter     = _mkFilter('name',     'asc'); // student picker in the Export Center (modal)
 
@@ -322,7 +326,7 @@ function _renderSortLayers(viewId, f, sortOptions) {
 // ── Filter event handlers ─────────────────────────────────────────────────────
 
 function _getFilterObj(viewId) {
-  return { roster: _rosterFilter, tracker: _trackerFilter, att: _attFilter, 'att-tab': _attTabFilter, lb: _lbFilter, song: _songFilter, 'song-roster': _songRosterFilter, task: _taskFilter, export: _exportFilter }[viewId];
+  return { roster: _rosterFilter, tracker: _trackerFilter, att: _attFilter, 'att-tab': _attTabFilter, lb: _lbFilter, song: _songFilter, 'song-roster': _songRosterFilter, 'song-inc': _songIncFilter, task: _taskFilter, export: _exportFilter }[viewId];
 }
 
 // Re-renders replace the whole view, so anything the user was typing in loses
@@ -482,6 +486,7 @@ function _rerenderForFilter(viewId) {
     case 'lb':           mc.innerHTML = viewLeaderboard(); break;
     case 'song':         mc.innerHTML = viewSong(_params.sid); break;
     case 'song-roster':  mc.innerHTML = viewSongs(); break;
+    case 'song-inc':     mc.innerHTML = viewSongIncomplete(_params.cat); break;
     case 'task':         mc.innerHTML = viewTask(_params.tid); break;
     case 'export':       _exportRerender(); break; // Export Center lives in a modal, not main-content
   }
@@ -526,6 +531,7 @@ function _refreshFilterList(viewId) {
     },
     lb:           ['lb-rank-list',      () => _buildLbRankRows()],
     'song-roster':['song-roster-list', () => _buildSongRosterRows()],
+    'song-inc':   ['song-inc-list',    () => _buildSongIncompleteRows(_params.cat)],
     song:         ['song-student-list', () => {
       const song = STATE.songs.find(s => s.id === _params.sid);
       // Exclude memorization-exempt students (e.g. majorettes), same as the
