@@ -428,6 +428,9 @@ function viewRehearsal(rid) {
         </div>
       </div>
 
+      ${activeEntry.sitOut ? `
+        <div class="active-sitout-note">🪑 Sitting out — ${esc(sitOutLabel(activeEntry.sitOut))}</div>` : ''}
+
       <div class="active-counters">
         <div class="counter-col">
           <div class="counter-col-label mistakes">Mistakes</div>

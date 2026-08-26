@@ -2958,6 +2958,19 @@ html, body {
 .att-absent { background: var(--danger-bg); color: var(--danger); border-color: #fca5a5; }
 .att-on-late   { background: #eab308; color: white; border-color: #eab308; }
 .att-on-absent { background: var(--danger); color: white; border-color: var(--danger); }
+.att-sitout    { background: var(--purple-bg); color: var(--purple-text); border-color: var(--purple-bg-3); }
+.att-on-sitout { background: var(--purple-text); color: white; border-color: var(--purple-text); }
+
+.att-badge-sitout {
+  display: inline-block;
+  background: var(--purple-bg);
+  color: var(--purple-text);
+  font-size: 0.72rem;
+  padding: 2px 7px;
+  border-radius: 20px;
+  font-weight: 700;
+  margin-top: 3px;
+}
 
 .att-badge-absent {
   background: var(--danger-bg);
@@ -2994,6 +3007,7 @@ html, body {
 .att-chip-absent { background: var(--danger-bg); color: var(--danger); }
 .att-chip-late   { background: var(--late-bg); color: var(--late-text); }
 .att-chip-leave  { background: var(--purple-bg); color: var(--purple-text); }
+.att-chip-sitout { background: var(--purple-bg); color: var(--purple-text); }
 .att-chip-btn {
   cursor: pointer;
   border: none;
@@ -3212,6 +3226,17 @@ html, body {
 .att-stu-row:last-child { border-bottom: none; }
 .att-stu-absent { background: var(--absent-surface); border-radius: var(--r-sm); padding-left: 8px; padding-right: 8px; }
 .att-stu-late   { background: var(--late-surface); border-radius: var(--r-sm); padding-left: 8px; padding-right: 8px; }
+.att-stu-sitout { box-shadow: inset 3px 0 0 var(--purple-text); }
+
+.active-sitout-note {
+  background: var(--purple-bg);
+  color: var(--purple-text);
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 7px 12px;
+  border-radius: var(--r-sm);
+  margin-bottom: 12px;
+}
 
 .att-stu-info { flex: 1; min-width: 0; }
 .att-stu-num  { font-size: 0.8rem; font-weight: 700; color: var(--primary); margin-right: 6px; }
@@ -3219,7 +3244,7 @@ html, body {
 .att-stu-link { color: var(--primary); }
 .att-stu-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 1px; }
 
-.att-stu-btns { display: flex; gap: 5px; flex-shrink: 0; }
+.att-stu-btns { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
 .att-present   { background: var(--success-bg); color: var(--success); border-color: #86efac; }
 .att-on-present { background: var(--success); color: white; border-color: var(--success); }
 

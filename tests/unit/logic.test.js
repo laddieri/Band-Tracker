@@ -750,7 +750,8 @@ describe('buildMarksExportTable', () => {
     { id: 'r2', date: '2026-08-05', label: '' },
   ];
   const entries = {
-    r1: { '7': { positives: 2, mistakes: 1, attendance: 'late', by: 'uid1' } },
+    r1: { '7': { positives: 2, mistakes: 1, attendance: 'late', by: 'uid1',
+                 sitOut: { reason: 'Injury', note: 'twisted ankle' } } },
     r2: { '9': { positives: 0, mistakes: 0, attendance: 'absent' } },
   };
   const authorLabel = uid => (uid === 'uid1' ? 'director-j' : '');
@@ -761,9 +762,10 @@ describe('buildMarksExportTable', () => {
     assert.strictEqual(rows.length, 2);
     assert.deepStrictEqual(rows[0], {
       date: '2026-08-01', label: 'Camp', number: '7', name: 'Riley',
-      attendance: 'Late', positives: 2, mistakes: 1, recordedBy: 'director-j',
+      attendance: 'Late', sitOut: 'Injury — twisted ankle', positives: 2, mistakes: 1, recordedBy: 'director-j',
     });
     assert.strictEqual(rows[1].attendance, 'Absent');
+    assert.strictEqual(rows[1].sitOut, ''); // not sitting out
     assert.strictEqual(rows[1].recordedBy, ''); // no author stamped
     // never emits a raw uid
     assert.ok(!rows.some(r => r.recordedBy === 'uid1'));
@@ -772,8 +774,38 @@ describe('buildMarksExportTable', () => {
   it('summary mode: one row per student, totals across the range', () => {
     const { columns, rows } = L.buildMarksExportTable(rehearsals, entries, students, { mode: 'summary' });
     assert.deepStrictEqual(columns, L.MARKS_SUMMARY_COLS);
-    assert.deepStrictEqual(rows[0], { number: '7', name: 'Riley', positives: 2, mistakes: 1, absences: 0, lates: 1 });
-    assert.deepStrictEqual(rows[1], { number: '9', name: 'Sam',   positives: 0, mistakes: 0, absences: 1, lates: 0 });
+    assert.deepStrictEqual(rows[0], { number: '7', name: 'Riley', positives: 2, mistakes: 1, absences: 0, lates: 1, sitOuts: 1 });
+    assert.deepStrictEqual(rows[1], { number: '9', name: 'Sam',   positives: 0, mistakes: 0, absences: 1, lates: 0, sitOuts: 0 });
+  });
+});
+
+describe('sitOutLabel', () => {
+  it('returns "" for a falsy flag (not sitting out)', () => {
+    assert.strictEqual(L.sitOutLabel(null), '');
+    assert.strictEqual(L.sitOutLabel(undefined), '');
+  });
+  it('reason only when no note', () => {
+    assert.strictEqual(L.sitOutLabel({ reason: 'Illness' }), 'Illness');
+    assert.strictEqual(L.sitOutLabel({ reason: 'Injury', note: '  ' }), 'Injury');
+  });
+  it('reason — note when a note is present', () => {
+    assert.strictEqual(L.sitOutLabel({ reason: 'Injury', note: 'twisted ankle' }), 'Injury — twisted ankle');
+  });
+  it('falls back to "Sat out" when reason is missing', () => {
+    assert.strictEqual(L.sitOutLabel({ note: 'felt dizzy' }), 'Sat out — felt dizzy');
+  });
+});
+
+describe('scoreStudentsCore ignores sit-outs', () => {
+  it('a sit-out flag does not change a student score', () => {
+    const students = { '7': { number: '7' } };
+    const weights = L.lbWeights({});
+    const flags = { marksOn: true, attendanceOn: true, countNegative: true };
+    const withOut = { r1: { '7': { positives: 3, mistakes: 1, attendance: 'present' } } };
+    const withSit = { r1: { '7': { positives: 3, mistakes: 1, attendance: 'present', sitOut: { reason: 'Injury' } } } };
+    const a = L.scoreStudentsCore(students, withOut, [], weights, flags, 'salt')[0].score;
+    const b = L.scoreStudentsCore(students, withSit, [], weights, flags, 'salt')[0].score;
+    assert.strictEqual(a, b);
   });
 });
 

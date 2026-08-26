@@ -372,6 +372,25 @@ function buildPublicStats({ students, entries, rehearsals, songs, tasks, weights
   return { rehearsals: rehearsalRows, songs: songRows, tasks: taskRows, leaderboard };
 }
 
+// ── Sit-outs (present but unable to participate) ──────────────────────────────
+// A student who is at rehearsal but can't take part — illness, injury, etc. —
+// is flagged with a non-scoring sit-out stored on their entry as
+//   entry.sitOut = { reason, note, at, by }
+// It is INDEPENDENT of attendance (a present student can sit out and still keep
+// their attendance credit) and never affects the leaderboard score —
+// scoreStudentsCore deliberately ignores it. `reason` is one of
+// SIT_OUT_REASONS; `note` is optional free text.
+const SIT_OUT_REASONS = ['Illness', 'Injury', 'Other'];
+
+// Short human label for a sit-out flag: "Illness", or "Injury — twisted ankle"
+// when a note is present. Returns '' for a falsy flag (not sitting out).
+function sitOutLabel(sitOut) {
+  if (!sitOut) return '';
+  const reason = sitOut.reason || 'Sat out';
+  const note   = (sitOut.note || '').trim();
+  return note ? `${reason} — ${note}` : reason;
+}
+
 // ── Auto marks ────────────────────────────────────────────────────────────────
 
 function checkAutoMarkCondition(mark, att, mistakes) {
@@ -573,6 +592,7 @@ const MARKS_DETAIL_COLS = [
   { key: 'number',     label: 'Student Number' },
   { key: 'name',       label: 'Name' },
   { key: 'attendance', label: 'Attendance' },
+  { key: 'sitOut',     label: 'Sat Out' },
   { key: 'positives',  label: 'Positive Marks' },
   { key: 'mistakes',   label: 'Mistake Marks' },
   { key: 'recordedBy', label: 'Recorded By' },
@@ -584,6 +604,7 @@ const MARKS_SUMMARY_COLS = [
   { key: 'mistakes',  label: 'Mistake Marks' },
   { key: 'absences',  label: 'Absences' },
   { key: 'lates',     label: 'Lates' },
+  { key: 'sitOuts',   label: 'Sit-Outs' },
 ];
 
 // Marks / attendance export. `rehearsals` should already be date-filtered by the
@@ -598,7 +619,7 @@ function buildMarksExportTable(rehearsals, entries, students, opts = {}) {
 
   if (mode === 'summary') {
     const agg = {};
-    const ensure = num => (agg[num] || (agg[num] = { positives: 0, mistakes: 0, absences: 0, lates: 0 }));
+    const ensure = num => (agg[num] || (agg[num] = { positives: 0, mistakes: 0, absences: 0, lates: 0, sitOuts: 0 }));
     for (const s of students) ensure(String(s.number));
     for (const r of rehearsals) {
       for (const [num, e] of Object.entries(entries[r.id] || {})) {
@@ -607,12 +628,14 @@ function buildMarksExportTable(rehearsals, entries, students, opts = {}) {
         a.mistakes  += e.mistakes  || 0;
         if (e.attendance === 'absent') a.absences++;
         else if (e.attendance === 'late') a.lates++;
+        if (e.sitOut) a.sitOuts++;
       }
     }
     const rows = students.map(s => {
       const a = agg[String(s.number)];
       return { number: s.number, name: s.name || '', positives: a.positives,
-               mistakes: a.mistakes, absences: a.absences, lates: a.lates };
+               mistakes: a.mistakes, absences: a.absences, lates: a.lates,
+               sitOuts: a.sitOuts };
     });
     return { columns: MARKS_SUMMARY_COLS, rows };
   }
@@ -627,6 +650,7 @@ function buildMarksExportTable(rehearsals, entries, students, opts = {}) {
         number:     num,
         name:       byNum[num]?.name || '',
         attendance: att,
+        sitOut:     sitOutLabel(e.sitOut),
         positives:  e.positives || 0,
         mistakes:   e.mistakes || 0,
         recordedBy: authorLabel(e.by || e.updatedBy || ''),
@@ -1665,6 +1689,7 @@ if (typeof module !== 'undefined' && module.exports) {
     taskAppliesToStudent, _taskMatchesGroups,
     isDoneLate,
     lbWeights, scoreStudentsCore, buildPublicStats,
+    SIT_OUT_REASONS, sitOutLabel,
     checkAutoMarkCondition, computeAutoMarkEvents,
     parseCSVLine, parseCSV, COL_ALIASES, normalizeGrade, detectCols,
     csvCell, buildStudentCodesCsv,
