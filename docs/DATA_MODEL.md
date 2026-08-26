@@ -463,6 +463,27 @@ exists and still light up when it's created.
   `upcomingAbsences`) lives in `js/00-logic.js`; the Firestore + UI wiring is in
   `js/16-absences.js`.
 
+### Sit-outs (present but unable to participate)
+
+A student who is **at** rehearsal but can't take part (illness, injury…) is
+flagged on their entry with `sitOut = { reason, note, at, by }` — `reason` is
+one of `SIT_OUT_REASONS` (`Illness` / `Injury` / `Other`), `note` is optional
+free text, `by` is the recorder's **uid** (never an email). It is:
+
+- **Independent of attendance** — a sit-out is a separate flag layered on top of
+  present/late; the student still keeps their attendance credit. Recorded on the
+  attendance screen (`js/09b-attendance.js`: `showSitOutModal` /`confirmSitOut` /
+  `clearSitOut`), stored via a merge write so it doesn't disturb the entry's
+  marks/attendance; cleared with a `FieldValue.delete()`.
+- **Non-scoring** — `scoreStudentsCore` deliberately ignores it, so an
+  injured/ill student is never penalized on the leaderboard.
+- **Tracked in exports** — `buildMarksExportTable` adds a "Sat Out" reason
+  column (detail) and a per-student "Sit-Outs" count (summary). `sitOutLabel()`
+  in `js/00-logic.js` formats a flag as `"Injury — twisted ankle"`.
+
+It rides the existing entry rules (directors + staff write, the student reads
+their own), so it needs **no `firestore.rules` change** and carries no PII.
+
 Director identity in student-readable data: entries stamp `updatedBy`/`by`
 with the director's **uid**, never their email.
 

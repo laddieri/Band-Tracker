@@ -555,17 +555,19 @@ function toggleAttPresentSection(rid) {
 // filterAttendanceList replaced by updateFilter / unified filter bar
 
 function attStudentRow(rid, s, entries) {
-  const att  = entries[s.number]?.attendance || null;
+  const att    = entries[s.number]?.attendance || null;
+  const sitOut = entries[s.number]?.sitOut || null;
   const meta = [_studentSpotText(s), normInstrument(s.instrument)].filter(Boolean).join(' · ');
   const rowClass = att === 'absent' ? 'att-stu-absent' : att === 'late' ? 'att-stu-late' : att === 'present' ? 'att-stu-present' : '';
   const r = STATE.rehearsals.find(x => x.id === rid);
   const badge = absenceRowBadgeHtml(s.number, r?.date);
   return `
-    <div class="att-stu-row ${rowClass}">
+    <div class="att-stu-row ${rowClass}${sitOut ? ' att-stu-sitout' : ''}">
       <div class="att-stu-info">
         <span class="att-stu-name">${esc(s.name || `#${s.number}`)}</span>
         ${meta ? `<div class="att-stu-meta">${esc(meta)}</div>` : ''}
         ${badge}
+        ${sitOut ? `<span class="att-badge-sitout" title="Sitting out">🪑 ${esc(sitOutLabel(sitOut))}</span>` : ''}
       </div>
       <div class="att-stu-btns">
         <button class="att-btn att-present ${att==='present'?'att-on-present':''}"
@@ -574,6 +576,9 @@ function attStudentRow(rid, s, entries) {
                 onclick="setAttendance('${esc(rid)}','${esc(s.number)}','late')">◷ Late</button>
         <button class="att-btn att-absent  ${att==='absent' ?'att-on-absent':''}"
                 onclick="setAttendance('${esc(rid)}','${esc(s.number)}','absent')">✗ Absent</button>
+        <button class="att-btn att-sitout  ${sitOut ? 'att-on-sitout' : ''}"
+                onclick="showSitOutModal('${esc(rid)}','${esc(s.number)}')"
+                title="${sitOut ? 'Edit sit-out' : 'Mark sitting out'}">🪑 Sit Out</button>
       </div>
     </div>`;
 }
@@ -659,6 +664,80 @@ function _applyAttendance(rid, num, cur, next) {
   reRender(rid);
 }
 
+// ── Sit-outs (present but unable to participate: illness, injury…) ────────────
+// A non-scoring flag on the entry, independent of attendance. Recorded here on
+// the attendance screen with a reason + optional note. See sitOutLabel() and
+// SIT_OUT_REASONS in js/00-logic.js.
+let _pendingSitOutReason = SIT_OUT_REASONS[0];
+
+function showSitOutModal(rid, num) {
+  const cur    = DB.getRehearsalEntries(rid)[num] || {};
+  const sitOut = cur.sitOut || null;
+  const s      = STATE.students[String(num)];
+  const name   = s?.name || `#${num}`;
+  _pendingSitOutReason = sitOut?.reason && SIT_OUT_REASONS.includes(sitOut.reason)
+    ? sitOut.reason : SIT_OUT_REASONS[0];
+
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">🪑 Sitting Out — ${esc(name)}</div>
+    <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:12px;line-height:1.5">
+      At rehearsal but unable to participate. This doesn't affect attendance or score.
+    </p>
+    <div class="form-label" style="margin-bottom:7px">Reason</div>
+    <div class="seg-chip-row">
+      ${SIT_OUT_REASONS.map(reason => `
+        <button class="seg-chip${_pendingSitOutReason === reason ? ' seg-selected' : ''}"
+                data-sitout-reason="${esc(reason)}"
+                onclick="selectSitOutReason('${esc(reason)}')">
+          ${esc(reason)}
+        </button>`).join('')}
+    </div>
+    <div class="form-group" style="margin-top:14px">
+      <label class="form-label">Note (optional)</label>
+      <input class="form-input" id="sitout-note-input" type="text"
+             placeholder="e.g. twisted ankle" autocomplete="off"
+             value="${esc(sitOut?.note || '')}"
+             onkeydown="if(event.key==='Enter')confirmSitOut('${esc(rid)}','${esc(num)}')">
+    </div>
+    <div class="modal-actions">
+      ${sitOut ? `<button class="btn btn-secondary" onclick="clearSitOut('${esc(rid)}','${esc(num)}')">Not Sitting Out</button>` : `<button class="btn btn-secondary" onclick="closeModal()">Cancel</button>`}
+      <button class="btn btn-primary" onclick="confirmSitOut('${esc(rid)}','${esc(num)}')">Save</button>
+    </div>
+  `);
+}
+
+function selectSitOutReason(reason) {
+  _pendingSitOutReason = reason;
+  document.querySelectorAll('.seg-chip[data-sitout-reason]').forEach(el => {
+    el.classList.toggle('seg-selected', el.dataset.sitoutReason === _pendingSitOutReason);
+  });
+}
+
+function confirmSitOut(rid, num) {
+  const note = document.getElementById('sitout-note-input')?.value.trim() || '';
+  closeModal();
+  const cur    = DB.getRehearsalEntries(rid)[num] || {};
+  const sitOut = { reason: _pendingSitOutReason, note, at: Date.now(), by: STATE.user?.uid || '' };
+  if (!STATE.entries[rid]) STATE.entries[rid] = {};
+  STATE.entries[rid][num] = { ...cur, sitOut };
+  fsUpsertEntry(rid, num, { sitOut });
+  reRender(rid);
+}
+
+function clearSitOut(rid, num) {
+  closeModal();
+  const cur = DB.getRehearsalEntries(rid)[num];
+  if (!cur?.sitOut) return;
+  if (!STATE.entries[rid]) STATE.entries[rid] = {};
+  const { sitOut, ...rest } = cur;
+  STATE.entries[rid][num] = rest;
+  orgCol('entries').doc(`${rid}_${String(num)}`).update({
+    sitOut: firebase.firestore.FieldValue.delete()
+  });
+  reRender(rid);
+}
+
 function showSubmitAttendanceModal(rid) {
   const stuMap  = DB.getStudents();
   const entries = STATE.entries[rid] || {};
@@ -670,8 +749,11 @@ function showSubmitAttendanceModal(rid) {
   const lateList = Object.entries(entries)
     .filter(([, e]) => e.attendance === 'late')
     .map(([num]) => nameOf(num));
+  const sitOutList = Object.entries(entries)
+    .filter(([, e]) => e.sitOut)
+    .map(([num, e]) => `${nameOf(num)} (${sitOutLabel(e.sitOut)})`);
 
-  const noMarks = !absentList.length && !lateList.length;
+  const noMarks = !absentList.length && !lateList.length && !sitOutList.length;
 
   _pendingConfirm = () => submitAttendance(rid);
   openModal(`
@@ -690,6 +772,11 @@ function showSubmitAttendanceModal(rid) {
       <div class="att-review-section">
         <div class="att-review-hdr att-chip-late">◷ Late (${lateList.length})</div>
         ${lateList.map(n => `<div class="att-review-name">${esc(n)}</div>`).join('')}
+      </div>` : ''}
+    ${sitOutList.length ? `
+      <div class="att-review-section">
+        <div class="att-review-hdr att-chip-sitout">🪑 Sitting Out (${sitOutList.length})</div>
+        ${sitOutList.map(n => `<div class="att-review-name">${esc(n)}</div>`).join('')}
       </div>` : ''}
     <p style="font-size:.8rem;color:var(--text-muted);margin-top:12px">
       After submitting, any changes will require confirmation.
