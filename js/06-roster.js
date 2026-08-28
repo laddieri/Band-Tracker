@@ -311,15 +311,18 @@ function _rosterScoreMap() {
           song.dueDate && song.dueDate < td && song.statuses?.[num]?.status !== 'passed').length
       : 0;
     // Absences: total and just-this-week, scanned from the same history.
-    let absences = 0, weekAbsences = 0;
+    // Sit-outs (present but unable to participate) are counted alongside — they
+    // are independent of attendance, so tally them before the absent-only skip.
+    let absences = 0, weekAbsences = 0, sitOuts = 0;
     if (attendanceOn) {
       for (const { rehearsal: r, entry: e } of hist) {
+        if (e.sitOut) sitOuts++;
         if (e.attendance !== 'absent') continue;
         absences++;
         if (r.date >= mon && r.date <= fri) weekAbsences++;
       }
     }
-    map[s.number] = { mistakes, positives, passed, overdue, absences, weekAbsences };
+    map[s.number] = { mistakes, positives, passed, overdue, absences, weekAbsences, sitOuts };
   }
   return map;
 }
@@ -334,13 +337,15 @@ function rosterRows(list, scoreMap = _rosterScoreMap()) {
   const songsTotal = STATE.songs.length;
   const showAbsences = featureOn('attendance');
   return list.map(s => {
-    const sc   = scoreMap[s.number] || { mistakes: 0, positives: 0, passed: 0, overdue: 0, absences: 0, weekAbsences: 0 };
+    const sc   = scoreMap[s.number] || { mistakes: 0, positives: 0, passed: 0, overdue: 0, absences: 0, weekAbsences: 0, sitOuts: 0 };
     const errs = sc.mistakes;
     const pos  = sc.positives;
     // Absence summary: total across the season, with this week's count called
     // out. Shown only once a student has actually missed something.
     const absences     = showAbsences ? (sc.absences || 0) : 0;
     const weekAbsences = showAbsences ? (sc.weekAbsences || 0) : 0;
+    // Sit-outs across the season (present but couldn't participate).
+    const sitOuts      = showAbsences ? (sc.sitOuts || 0) : 0;
     // Songs passed off out of the total assigned. Excluded groups (e.g.
     // majorettes) don't memorize music, so they get no song tick.
     const showSongs   = featureOn('songs') && songsTotal > 0 && !memExcluded(s);
@@ -364,6 +369,7 @@ function rosterRows(list, scoreMap = _rosterScoreMap()) {
           ${errs > 0 ? `<span class="badge badge-danger">${errs}✗</span>` : ''}
           ${pos > 0  ? `<span class="badge badge-success">${pos}✓</span>` : ''}` : ''}
           ${absences > 0 ? `<span class="badge badge-warn" title="Absences — ${absences} total${weekAbsences > 0 ? `, ${weekAbsences} this week` : ''}">${absences} absent${weekAbsences > 0 ? `<span style="font-weight:600;opacity:.82"> · ${weekAbsences} wk</span>` : ''}</span>` : ''}
+          ${sitOuts > 0 ? `<span class="badge badge-sitout" title="Sat out — ${sitOuts} time${sitOuts !== 1 ? 's' : ''}">🪑 ${sitOuts}</span>` : ''}
           ${showSongs ? `<span class="badge badge-song" title="Songs passed off">${songsPassed}/${songsTotal} 🎵</span>` : ''}
           ${overdue > 0 ? `<span class="badge badge-overdue" title="Songs past due, not passed">⏰ ${overdue} overdue</span>` : ''}
         </div>
