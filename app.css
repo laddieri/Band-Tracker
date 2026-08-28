@@ -667,6 +667,8 @@ html, body {
 /* Overdue-songs tally on roster rows — red like the danger badge, but the ⏰
    marker keeps it distinct from the red negative-marks tick. */
 .badge-overdue { background: var(--danger-bg); color: var(--danger); }
+/* Sit-out tally on roster rows — purple, distinct from the absence badge. */
+.badge-sitout { background: var(--purple-bg); color: var(--purple-text); }
 
 /* ── Section title ──────────────────────────────────────────────────────── */
 

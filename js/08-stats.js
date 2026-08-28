@@ -652,8 +652,9 @@ function viewStudent(num) {
     ${featureOn('attendance') ? (() => {
       const absences = hist.filter(({entry:e}) => e.attendance === 'absent');
       const lates    = hist.filter(({entry:e}) => e.attendance === 'late');
+      const sitOuts  = hist.filter(({entry:e}) => e.sitOut);
       const streak   = rehearsalStreak(DB.getRehearsals(), STATE.entries, s);
-      if (!absences.length && !lates.length && !streak) return '';
+      if (!absences.length && !lates.length && !sitOuts.length && !streak) return '';
       const { mon, fri } = currentWeekRange();
       const wkAbs  = absences.filter(({rehearsal:r}) => r.date >= mon && r.date <= fri);
       const wkLate = lates.filter(({rehearsal:r}) => r.date >= mon && r.date <= fri);
@@ -680,6 +681,7 @@ function viewStudent(num) {
             <div class="att-summary-row">
               <span class="att-summary-chip att-chip-absent">${absences.length} Absence${absences.length!==1?'s':''}</span>
               <span class="att-summary-chip att-chip-late">${lates.length} Late${lates.length!==1?'s':''}</span>
+              ${sitOuts.length ? `<span class="att-summary-chip att-chip-sitout">🪑 ${sitOuts.length} Sat Out</span>` : ''}
             </div>
             ${absences.length ? `
               <div class="att-date-list">
@@ -690,6 +692,11 @@ function viewStudent(num) {
               <div class="att-date-list">
                 <span class="att-date-heading">Late:</span>
                 ${lates.map(({rehearsal:r}) => `<span class="att-date-chip att-chip-late clickable" onclick="navigate('attendance',{rid:'${esc(r.id)}',from:'student'})">${fmtDate(r.date)}</span>`).join('')}
+              </div>` : ''}
+            ${sitOuts.length ? `
+              <div class="att-date-list">
+                <span class="att-date-heading">Sat out:</span>
+                ${sitOuts.map(({rehearsal:r,entry:e}) => `<span class="att-date-chip att-chip-sitout clickable" title="${esc(sitOutLabel(e.sitOut))}" onclick="navigate('attendance',{rid:'${esc(r.id)}',from:'student'})">${fmtDate(r.date)} · ${esc(e.sitOut.reason || 'Sat out')}</span>`).join('')}
               </div>` : ''}
           </div>
         </div>
