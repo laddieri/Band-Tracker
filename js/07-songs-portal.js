@@ -391,6 +391,56 @@ function printSongIncomplete(catKey = _params.cat) {
   }));
 }
 
+// Print the list of students still missing THIS song (not passed) as a PDF via
+// the shared table printer. Reads the song id from the active route params so
+// nothing user-entered has to be threaded through an inline handler attribute.
+// Honors the page's search/sort (`_songFilter`) but always means "missing" —
+// it ignores the status-box filter so the printed list is complete.
+function printSong(sid = _params.sid) {
+  const song = STATE.songs.find(s => s.id === sid);
+  if (!song) { showToast('Song not found.'); return; }
+  const statuses  = song.statuses || {};
+  const getStatus = num => statuses[String(num)]?.status || 'not_attempted';
+
+  const students = Object.values(DB.getStudents()).filter(s => !memExcluded(s));
+  const scoreMap = {};
+  for (const s of students) scoreMap[s.number] = { status: getStatus(s.number) };
+
+  // "Missing" = anyone who hasn't passed yet (not attempted or still try-again).
+  const pool   = students.filter(s => getStatus(s.number) !== 'passed');
+  const sorted = filterAndSortStudents(pool, _songFilter, scoreMap);
+  if (!sorted.length) { showToast('No students are missing this song.'); return; }
+
+  const columns = [
+    { key: 'name', label: 'Student' },
+    ...(hasField('instrument') ? [{ key: 'instrument', label: 'Instrument' }] : []),
+    ...(hasField('section')    ? [{ key: 'section',    label: 'Section' }]    : []),
+    { key: 'status', label: 'Status' },
+  ];
+  const rows = sorted.map(s => {
+    const st   = getStatus(s.number);
+    const note = st === 'failed' ? (statuses[String(s.number)]?.note || '') : '';
+    const row  = {
+      name:   s.name || `#${s.number}`,
+      status: st === 'failed' ? ('Try again' + (note ? ` — ${note}` : '')) : 'Not attempted',
+    };
+    if (hasField('instrument')) row.instrument = normInstrument(s.instrument);
+    if (hasField('section'))    row.section    = s.section || '';
+    return row;
+  });
+
+  const n       = sorted.length;
+  const overdue = song.dueDate && song.dueDate < today();
+  _printHtmlDocument(tableToPrintHtml({
+    title: `Missing “${song.title}”`,
+    subtitle: `${STATE.bandName || ''} · Generated ${fmtDate(today())}`
+      + (song.dueDate ? ` · Due ${fmtDate(song.dueDate)}${overdue ? ' (overdue)' : ''}` : '')
+      + ` · ${n} student${n !== 1 ? 's' : ''}`,
+    columns,
+    rows,
+  }));
+}
+
 function viewSong(sid) {
   const song = STATE.songs.find(s => s.id === sid);
   if (!song) return `<div class="empty-state"><p>Song not found.</p></div>`;

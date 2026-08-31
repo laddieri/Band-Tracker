@@ -276,7 +276,8 @@ function render() {
     case 'song': {
       const song = STATE.songs.find(s => s.id === _params.sid);
       title.textContent = song?.title || 'Song';
-      actions.innerHTML = (STATE.isAdmin ? editBtn(`showEditSongModal('${esc(_params.sid)}')`) : '') + userBtn();
+      actions.innerHTML = (canRecord() ? printBtn('printSong()') : '')
+        + (STATE.isAdmin ? editBtn(`showEditSongModal('${esc(_params.sid)}')`) : '') + userBtn();
       main.innerHTML = viewSong(_params.sid);
       break;
     }
