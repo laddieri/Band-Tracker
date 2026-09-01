@@ -63,11 +63,12 @@ function _buildRecentListHtml() {
 }
 
 function _buildSeasonListHtml() {
+  const since      = _attTabSeasonSince;
   const rehearsals = [...DB.getRehearsals()].sort((a,b) => b.date.localeCompare(a.date));
   const students   = Object.values(DB.getStudents()).sort((a,b) => (a.name||'').localeCompare(b.name||''));
-  const submitted  = rehearsals.filter(r => r.attendanceSubmitted);
+  const submitted  = rehearsals.filter(r => r.attendanceSubmitted && (!since || (r.date && r.date >= since)));
   if (!submitted.length) {
-    return `<div class="empty-state" style="padding:12px 0"><p>No submitted events yet.</p></div>`;
+    return `<div class="empty-state" style="padding:12px 0"><p>${since ? `No submitted events on or after ${esc(fmtDate(since))}.` : 'No submitted events yet.'}</p></div>`;
   }
   const seasonMap = {};
   for (const r of submitted) {
@@ -86,7 +87,8 @@ function _buildSeasonListHtml() {
   const seasonStudents = Object.values(seasonMap).map(d => d.s);
   const filtered       = filterAndSortStudents(seasonStudents, _attTabFilter, seasonScoreMap);
   if (!filtered.length) {
-    return `<div class="empty-state" style="padding:12px 0"><p>${seasonStudents.length ? 'No matches for current filter.' : 'Perfect attendance so far!'}</p></div>`;
+    const noneMsg = since ? `Perfect attendance since ${esc(fmtDate(since))}!` : 'Perfect attendance so far!';
+    return `<div class="empty-state" style="padding:12px 0"><p>${seasonStudents.length ? 'No matches for current filter.' : noneMsg}</p></div>`;
   }
   return filtered.map(s => {
     const { absences, lates } = seasonMap[s.number];
@@ -150,6 +152,20 @@ function _attTabFilteredContent() {
     </div>
     </div>`;
 
+  const since = _attTabSeasonSince;
+  const seasonSince = `
+    <div class="att-season-since">
+      <label class="form-label" for="att-tab-season-since" style="margin:0">Count absences since</label>
+      <div class="att-season-since-row">
+        <input class="form-input" id="att-tab-season-since" type="date" value="${esc(since)}"
+               max="${esc(today())}" onchange="setAttTabSeasonSince(this.value)">
+        ${since ? `<button class="btn btn-secondary" onclick="setAttTabSeasonSince('')">Clear</button>` : ''}
+      </div>
+      <p class="modal-sub" style="margin:6px 0 0">${since
+        ? `Showing absences &amp; lates on or after ${esc(fmtDate(since))}.`
+        : `Pick a date to count only absences from then on. Otherwise the whole season is counted.`}</p>
+    </div>`;
+
   const seasonSection = `
     <div class="sec-card">
     <div id="att-tab-season-hdr" class="sec-hdr sec-hdr-open" onclick="toggleCollapse('att-tab-season')">
@@ -157,6 +173,7 @@ function _attTabFilteredContent() {
       <span class="sec-chevron">▾</span>
     </div>
     <div id="att-tab-season">
+      ${seasonSince}
       ${tabFilterBar}
       <div id="att-tab-season-list">${_buildSeasonListHtml()}</div>
     </div>
@@ -167,6 +184,15 @@ function _attTabFilteredContent() {
 
 function setAttTabRecentStatus(status) {
   _attTabRecentStatus = _attTabRecentStatus === status ? '' : status;
+  const el = document.getElementById('att-tab-filtered');
+  if (el) el.innerHTML = _attTabFilteredContent();
+  else _rerenderForFilter('att-tab');
+}
+
+// Season Absences "since" date filter. Rebuilds the recent+season block so the
+// list counts, the caption and the Clear button all reflect the new date.
+function setAttTabSeasonSince(val) {
+  _attTabSeasonSince = val || '';
   const el = document.getElementById('att-tab-filtered');
   if (el) el.innerHTML = _attTabFilteredContent();
   else _rerenderForFilter('att-tab');

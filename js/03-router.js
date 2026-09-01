@@ -98,6 +98,7 @@ function navigate(view, params = {}, _fromHistory = false) {
   if (_view === 'attendance-tab' && view !== 'attendance-tab') {
     _attTabFilter       = _mkFilter('absences', 'desc');
     _attTabRecentStatus = '';
+    _attTabSeasonSince  = '';
   }
   if (view === 'drill' && _view !== 'drill') _drillZoomReset(); // start the chart at fit
   if (_view === 'drill' && view !== 'drill' && typeof _drillPlayStop === 'function') _drillPlayStop();
@@ -186,6 +187,7 @@ let _trackerFilter = _mkFilter('name',     'asc');
 let _attFilter     = _mkFilter('name',     'asc');
 let _attTabFilter       = _mkFilter('absences', 'desc');
 let _attTabRecentStatus = ''; // quick-filter on Most Recent chips: ''|'absent'|'late'|'present'
+let _attTabSeasonSince  = ''; // Season Absences "since" date filter: '' (whole season) | 'YYYY-MM-DD'
 let _rhViewMode = (typeof localStorage !== 'undefined' && localStorage.getItem('rhViewMode')) || 'list'; // 'list' | 'calendar'
 let _rhTypeFilter = (typeof localStorage !== 'undefined' && localStorage.getItem('rhTypeFilter')) || 'all'; // 'all' | 'rehearsal' | 'performance'
 let _rhCalMonth = ''; // 'YYYY-MM' shown in the rehearsals calendar (set to current month on first open)

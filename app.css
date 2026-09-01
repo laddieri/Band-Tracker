@@ -3430,6 +3430,11 @@ html, body {
 .att-season-row:last-child { border-bottom: none; }
 .att-season-chips { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
 
+.att-season-since { margin: 4px 0 12px; }
+.att-season-since-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.att-season-since-row .form-input { flex: 1; min-width: 0; }
+.att-season-since-row .btn { flex-shrink: 0; width: auto; }
+
 .att-summary-stu-row {
   padding: 10px 6px;
   border-bottom: 1px solid var(--border);
