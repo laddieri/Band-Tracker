@@ -95,6 +95,10 @@ function renderAnticipatedCard() {
       </button>
       <div id="att-tab-anticipated-list">${body}</div>
       ${_pastAbsencesSection('att-tab-anticipated-past', past, {})}
+      ${upcoming.length || past.length ? `
+      <button class="btn btn-secondary" style="width:100%;margin-top:12px" onclick="showExportModal('absences')">
+        ⬇ Export / print all notices
+      </button>` : ''}
     </div>
     </div>`;
 }

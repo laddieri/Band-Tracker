@@ -1676,12 +1676,59 @@ function pastAbsences(list, todayStr, studentNumber) {
                  || ABSENCE_TYPES.indexOf(a.type) - ABSENCE_TYPES.indexOf(b.type));
 }
 
+// Export table for anticipated absences — every notice on file, past and
+// upcoming, one row per notice. `when` narrows to 'upcoming' / 'past' (same
+// split as upcomingAbsences / pastAbsences); default 'all'. Sorted by start
+// date, then student name. `authorLabel` maps a createdBy uid to a display
+// label (dirLabel) — never emails; `fmtTs` formats createdAt, `fmtTime` an
+// "HH:MM" time. Kept down here beside the other absence helpers.
+function buildAbsencesExportTable(absences, students, opts = {}) {
+  const { todayStr = '', when = 'all', authorLabel = (x => x),
+          fmtTs = (x => x), fmtTime = (x => x) } = opts;
+  const columns = [
+    { key: 'status',  label: 'Status' },
+    { key: 'date',    label: 'Date' },
+    { key: 'endDate', label: 'Through' },
+    { key: 'number',  label: 'Student Number' },
+    { key: 'name',    label: 'Name' },
+    { key: 'type',    label: 'Type' },
+    { key: 'time',    label: 'Expected Time' },
+    { key: 'note',    label: 'Reason / Note' },
+    { key: 'loggedBy', label: 'Logged By' },
+    { key: 'loggedOn', label: 'Logged On' },
+  ];
+  const byNum = {};
+  for (const s of students || []) byNum[String(s.number)] = s;
+  const nameOf = a => byNum[String(a.studentNumber)]?.name || '';
+  const rows = (absences || [])
+    .filter(a => a && a.date)
+    .map(a => ({ a, upcoming: absenceEndDate(a) >= todayStr }))
+    .filter(x => when === 'all' || (when === 'upcoming' ? x.upcoming : !x.upcoming))
+    .sort((x, y) => x.a.date.localeCompare(y.a.date)
+                 || nameOf(x.a).localeCompare(nameOf(y.a))
+                 || ABSENCE_TYPES.indexOf(x.a.type) - ABSENCE_TYPES.indexOf(y.a.type))
+    .map(({ a, upcoming }) => ({
+      status:   upcoming ? 'Upcoming' : 'Past',
+      date:     a.date,
+      endDate:  a.endDate && a.endDate !== a.date ? a.endDate : '',
+      number:   String(a.studentNumber ?? ''),
+      name:     nameOf(a),
+      type:     absenceTypeLabel(a.type),
+      time:     a.time ? fmtTime(a.time) : '',
+      note:     a.note || '',
+      loggedBy: a.createdBy ? authorLabel(a.createdBy) : '',
+      loggedOn: a.createdAt ? fmtTs(a.createdAt) : '',
+    }));
+  return { columns, rows };
+}
+
 // ── Node export (browser ignores this) ────────────────────────────────────────
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     ABSENCE_TYPES, absenceTypeLabel, absenceTypeShort, absenceEndDate,
     absenceCoversDate, anticipatedForDate, upcomingAbsences, pastAbsences,
+    buildAbsencesExportTable,
     FAKE_ADJECTIVES, FAKE_ANIMALS, _strHash, pseudonymFor,
     eventType, isPerformance, eventTypeLabel,
     rehearsalIncludesStudent, rehearsalScopeLabel, compareRehearsalsDesc, rehearsalPredatesStudent, rehearsalStreak, rehearsalsAttended,
