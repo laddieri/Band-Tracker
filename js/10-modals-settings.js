@@ -749,7 +749,7 @@ function reopenRehearsal(rid) {
     const newLabel  = fmtDate(r.date)            + (r.label            ? ` — ${r.label}`            : '');
     showConfirmModal(
       'Switch Active Event?',
-      `<strong>${curLabel}</strong> is currently open. Reopening <strong>${newLabel}</strong> will make it the active event for student feedback. The current event will remain open and become active again once this one is ended.`,
+      `<strong>${esc(curLabel)}</strong> is currently open. Reopening <strong>${esc(newLabel)}</strong> will make it the active event for student feedback. The current event will remain open and become active again once this one is ended.`,
       () => {
         r.ended = false;
         orgCol('rehearsals').doc(rid).set({ ended: false }, { merge: true });

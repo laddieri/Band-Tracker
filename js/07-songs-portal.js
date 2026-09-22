@@ -697,7 +697,7 @@ function setSongStatus(sid, num, newStatus) {
     const s = STATE.students[String(num)];
     const name = s?.name || `#${num}`;
     showConfirmModal(
-      `Remove passing mark for ${name}?`,
+      `Remove passing mark for ${esc(name)}?`,
       `This will unmark "${esc(song.title)}" as passed and reset it to Not Attempted.`,
       () => _applySongStatus(sid, num, song, status)
     );
@@ -709,7 +709,7 @@ function setSongStatus(sid, num, newStatus) {
     const s = STATE.students[String(num)];
     const name = s?.name || `#${num}`;
     showConfirmModal(
-      `Remove try-again mark for ${name}?`,
+      `Remove try-again mark for ${esc(name)}?`,
       `This will clear the try-again mark on "${esc(song.title)}" and reset it to Not Attempted.`,
       () => _applySongStatus(sid, num, song, status),
       'Remove', 'btn-danger'
@@ -895,6 +895,9 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('pagehide', () => _flushSongStatusWrites());
 
+// title and body are HTML: callers must esc() every user-authored value they
+// interpolate (names, labels, titles) — staff can edit rehearsal labels, so an
+// unescaped one would run in a director's session.
 function showConfirmModal(title, body, onConfirm, confirmLabel = 'Remove', confirmCls = 'btn-danger') {
   _pendingConfirm = onConfirm;
   openModal(`

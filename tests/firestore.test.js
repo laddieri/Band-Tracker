@@ -383,10 +383,24 @@ describe('staff role (recording access, no admin control)', () => {
     await assertFails(staff().doc('inviteCodes/EVIL').set({ orgId: 'a', role: 'staff' }));
     await assertFails(staff().doc('studentCodes/EVIL').set({ orgId: 'a', studentNumber: '42' }));
   });
-  it('staff can resolve members of their org (dirLabel) but CANNOT remove them', async () => {
-    await assertSucceeds(staff().doc('members/dirA').get());
-    await assertSucceeds(staff().collection('members').where('orgId', '==', 'a').get());
+  it('staff can read their own membership but NOT other members (a co-director doc holds the director invite code)', async () => {
+    await assertSucceeds(staff().doc('members/staffA').get());
+    await assertFails(staff().doc('members/dirA').get());
+    await assertFails(staff().doc('members/coA').get());
+    await assertFails(staff().collection('members').where('orgId', '==', 'a').get());
+    await assertFails(staff().collection('members')
+      .where('orgId', '==', 'a').where('role', 'in', ['director', 'staff']).get());
     await assertFails(staff().doc('members/coA').delete());
+  });
+  it('claims staff also CANNOT read other members', async () => {
+    await assertFails(claimsStaff('cStaff', 'a').doc('members/coA').get());
+    await assertFails(claimsStaff('cStaff', 'a').collection('members').where('orgId', '==', 'a').get());
+  });
+  it('staff resolve mark authors via settings/directory: read yes, write no', async () => {
+    await assertSucceeds(director('dirA').doc('orgs/a/settings/directory').set({ names: { dirA: 'dir' } }));
+    await assertSucceeds(staff().doc('orgs/a/settings/directory').get());
+    await assertFails(staff().doc('orgs/a/settings/directory').set({ names: { staffA: 'boss' } }));
+    await assertFails(director('studA').doc('orgs/a/settings/directory').get()); // students never
   });
   it('staff CANNOT touch another org', async () => {
     await assertFails(staff().doc('orgs/b/students/1').get());

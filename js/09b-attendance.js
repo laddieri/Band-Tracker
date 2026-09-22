@@ -632,7 +632,7 @@ function setAttendance(rid, num, status) {
     const toLabel   = next === 'absent' ? 'Absent' : next === 'late' ? 'Late' : 'Present';
     showConfirmModal(
       'Attendance Already Submitted',
-      `Change ${name} from <strong>${fromLabel}</strong> to <strong>${toLabel}</strong>?`,
+      `Change ${esc(name)} from <strong>${fromLabel}</strong> to <strong>${toLabel}</strong>?`,
       apply,
       'Change',
       'btn-primary'

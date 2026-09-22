@@ -47,7 +47,10 @@ app doesn't show it" is never a justification. Full model:
    director-only readable (not even staff), or students/staff can escalate to
    directors. The rules also pair invite codes with roles: a `role:'staff'`
    code can only mint a staff membership, and codes without a role only a
-   director one.
+   director one. Co-director `members/{uid}` docs also carry the
+   director invite code they joined with, so staff may read only their OWN
+   membership — they get author names from the director-published
+   `settings/directory` instead.
 6. **Any `firestore.rules` change requires matching tests** in
    `tests/firestore.test.js`. Run them with `npm run test:rules` (needs Java
    for the emulator). CI deploys rules only after tests pass.
