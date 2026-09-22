@@ -562,6 +562,26 @@ function tableToPrintHtml({ title, subtitle, columns, rows }) {
 </html>`;
 }
 
+// Reorder a table's rows by one column (the Export Center's "Sort by"). Numbers
+// compare numerically, text naturally ("#2" before "#10", case-insensitive);
+// zero-padded ISO dates sort correctly as text. Blank cells always go last,
+// whichever the direction. Stable, so ties keep the builder's default order.
+// Returns a new table; `key` empty/unknown = unchanged.
+function sortTableRows(table, key, dir = 'asc') {
+  if (!key || !table.columns.some(c => c.key === key)) return table;
+  const sign = dir === 'desc' ? -1 : 1;
+  const blank = v => v == null || v === '';
+  const rows = table.rows.slice().sort((a, b) => {
+    const x = a[key], y = b[key];
+    if (blank(x) || blank(y)) return blank(x) - blank(y);
+    const cmp = typeof x === 'number' && typeof y === 'number'
+      ? x - y
+      : String(x).localeCompare(String(y), undefined, { numeric: true, sensitivity: 'base' });
+    return sign * cmp;
+  });
+  return { columns: table.columns, rows };
+}
+
 // Narrow a full table to the caller's chosen columns (rows are untouched — the
 // renderers only read the keys they're given). `keys` null/undefined = keep all.
 function pickColumns(table, keys) {
@@ -1728,7 +1748,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     ABSENCE_TYPES, absenceTypeLabel, absenceTypeShort, absenceEndDate,
     absenceCoversDate, anticipatedForDate, upcomingAbsences, pastAbsences,
-    buildAbsencesExportTable,
+    buildAbsencesExportTable, sortTableRows,
     FAKE_ADJECTIVES, FAKE_ANIMALS, _strHash, pseudonymFor,
     eventType, isPerformance, eventTypeLabel,
     rehearsalIncludesStudent, rehearsalScopeLabel, compareRehearsalsDesc, rehearsalPredatesStudent, rehearsalStreak, rehearsalsAttended,

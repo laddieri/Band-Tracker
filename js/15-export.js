@@ -20,6 +20,8 @@ let _exportFormat    = 'csv';      // 'csv' | 'pdf'
 let _exportMarksMode = 'detail';   // marks only: 'detail' | 'summary'
 let _exportItemId    = '';         // songs/tasks: '' = grid over students, else a single song/task id
 let _exportAbsWhen   = 'all';      // absences only: 'all' | 'upcoming' | 'past'
+let _exportSortKey   = '';         // column key to sort rows by; '' = the data set's default order
+let _exportSortDir   = 'asc';      // 'asc' | 'desc'
 
 // Whole roster, name-sorted — the students roster/marks/leaderboard export over.
 function _exportStudents() {
@@ -142,6 +144,8 @@ function showExportModal(datasetId) {
   const avail = _exportAvailableDatasets();
   _exportDataset   = (avail.find(d => d.id === datasetId) || avail[0])?.id || 'roster';
   _exportAbsWhen   = 'all';
+  _exportSortKey   = '';
+  _exportSortDir   = 'asc';
   _exportFormat    = 'csv';
   _exportMarksMode = 'detail';
   _exportItemId    = '';
@@ -201,7 +205,7 @@ function _exportModalInner() {
       <button class="seg-chip${_exportAbsWhen === 'past'     ? ' seg-selected' : ''}" onclick="selectExportAbsWhen('past')">Past</button>
     </div>
     <p style="font-size:.72rem;color:var(--text-muted);margin:-10px 0 16px">
-      ${table.rows.length} notice${table.rows.length !== 1 ? 's' : ''} · sorted by date.
+      ${table.rows.length} notice${table.rows.length !== 1 ? 's' : ''} · default order is by date.
     </p>` : '';
 
   // Songs / Tasks: an item selector (grid over students vs. a single item) and
@@ -254,6 +258,18 @@ function _exportModalInner() {
       ${colChecks || '<p style="color:var(--text-muted);font-size:.8rem;padding:6px 0">Nothing to export yet.</p>'}
     </div>
 
+    <div class="form-label" style="margin:14px 0 8px">Sort by</div>
+    <div style="display:flex;gap:10px;margin-bottom:16px">
+      <select class="form-input" id="exp-sort-key" style="flex:2" onchange="selectExportSort(this.value)" aria-label="Sort by">
+        <option value="">Default order</option>
+        ${table.columns.map(c => `<option value="${esc(c.key)}"${c.key === _exportSortKey ? ' selected' : ''}>${esc(c.label)}</option>`).join('')}
+      </select>
+      <select class="form-input" id="exp-sort-dir" style="flex:1" onchange="selectExportSortDir(this.value)" aria-label="Sort direction"${_exportSortKey ? '' : ' disabled'}>
+        <option value="asc"${_exportSortDir === 'asc' ? ' selected' : ''}>Ascending</option>
+        <option value="desc"${_exportSortDir === 'desc' ? ' selected' : ''}>Descending</option>
+      </select>
+    </div>
+
     <div class="form-label" style="margin:14px 0 8px">Format</div>
     <div class="seg-chip-row" style="margin-bottom:16px">
       <button class="seg-chip${_exportFormat === 'csv' ? ' seg-selected' : ''}" id="exp-fmt-csv" onclick="selectExportFormat('csv')">CSV (spreadsheet)</button>
@@ -266,10 +282,19 @@ function _exportModalInner() {
     </div>`;
 }
 
-function selectExportDataset(id)  { _exportDataset = id; _exportItemId = ''; _exportRerender(); }
+function selectExportDataset(id)  { _exportDataset = id; _exportItemId = ''; _exportSortKey = ''; _exportRerender(); }
 function selectExportMarksMode(m) { _exportMarksMode = m; _exportRerender(); }
 function selectExportItem(id)     { _exportItemId = id; _exportRerender(); }
 function selectExportAbsWhen(w)   { _exportAbsWhen = w; _exportRerender(); }
+
+// Sort choice: no rerender (would wipe the column checkboxes) — just remember it
+// and enable the direction picker once a column is chosen.
+function selectExportSort(key) {
+  _exportSortKey = key;
+  const dir = document.getElementById('exp-sort-dir');
+  if (dir) dir.disabled = !key;
+}
+function selectExportSortDir(d) { _exportSortDir = d === 'desc' ? 'desc' : 'asc'; }
 
 // Format doesn't change the columns, so just repaint the two chips — no rerender,
 // which would wipe the user's column choices.
@@ -290,7 +315,9 @@ function runExport() {
   // Rebuild from current STATE + inputs so the export reflects the live data and
   // whatever date range / student filter / item the director just set.
   const built  = ds.build();
-  const picked = pickColumns(built.table, selected);
+  // Sort on the full table so a column can order the rows even when it isn't
+  // one of the columns being exported.
+  const picked = pickColumns(sortTableRows(built.table, _exportSortKey, _exportSortDir), selected);
   if (!picked.rows.length) { showToast('No data for this selection.'); return; }
 
   const slug = (STATE.bandName || 'band').replace(/[^\w-]+/g, '_').replace(/^_+|_+$/g, '') || 'band';
@@ -302,7 +329,9 @@ function runExport() {
     return;
   }
   const n = picked.rows.length;
-  const subtitle = `${STATE.bandName || ''} · Generated ${fmtDate(today())} · ${n} row${n !== 1 ? 's' : ''}`;
+  const sortCol = built.table.columns.find(c => c.key === _exportSortKey);
+  const sortNote = sortCol ? ` · Sorted by ${sortCol.label}${_exportSortDir === 'desc' ? ' (descending)' : ''}` : '';
+  const subtitle = `${STATE.bandName || ''} · Generated ${fmtDate(today())} · ${n} row${n !== 1 ? 's' : ''}${sortNote}`;
   _printHtmlDocument(tableToPrintHtml({
     title: `${built.title} — ${STATE.bandName || 'Band'}`,
     subtitle,

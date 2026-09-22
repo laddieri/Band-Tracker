@@ -1649,3 +1649,35 @@ describe('buildAbsencesExportTable', () => {
     assert.deepEqual(mid.map(r => r.date), ['2026-06-20']);
   });
 });
+
+describe('sortTableRows', () => {
+  const table = {
+    columns: [{ key: 'name', label: 'Name' }, { key: 'n', label: 'N' }, { key: 'date', label: 'Date' }],
+    rows: [
+      { name: 'riley', n: 10, date: '2026-06-15' },
+      { name: 'Ash',   n: 2,  date: '' },
+      { name: 'Sam #10', n: 2, date: '2026-06-01' },
+      { name: 'Sam #2',  n: '', date: '2026-06-10' },
+    ],
+  };
+  const names = t => t.rows.map(r => r.name);
+
+  it('sorts text naturally and case-insensitively, ascending or descending', () => {
+    assert.deepEqual(names(L.sortTableRows(table, 'name')), ['Ash', 'riley', 'Sam #2', 'Sam #10']);
+    assert.deepEqual(names(L.sortTableRows(table, 'name', 'desc')), ['Sam #10', 'Sam #2', 'riley', 'Ash']);
+  });
+
+  it('sorts numbers numerically and ISO dates chronologically, blanks last either way', () => {
+    assert.deepEqual(names(L.sortTableRows(table, 'n')), ['Ash', 'Sam #10', 'riley', 'Sam #2']); // stable tie
+    assert.deepEqual(names(L.sortTableRows(table, 'n', 'desc')), ['riley', 'Ash', 'Sam #10', 'Sam #2']);
+    assert.deepEqual(names(L.sortTableRows(table, 'date')), ['Sam #10', 'Sam #2', 'riley', 'Ash']);
+    assert.deepEqual(names(L.sortTableRows(table, 'date', 'desc')), ['riley', 'Sam #2', 'Sam #10', 'Ash']);
+  });
+
+  it('leaves the table untouched for a blank or unknown key, and never mutates the input', () => {
+    assert.strictEqual(L.sortTableRows(table, ''), table);
+    assert.strictEqual(L.sortTableRows(table, 'nope'), table);
+    L.sortTableRows(table, 'name');
+    assert.equal(table.rows[0].name, 'riley');
+  });
+});
