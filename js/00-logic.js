@@ -680,6 +680,120 @@ function buildMarksExportTable(rehearsals, entries, students, opts = {}) {
   return { columns: MARKS_DETAIL_COLS, rows };
 }
 
+// Attendance export. `rehearsals` should already be period-filtered by the
+// caller (date order is kept); `entries` is keyed rehearsalId → { studentNumber
+// → entry }. Recording only stamps absences and lates — everyone else in the
+// event's scope is present by default (same derivation as buildPublicStats) —
+// and an event only counts once attendance is under way (submitted, or any
+// absent/late mark), so untouched events don't read as "all present".
+// Students added after an event aren't expected at it unless they have an
+// entry (rehearsalPredatesStudent). Entries for students no longer on the
+// roster still show when they're absent/late.
+//   mode 'detail'  — one row per expected student×event.
+//   mode 'summary' — one row per student, totals and rate across the period.
+//   only 'incidents' — keep just absent/late rows (detail) or students with at
+//     least one absence/late (summary, worst first); default 'all'.
+// `anticipated` is the anticipated-absence list: detail rows note any notice
+// on file for that student and date.
+function buildAttendanceExportTable(rehearsals, entries, students, opts = {}) {
+  const { mode = 'detail', only = 'all', anticipated = [] } = opts;
+  const statusOf = e => e?.attendance === 'absent' ? 'absent' : e?.attendance === 'late' ? 'late' : 'present';
+  const label = { present: 'Present', absent: 'Absent', late: 'Late' };
+  const roster = (students || []).slice();
+  const byNum = {};
+  for (const s of roster) byNum[String(s.number)] = s;
+
+  // Who was expected at each counted event, and their status.
+  const events = [];
+  for (const r of rehearsals || []) {
+    const es = entries?.[r.id] || {};
+    const counted = !!r.attendanceSubmitted
+      || Object.values(es).some(e => e.attendance === 'absent' || e.attendance === 'late');
+    if (!counted) continue;
+    const marks = [];
+    for (const s of roster) {
+      const num = String(s.number);
+      if (!es[num] && (!rehearsalIncludesStudent(s, r.scope) || rehearsalPredatesStudent(r, s))) continue;
+      marks.push({ num, status: statusOf(es[num]) });
+    }
+    for (const [num, e] of Object.entries(es)) {
+      if (!byNum[num] && statusOf(e) !== 'present') marks.push({ num, status: statusOf(e) });
+    }
+    events.push({ r, marks });
+  }
+
+  if (mode === 'summary') {
+    const columns = [
+      { key: 'number',     label: 'Student Number' },
+      { key: 'name',       label: 'Name' },
+      { key: 'instrument', label: 'Instrument' },
+      { key: 'events',     label: 'Events' },
+      { key: 'present',    label: 'Present' },
+      { key: 'late',       label: 'Late' },
+      { key: 'absent',     label: 'Absent' },
+      { key: 'rate',       label: 'Attendance %' },
+    ];
+    const agg = {};
+    const order = roster.map(s => String(s.number));
+    for (const { marks } of events) {
+      for (const { num, status } of marks) {
+        if (!agg[num]) {
+          agg[num] = { events: 0, present: 0, late: 0, absent: 0 };
+          if (!byNum[num]) order.push(num);
+        }
+        agg[num].events++;
+        agg[num][status]++;
+      }
+    }
+    let rows = order.map(num => {
+      const s = byNum[num] || {};
+      const a = agg[num] || { events: 0, present: 0, late: 0, absent: 0 };
+      return {
+        number: s.number ?? num, name: s.name || '', instrument: normInstrument(s.instrument),
+        events: a.events, present: a.present, late: a.late, absent: a.absent,
+        rate: a.events ? Math.round(((a.present + a.late) / a.events) * 1000) / 10 : '',
+      };
+    });
+    if (only === 'incidents') {
+      rows = rows.filter(r => r.absent + r.late > 0)
+        .sort((x, y) => (y.absent * 2 + y.late) - (x.absent * 2 + x.late));
+    }
+    return { columns, rows };
+  }
+
+  const columns = [
+    { key: 'date',       label: 'Date' },
+    { key: 'label',      label: 'Event' },
+    { key: 'eventType',  label: 'Event Type' },
+    { key: 'number',     label: 'Student Number' },
+    { key: 'name',       label: 'Name' },
+    { key: 'instrument', label: 'Instrument' },
+    { key: 'status',     label: 'Status' },
+    { key: 'notice',     label: 'Notice on File' },
+    { key: 'noticeNote', label: 'Notice Reason' },
+  ];
+  const rows = [];
+  for (const { r, marks } of events) {
+    for (const { num, status } of marks) {
+      if (only === 'incidents' && status === 'present') continue;
+      const s = byNum[num] || {};
+      const notice = r.date ? anticipatedForDate(anticipated, num, r.date)[0] : null;
+      rows.push({
+        date:       r.date || '',
+        label:      r.label || '',
+        eventType:  eventTypeLabel(r),
+        number:     s.number ?? num,
+        name:       s.name || '',
+        instrument: normInstrument(s.instrument),
+        status:     label[status],
+        notice:     notice ? absenceTypeLabel(notice.type) : '',
+        noticeNote: notice?.note || '',
+      });
+    }
+  }
+  return { columns, rows };
+}
+
 // Leaderboard export from scoreStudentsCore() output (director view — real
 // names, not the student-facing pseudonyms). Ranked by score, highest first.
 function buildLeaderboardExportTable(scored) {
@@ -1762,6 +1876,7 @@ if (typeof module !== 'undefined' && module.exports) {
     csvCell, buildStudentCodesCsv,
     tableToCsv, tableToPrintHtml, _escHtml, pickColumns,
     buildRosterExportTable, buildMarksExportTable, MARKS_DETAIL_COLS, MARKS_SUMMARY_COLS,
+    buildAttendanceExportTable,
     buildLeaderboardExportTable, buildSongsExportTable, buildTasksExportTable,
     buildSongRosterExportTable, buildTaskRosterExportTable,
     DRILL_LABEL_ALIASES, drillSpotNums, drillSpotStripOthers, drillSpotLabelParts, applyDrillSpotCsv,

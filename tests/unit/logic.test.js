@@ -1650,6 +1650,59 @@ describe('buildAbsencesExportTable', () => {
   });
 });
 
+describe('buildAttendanceExportTable', () => {
+  const students = [
+    { number: '1', name: 'Ash',   instrument: 'Trumpet' },
+    { number: '2', name: 'Riley', instrument: 'Flute' },
+    { number: '3', name: 'Sam',   instrument: 'Flute', createdAt: new Date(2026, 5, 12).getTime() },
+  ];
+  const rehearsals = [
+    { id: 'r1', date: '2026-06-10', label: 'Block', attendanceSubmitted: true },
+    { id: 'r2', date: '2026-06-11', label: 'Brass', attendanceSubmitted: true, scope: { instruments: ['Trumpet'] } },
+    { id: 'r3', date: '2026-06-12', label: 'Untaken' },
+    { id: 'r4', date: '2026-06-13', label: 'Game', type: 'performance' },
+  ];
+  const entries = {
+    r1: { '2': { attendance: 'absent' }, '9': { attendance: 'late' } },
+    r2: { '1': { attendance: 'late' } },
+    r4: { '1': { attendance: 'absent' } },
+  };
+  const anticipated = [{ studentNumber: '2', type: 'absent', date: '2026-06-09', endDate: '2026-06-10', note: 'Trip' }];
+
+  it('lists expected students per counted event; unmarked students are present', () => {
+    const { columns, rows } = L.buildAttendanceExportTable(rehearsals, entries, students, { anticipated });
+    assert.deepEqual(columns.map(c => c.key),
+      ['date', 'label', 'eventType', 'number', 'name', 'instrument', 'status', 'notice', 'noticeNote']);
+    // r1: whole band minus Sam (added later) plus off-roster #9; r2: trumpets only;
+    // r3 skipped (attendance never taken); r4 counts because of an absence.
+    assert.deepEqual(rows.map(r => `${r.label}:${r.number}:${r.status}`), [
+      'Block:1:Present', 'Block:2:Absent', 'Block:9:Late',
+      'Brass:1:Late',
+      'Game:1:Absent', 'Game:2:Present', 'Game:3:Present',
+    ]);
+    assert.equal(rows[1].notice, 'Absent');
+    assert.equal(rows[1].noticeNote, 'Trip');
+    assert.equal(rows[4].eventType, 'Performance');
+  });
+
+  it('keeps only absent/late rows with only: incidents', () => {
+    const { rows } = L.buildAttendanceExportTable(rehearsals, entries, students, { only: 'incidents' });
+    assert.deepEqual(rows.map(r => `${r.label}:${r.number}`), ['Block:2', 'Block:9', 'Brass:1', 'Game:1']);
+  });
+
+  it('totals per student with an attendance rate', () => {
+    const { rows } = L.buildAttendanceExportTable(rehearsals, entries, students, { mode: 'summary' });
+    assert.deepEqual(rows.map(r => [r.number, r.events, r.present, r.late, r.absent, r.rate]), [
+      ['1', 3, 1, 1, 1, 66.7],
+      ['2', 2, 1, 0, 1, 50],
+      ['3', 1, 1, 0, 0, 100],
+      ['9', 1, 0, 1, 0, 100],
+    ]);
+    const worst = L.buildAttendanceExportTable(rehearsals, entries, students, { mode: 'summary', only: 'incidents' }).rows;
+    assert.deepEqual(worst.map(r => r.number), ['1', '2', '9']);
+  });
+});
+
 describe('sortTableRows', () => {
   const table = {
     columns: [{ key: 'name', label: 'Name' }, { key: 'n', label: 'N' }, { key: 'date', label: 'Date' }],
