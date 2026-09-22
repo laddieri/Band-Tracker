@@ -19,6 +19,7 @@ let _exportDataset   = 'roster';   // which data set is selected
 let _exportFormat    = 'csv';      // 'csv' | 'pdf'
 let _exportMarksMode = 'detail';   // marks only: 'detail' | 'summary'
 let _exportItemId    = '';         // songs/tasks: '' = grid over students, else a single song/task id
+let _exportAbsWhen   = 'all';      // absences only: 'all' | 'upcoming' | 'past'
 
 // Whole roster, name-sorted — the students roster/marks/leaderboard export over.
 function _exportStudents() {
@@ -106,11 +107,26 @@ function _exportTasksTable() {
   return { title: 'Tasks', table: buildTasksExportTable(students, tasks) };
 }
 
+// Anticipated absences: every notice on file (past and upcoming), or just one
+// side of today via the "Include" chips.
+function _exportAbsencesTable() {
+  const label = _exportAbsWhen === 'upcoming' ? 'Upcoming' : _exportAbsWhen === 'past' ? 'Past' : 'All';
+  return {
+    title: `Anticipated Absences (${label})`,
+    slug:  `anticipated-absences${_exportAbsWhen === 'all' ? '' : '-' + _exportAbsWhen}`,
+    table: buildAbsencesExportTable(STATE.anticipatedAbsences, Object.values(DB.getStudents()), {
+      todayStr: today(), when: _exportAbsWhen,
+      authorLabel: dirLabel, fmtTs: fmtDateFromTs, fmtTime: _fmtClock,
+    }),
+  };
+}
+
 const EXPORT_DATASETS = [
   { id: 'roster',      label: 'Roster',      avail: () => true,                                     build: _exportRosterTable,      scoped: false },
   { id: 'marks',       label: 'Marks',       avail: () => featureOn('marks'),                       build: _exportMarksTable,       scoped: false },
   { id: 'leaderboard', label: 'Leaderboard', avail: () => featureOn('stats') && featureOn('marks'), build: _exportLeaderboardTable, scoped: false },
   { id: 'songs',       label: 'Songs',       avail: () => featureOn('songs'),                       build: _exportSongsTable,       scoped: true,  items: () => DB.getSongs().map(s => ({ id: s.id, title: s.title })), itemNoun: 'song' },
+  { id: 'absences',    label: 'Anticipated Absences', avail: () => featureOn('attendance'), build: _exportAbsencesTable, scoped: false },
   { id: 'tasks',       label: 'Tasks',       avail: () => featureOn('tasks'),                       build: _exportTasksTable,       scoped: true,  items: () => (STATE.tasks || []).map(t => ({ id: t.id, title: t.title })), itemNoun: 'task' },
 ];
 
@@ -118,10 +134,14 @@ function _exportAvailableDatasets() {
   return EXPORT_DATASETS.filter(d => d.avail());
 }
 
-// Opened from Band Settings. Directors only — this reaches director-only data.
-function showExportModal() {
+// Opened from Band Settings (and preselected from a view's own export button,
+// e.g. the Anticipated Absences card). Directors only — this reaches
+// director-only data.
+function showExportModal(datasetId) {
   if (!STATE.isAdmin) return;
-  _exportDataset   = _exportAvailableDatasets()[0]?.id || 'roster';
+  const avail = _exportAvailableDatasets();
+  _exportDataset   = (avail.find(d => d.id === datasetId) || avail[0])?.id || 'roster';
+  _exportAbsWhen   = 'all';
   _exportFormat    = 'csv';
   _exportMarksMode = 'detail';
   _exportItemId    = '';
@@ -173,6 +193,17 @@ function _exportModalInner() {
         <input class="form-input" id="exp-date-to" type="date"></label>
     </div>` : '';
 
+  const absencesControls = ds.id === 'absences' ? `
+    <div class="form-label" style="margin-bottom:8px">Include</div>
+    <div class="seg-chip-row" style="margin-bottom:16px">
+      <button class="seg-chip${_exportAbsWhen === 'all'      ? ' seg-selected' : ''}" onclick="selectExportAbsWhen('all')">All</button>
+      <button class="seg-chip${_exportAbsWhen === 'upcoming' ? ' seg-selected' : ''}" onclick="selectExportAbsWhen('upcoming')">Upcoming</button>
+      <button class="seg-chip${_exportAbsWhen === 'past'     ? ' seg-selected' : ''}" onclick="selectExportAbsWhen('past')">Past</button>
+    </div>
+    <p style="font-size:.72rem;color:var(--text-muted);margin:-10px 0 16px">
+      ${table.rows.length} notice${table.rows.length !== 1 ? 's' : ''} · sorted by date.
+    </p>` : '';
+
   // Songs / Tasks: an item selector (grid over students vs. a single item) and
   // the familiar student search / sort / filter bar with a live preview.
   const scopedControls = ds.scoped ? (() => {
@@ -215,6 +246,7 @@ function _exportModalInner() {
     <div class="seg-chip-row" style="margin-bottom:16px;flex-wrap:wrap">${dsChips}</div>
 
     ${marksControls}
+    ${absencesControls}
     ${scopedControls}
 
     <div class="form-label" style="margin-bottom:6px">Columns</div>
@@ -237,6 +269,7 @@ function _exportModalInner() {
 function selectExportDataset(id)  { _exportDataset = id; _exportItemId = ''; _exportRerender(); }
 function selectExportMarksMode(m) { _exportMarksMode = m; _exportRerender(); }
 function selectExportItem(id)     { _exportItemId = id; _exportRerender(); }
+function selectExportAbsWhen(w)   { _exportAbsWhen = w; _exportRerender(); }
 
 // Format doesn't change the columns, so just repaint the two chips — no rerender,
 // which would wipe the user's column choices.

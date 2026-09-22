@@ -1615,3 +1615,37 @@ describe('anticipated absences', () => {
     assert.ok(past.every(a => !up.includes(a.id)));
   });
 });
+
+describe('buildAbsencesExportTable', () => {
+  const students = [{ number: '42', name: 'Riley' }, { number: '7', name: 'Ash' }];
+  const notices = [
+    { id: 'b', studentNumber: '42', type: 'late', date: '2026-06-15', time: '16:30', createdBy: 'u1', createdAt: 5 },
+    { id: 'a', studentNumber: '42', type: 'absent', date: '2026-06-10', note: 'Dentist' },
+    { id: 'c', studentNumber: '7',  type: 'leave-early', date: '2026-06-10' },
+    { id: 'd', studentNumber: '42', type: 'absent', date: '2026-06-20', endDate: '2026-06-22' },
+    { id: 'x', studentNumber: '9',  type: 'absent' }, // malformed: no date
+  ];
+  const opts = { todayStr: '2026-06-12', authorLabel: u => `dir:${u}`, fmtTs: t => `t${t}`, fmtTime: t => `~${t}` };
+
+  it('lists past and upcoming notices together, sorted by date then name', () => {
+    const { columns, rows } = L.buildAbsencesExportTable(notices, students, opts);
+    assert.deepEqual(columns.map(c => c.key),
+      ['status', 'date', 'endDate', 'number', 'name', 'type', 'time', 'note', 'loggedBy', 'loggedOn']);
+    assert.deepEqual(rows.map(r => r.name + ':' + r.date), ['Ash:2026-06-10', 'Riley:2026-06-10', 'Riley:2026-06-15', 'Riley:2026-06-20']);
+    assert.deepEqual(rows.map(r => r.status), ['Past', 'Past', 'Upcoming', 'Upcoming']);
+    assert.deepEqual(rows[2], { status: 'Upcoming', date: '2026-06-15', endDate: '', number: '42', name: 'Riley',
+      type: 'Arriving late', time: '~16:30', note: '', loggedBy: 'dir:u1', loggedOn: 't5' });
+    assert.equal(rows[1].note, 'Dentist');
+    assert.equal(rows[3].endDate, '2026-06-22');
+  });
+
+  it('narrows to upcoming or past with `when`', () => {
+    const up = L.buildAbsencesExportTable(notices, students, { ...opts, when: 'upcoming' }).rows;
+    assert.deepEqual(up.map(r => r.date), ['2026-06-15', '2026-06-20']);
+    const past = L.buildAbsencesExportTable(notices, students, { ...opts, when: 'past' }).rows;
+    assert.deepEqual(past.map(r => r.date), ['2026-06-10', '2026-06-10']);
+    // A range is still upcoming while today is inside it.
+    const mid = L.buildAbsencesExportTable(notices, students, { ...opts, todayStr: '2026-06-21', when: 'upcoming' }).rows;
+    assert.deepEqual(mid.map(r => r.date), ['2026-06-20']);
+  });
+});
