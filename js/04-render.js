@@ -228,7 +228,8 @@ function render() {
 
     case 'attendance-tab':
       title.textContent = 'Attendance';
-      actions.innerHTML = (canRecord() ? optBtn('showAttendanceReportModal()') : '') + userBtn();
+      // Attendance export lives in the (director-only) Export Center.
+      actions.innerHTML = (STATE.isAdmin && featureOn('attendance') ? reportBtn("showExportModal('attendance')") : '') + userBtn();
       main.innerHTML = viewAttendanceTab();
       break;
 
@@ -336,7 +337,7 @@ function render() {
 }
 
 function reportBtn(fn) {
-  return `<button class="icon-btn" onclick="${fn}" title="Attendance Report" aria-label="Attendance Report">
+  return `<button class="icon-btn" onclick="${fn}" title="Export Attendance" aria-label="Export Attendance">
     <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
       <polyline points="14 2 14 8 20 8"/>

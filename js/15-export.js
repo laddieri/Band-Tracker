@@ -20,6 +20,12 @@ let _exportFormat    = 'csv';      // 'csv' | 'pdf'
 let _exportMarksMode = 'detail';   // marks only: 'detail' | 'summary'
 let _exportItemId    = '';         // songs/tasks: '' = grid over students, else a single song/task id
 let _exportAbsWhen   = 'all';      // absences only: 'all' | 'upcoming' | 'past'
+let _exportAttMode   = 'detail';   // attendance only: 'detail' | 'summary'
+let _exportAttOnly   = 'all';      // attendance only: 'all' | 'incidents' (absent/late)
+let _exportAttPeriod = 'all';      // attendance only: 'all' | 'week' | 'range' | 'event'
+let _exportAttFrom   = '';         // attendance 'range' bounds (YYYY-MM-DD)
+let _exportAttTo     = '';
+let _exportAttRid    = '';         // attendance 'event': the one rehearsal id
 let _exportSortKey   = '';         // column key to sort rows by; '' = the data set's default order
 let _exportSortDir   = 'asc';      // 'asc' | 'desc'
 
@@ -109,6 +115,34 @@ function _exportTasksTable() {
   return { title: 'Tasks', table: buildTasksExportTable(students, tasks) };
 }
 
+// Attendance: the events in the chosen period (oldest first), then per-event
+// rows or per-student totals. Replaces the old attendance-tab PDF report.
+function _exportAttRehearsals() {
+  const all = DB.getRehearsals().slice().sort((a, b) => (a.date > b.date ? 1 : -1));
+  if (_exportAttPeriod === 'event') return all.filter(r => r.id === _exportAttRid);
+  if (_exportAttPeriod === 'week') {
+    const { mon, fri } = currentWeekRange();
+    return all.filter(r => r.date >= mon && r.date <= fri);
+  }
+  if (_exportAttPeriod === 'range') {
+    return all.filter(r => (!_exportAttFrom || r.date >= _exportAttFrom) && (!_exportAttTo || r.date <= _exportAttTo));
+  }
+  return all;
+}
+
+function _exportAttendanceTable() {
+  const table = buildAttendanceExportTable(_exportAttRehearsals(), STATE.entries, _exportStudents(), {
+    mode: _exportAttMode, only: _exportAttOnly, anticipated: STATE.anticipatedAbsences,
+  });
+  const parts = [_exportAttMode === 'summary' ? 'Totals' : 'Per Event'];
+  if (_exportAttOnly === 'incidents') parts.push('Absent & Late');
+  return {
+    title: `Attendance (${parts.join(', ')})`,
+    slug:  `attendance-${_exportAttMode === 'summary' ? 'totals' : 'by-event'}${_exportAttOnly === 'incidents' ? '-absent-late' : ''}`,
+    table,
+  };
+}
+
 // Anticipated absences: every notice on file (past and upcoming), or just one
 // side of today via the "Include" chips.
 function _exportAbsencesTable() {
@@ -128,6 +162,7 @@ const EXPORT_DATASETS = [
   { id: 'marks',       label: 'Marks',       avail: () => featureOn('marks'),                       build: _exportMarksTable,       scoped: false },
   { id: 'leaderboard', label: 'Leaderboard', avail: () => featureOn('stats') && featureOn('marks'), build: _exportLeaderboardTable, scoped: false },
   { id: 'songs',       label: 'Songs',       avail: () => featureOn('songs'),                       build: _exportSongsTable,       scoped: true,  items: () => DB.getSongs().map(s => ({ id: s.id, title: s.title })), itemNoun: 'song' },
+  { id: 'attendance',  label: 'Attendance',  avail: () => featureOn('attendance'),                  build: _exportAttendanceTable,  scoped: false },
   { id: 'absences',    label: 'Anticipated Absences', avail: () => featureOn('attendance'), build: _exportAbsencesTable, scoped: false },
   { id: 'tasks',       label: 'Tasks',       avail: () => featureOn('tasks'),                       build: _exportTasksTable,       scoped: true,  items: () => (STATE.tasks || []).map(t => ({ id: t.id, title: t.title })), itemNoun: 'task' },
 ];
@@ -144,6 +179,12 @@ function showExportModal(datasetId) {
   const avail = _exportAvailableDatasets();
   _exportDataset   = (avail.find(d => d.id === datasetId) || avail[0])?.id || 'roster';
   _exportAbsWhen   = 'all';
+  _exportAttMode   = 'detail';
+  _exportAttOnly   = 'all';
+  _exportAttPeriod = 'all';
+  _exportAttFrom   = '';
+  _exportAttTo     = '';
+  _exportAttRid    = '';
   _exportSortKey   = '';
   _exportSortDir   = 'asc';
   _exportFormat    = 'csv';
@@ -196,6 +237,50 @@ function _exportModalInner() {
       <label style="flex:1"><span class="form-label">To date</span>
         <input class="form-input" id="exp-date-to" type="date"></label>
     </div>` : '';
+
+  const attendanceControls = ds.id === 'attendance' ? (() => {
+    const chip = (fn, cur, val, text) =>
+      `<button class="seg-chip${cur === val ? ' seg-selected' : ''}" onclick="${fn}('${val}')">${text}</button>`;
+    const evOpts = DB.getRehearsals().slice().sort(compareRehearsalsDesc).map(r =>
+      `<option value="${esc(r.id)}"${r.id === _exportAttRid ? ' selected' : ''}>${isPerformance(r) ? '🎪 ' : ''}${esc(fmtDate(r.date))}${r.label ? ' — ' + esc(r.label) : ''}</option>`
+    ).join('');
+    return `
+    <div class="form-label" style="margin-bottom:8px">Period</div>
+    <div class="seg-chip-row" style="margin-bottom:12px;flex-wrap:wrap">
+      ${chip('selectExportAttPeriod', _exportAttPeriod, 'all',   'All season')}
+      ${chip('selectExportAttPeriod', _exportAttPeriod, 'week',  'This week')}
+      ${chip('selectExportAttPeriod', _exportAttPeriod, 'range', 'Date range')}
+      ${chip('selectExportAttPeriod', _exportAttPeriod, 'event', 'Single event')}
+    </div>
+    ${_exportAttPeriod === 'range' ? `
+    <div style="display:flex;gap:10px;margin-bottom:16px">
+      <label style="flex:1"><span class="form-label">From date</span>
+        <input class="form-input" type="date" value="${esc(_exportAttFrom)}" onchange="setExportAttRange('from', this.value)"></label>
+      <label style="flex:1"><span class="form-label">To date</span>
+        <input class="form-input" type="date" value="${esc(_exportAttTo)}" onchange="setExportAttRange('to', this.value)"></label>
+    </div>` : ''}
+    ${_exportAttPeriod === 'event' ? `
+    <div class="form-group" style="margin-bottom:16px">
+      <label class="form-label" for="exp-att-event">Event</label>
+      <select class="form-input" id="exp-att-event" onchange="selectExportAttEvent(this.value)">
+        <option value="">Choose an event…</option>${evOpts}
+      </select>
+    </div>` : ''}
+    <div class="form-label" style="margin-bottom:8px">Detail level</div>
+    <div class="seg-chip-row" style="margin-bottom:12px">
+      ${chip('selectExportAttMode', _exportAttMode, 'detail',  'Per event')}
+      ${chip('selectExportAttMode', _exportAttMode, 'summary', 'Totals per student')}
+    </div>
+    <div class="form-label" style="margin-bottom:8px">Include</div>
+    <div class="seg-chip-row" style="margin-bottom:16px">
+      ${chip('selectExportAttOnly', _exportAttOnly, 'all',       'Everyone')}
+      ${chip('selectExportAttOnly', _exportAttOnly, 'incidents', 'Absent &amp; late only')}
+    </div>
+    <p style="font-size:.72rem;color:var(--text-muted);margin:-10px 0 16px">
+      ${table.rows.length} row${table.rows.length !== 1 ? 's' : ''} · events count once attendance has
+      been taken; students not marked absent or late are present.
+    </p>`;
+  })() : '';
 
   const absencesControls = ds.id === 'absences' ? `
     <div class="form-label" style="margin-bottom:8px">Include</div>
@@ -250,6 +335,7 @@ function _exportModalInner() {
     <div class="seg-chip-row" style="margin-bottom:16px;flex-wrap:wrap">${dsChips}</div>
 
     ${marksControls}
+    ${attendanceControls}
     ${absencesControls}
     ${scopedControls}
 
@@ -286,6 +372,14 @@ function selectExportDataset(id)  { _exportDataset = id; _exportItemId = ''; _ex
 function selectExportMarksMode(m) { _exportMarksMode = m; _exportRerender(); }
 function selectExportItem(id)     { _exportItemId = id; _exportRerender(); }
 function selectExportAbsWhen(w)   { _exportAbsWhen = w; _exportRerender(); }
+function selectExportAttMode(m)   { _exportAttMode = m; _exportRerender(); }
+function selectExportAttOnly(o)   { _exportAttOnly = o; _exportRerender(); }
+function selectExportAttPeriod(p) { _exportAttPeriod = p; _exportRerender(); }
+function selectExportAttEvent(id) { _exportAttRid = id; _exportRerender(); }
+function setExportAttRange(which, v) {
+  if (which === 'from') _exportAttFrom = v; else _exportAttTo = v;
+  _exportRerender();
+}
 
 // Sort choice: no rerender (would wipe the column checkboxes) — just remember it
 // and enable the direction picker once a column is chosen.
