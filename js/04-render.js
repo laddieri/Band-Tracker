@@ -108,6 +108,7 @@ function render() {
     actions.innerHTML = userBtn();
     nav.style.display = 'none';
     main.innerHTML = viewStudentPortal();
+    maybeCelebrateSongPassoffs(); // confetti on the first open after a new pass-off
     return;
   }
   if (STATE.studentNum && !STATE.isAdmin) {
