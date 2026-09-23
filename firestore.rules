@@ -285,6 +285,17 @@ service cloud.firestore {
         allow read:  if canRecord();
         allow write: if canWrite();
       }
+
+      // Spot challenges: when two students share (double-block) a field spot,
+      // a director or staff member watches each march it and tallies their
+      // mistakes — fewer mistakes marches the spot that weekend. One doc per
+      // spot per day ({ showId, show, label, date, nums, counts:{num:n}, … }).
+      // Recording, so directors AND staff read + tally; only directors delete a
+      // sheet. Students never read it (a classmate's tally is not theirs to see).
+      match /spotChallenges/{doc} {
+        allow read, create, update: if canRecord();
+        allow delete:               if canWrite();
+      }
     }
 
     // ── Membership ────────────────────────────────────────────────────────────

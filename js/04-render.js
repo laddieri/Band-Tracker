@@ -130,7 +130,8 @@ function render() {
       ((_view === 'attendance' || _view === 'attendance-block') && _params.from !== 'attendance-tab' && _params.from !== 'rehearsals' && match === 'rehearsals') ||
       (_view === 'song'       && match === 'songs') ||
       (_view === 'song-incomplete' && match === 'songs') ||
-      (_view === 'task'       && match === 'tasks')
+      (_view === 'task'       && match === 'tasks') ||
+      ((_view === 'spot-challenges' || _view === 'spot-challenge') && match === 'drill')
     );
     // Hide tabs for disabled features. Staff get the recording surfaces
     // (attendance, marks, songs, stats, read-only roster); Drill stays
@@ -272,6 +273,18 @@ function render() {
       actions.innerHTML = (canRecord() ? optBtn('showDrillOptionsModal()') : '') + userBtn();
       main.innerHTML = viewDrill();
       if (typeof _drillViewSetup === 'function') _drillViewSetup();
+      break;
+
+    case 'spot-challenges':
+      title.textContent = 'Spot Challenges';
+      actions.innerHTML = userBtn();
+      main.innerHTML = viewSpotChallenges();
+      break;
+
+    case 'spot-challenge':
+      title.textContent = 'Spot Challenge';
+      actions.innerHTML = userBtn();
+      main.innerHTML = viewSpotChallenge(_params);
       break;
 
     case 'song': {

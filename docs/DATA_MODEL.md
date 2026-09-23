@@ -62,9 +62,12 @@ orgs/{orgId}                          # org metadata
   ├─ spotHistory/{showId}             # who held each spot and when (director-ONLY, both ways)
   │    (fields) name,                  #   show name snapshot, so history outlives a deleted show
   │    events:[{label, num, action:'add'|'remove', at, by}]   # append-only log of mapping edits
-  └─ anticipatedAbsences/{id}         # advance notices (director-write, director+staff read)
-       (fields) studentNumber, type:'absent'|'late'|'leave-early',
-       date, endDate?, time?, note?, createdBy, createdAt
+  ├─ anticipatedAbsences/{id}         # advance notices (director-write, director+staff read)
+  │    (fields) studentNumber, type:'absent'|'late'|'leave-early',
+  │    date, endDate?, time?, note?, createdBy, createdAt
+  └─ spotChallenges/{date_showId_label}   # shared-spot mistake tallies (director+staff; director deletes)
+       (fields) showId, show, label, date, nums:[studentNumber],
+       counts:{studentNumber→mistakes}, season?, updatedAt, updatedBy
 
 members/{uid}                         # who belongs to which org, and as what
   └─ (fields) orgId, role, email?, studentNumber?, joinCode?
@@ -204,6 +207,18 @@ re-entry.
   drill-doc fallback until this runs. Uploading a new file, or the library's
   "move to show" action, then regroups drills so they share one map; a show is
   deleted once its last drill leaves it.
+- **Spot challenges** (js/17-spot-challenge.js). When two students share a
+  spot, a director watches each march it and tallies their mistakes; fewer
+  mistakes marches the spot that weekend. The "Spot Challenges" screen (Field
+  Chart → ⚙ options, or "Tally mistakes" on a shared dot's panel) lists every
+  shared spot across the shows (`sharedSpotsFromShows`) and opens a tally sheet
+  with a "+ Mistake" button per student. One doc per spot per day
+  (`spotChallengeId` = `{date}_{showId}_{label}`), so re-opening the pair the
+  same day resumes the sheet; taps write `counts.{num}` with
+  `FieldValue.increment` so two people tallying at once (one per student) don't
+  overwrite each other. Recording, so directors AND staff read and tally; only
+  directors delete a sheet. Students can't read it, and it never touches
+  `entries` — tallies don't count as rehearsal marks or affect scores.
 
 ## Controlled rollout: gating new-band creation
 
@@ -289,7 +304,9 @@ guard tech — who should record data but not administer the band.
   `students/{num}.songStatuses` mirror (field-restricted), `settings/public`
   (staff clients run the same publisher as directors so the student portal
   stays fresh when only staff are recording), and `settings/drill.activeId`
-  (switch the school-wide active drill to view any show while recording).
+  (switch the school-wide active drill to view any show while recording),
+  and `spotChallenges` tallies (create/update — deleting a sheet is
+  director-only).
 - **Cannot touch:** the org doc (it holds both invite codes — reading it would
   let staff escalate to director), `settings/presets` writes, roster
   management, **starting, ending or reopening a rehearsal** (opening and
@@ -374,6 +391,7 @@ What a **student** can read (everything else is director-only):
 | `shows/*`                     | ❌ — per-show shared spot map (director-write; directors + staff read) |
 | `spotHistory/*`               | ❌ — who held each spot and when (director-ONLY: staff can't read it either) |
 | `anticipatedAbsences/*`       | ❌ — director-write, director+staff read; students see their own via the `students/{num}.anticipatedAbsences` mirror |
+| `spotChallenges/*`            | ❌ — shared-spot mistake tallies (directors + staff read/tally; director deletes) |
 
 **Hiding a rehearsal from students.** A director can flag a rehearsal
 `hiddenFromStudents: true` (Edit Rehearsal → "Hide from students") — e.g. an

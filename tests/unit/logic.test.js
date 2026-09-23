@@ -1734,3 +1734,29 @@ describe('sortTableRows', () => {
     assert.equal(table.rows[0].name, 'riley');
   });
 });
+
+describe('spot challenges (shared-spot mistake tallies)', () => {
+  it('lists only spots shared by 2+ students, ordered by show then label', () => {
+    const shows = {
+      sh2: { name: 'Pregame', mapping: { A1: ['1', '2'] } },
+      sh1: { name: 'Halftime', mapping: { M10: ['5', '6'], M2: ['3', '4'], M1: '42', X1: [], T1: ['9'] } },
+    };
+    assert.deepStrictEqual(L.sharedSpotsFromShows(shows), [
+      { showId: 'sh1', show: 'Halftime', label: 'M2',  nums: ['3', '4'] },
+      { showId: 'sh1', show: 'Halftime', label: 'M10', nums: ['5', '6'] },
+      { showId: 'sh2', show: 'Pregame',  label: 'A1',  nums: ['1', '2'] },
+    ]);
+    assert.deepStrictEqual(L.sharedSpotsFromShows(null), []);
+  });
+  it('keys one challenge per spot per day, with a Firestore-safe id', () => {
+    assert.strictEqual(L.spotChallengeId('2026-09-23', 'sh1', 'M1'), '2026-09-23_sh1_M1');
+    assert.strictEqual(L.spotChallengeId('2026-09-23', 'sh1', 'A/1 b'), '2026-09-23_sh1_A-1-b');
+  });
+  it('picks the student(s) with the fewest mistakes', () => {
+    assert.deepStrictEqual(L.spotChallengeLeaders({ 3: 2, 4: 5 }, ['3', '4']), { leaders: ['3'], min: 2, tie: false });
+    assert.deepStrictEqual(L.spotChallengeLeaders({ 3: 1 }, ['3', '4']), { leaders: ['4'], min: 0, tie: false });
+    assert.deepStrictEqual(L.spotChallengeLeaders({}, ['3', '4']), { leaders: ['3', '4'], min: 0, tie: true });
+    assert.deepStrictEqual(L.spotChallengeLeaders({ 3: -2 }, ['3']), { leaders: ['3'], min: 0, tie: false });
+    assert.deepStrictEqual(L.spotChallengeLeaders({}, []), { leaders: [], min: 0, tie: false });
+  });
+});
