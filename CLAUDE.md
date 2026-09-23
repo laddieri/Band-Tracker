@@ -64,7 +64,12 @@ app doesn't show it" is never a justification. Full model:
   functions wired via inline `onclick`. Define things before (file-order) any
   top-level code that calls them; cross-file calls inside functions are fine.
 - When adding a script file, add it to BOTH `index.html` and the `PRECACHE`
-  list in `sw.js` (and bump the `CACHE` version there).
+  list in `sw.js` (and bump the `CACHE` version there). Deploys publish only
+  the files staged in `deploy.yml` ("Stage site files": the root app files
+  plus `js/` and `icons/`); a new top-level file or folder the app serves must
+  be added to that `cp` line too. The step re-runs `check-precache.js` on the
+  staged copy, so a missing precached file fails the deploy instead of
+  shipping broken. Deploys also run the `syntax.yml` checks first.
 - Views are template-literal HTML rendered into `#main-content`.
 - All Firestore access goes through `orgCol(name)` (scoped to
   `orgs/{STATE.orgId}/...`). Role split happens in `startListeners()`:

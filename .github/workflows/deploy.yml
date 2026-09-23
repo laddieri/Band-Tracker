@@ -15,7 +15,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The same syntax, static and unit-test checks as PRs. A deploy only goes
+  # out if they pass on the exact commit being deployed.
+  checks:
+    uses: ./.github/workflows/syntax.yml
+
   deploy:
+    needs: checks
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
@@ -25,11 +31,23 @@ jobs:
 
       - uses: actions/configure-pages@v4
 
+      # Publish only what the app serves. Everything else in the repo (tests,
+      # scripts, functions, docs, rules, package files, CLAUDE.md) stays off
+      # the public site. A new top-level asset must be added here.
+      - name: Stage site files
+        run: |
+          set -e
+          mkdir _site
+          cp -r index.html app.css sw.js firebase-config.js manifest.json CNAME .nojekyll icons js _site/
+          # Everything index.html loads and sw.js precaches must be in _site.
+          node tests/check-precache.js _site
+
       # Stamp the deploy time into the app (APP_BUILD) and the service worker
       # (BUILD). Changing sw.js is what makes open apps notice a new version,
       # and APP_BUILD stops out-of-date clients from overwriting the student
-      # portal snapshot. Only the uploaded copy is changed, never the repo.
+      # portal snapshot. Only the staged copy is changed, never the repo.
       - name: Stamp build number
+        working-directory: _site
         run: |
           set -e
           BUILD=$(date +%s)
@@ -41,7 +59,7 @@ jobs:
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: _site
 
       - id: deploy
         uses: actions/deploy-pages@v4
