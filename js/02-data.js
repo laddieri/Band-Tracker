@@ -830,72 +830,79 @@ async function _recordAuthLoss() {
   if (!STATE.user) renderFromData();
 }
 
-auth.onAuthStateChanged(user => {
-  const prev = STATE.user;
-  STATE.user = user;
-  STATE.authChecking = false;
-  if (user) {
-    if (!user.isAnonymous) {
-      // Durable "we had a session" marker: survives app restarts (unless storage
-      // is evicted) so a sign-out that happens while the app is closed can still
-      // be detected on next launch. lastSeen refreshes every open.
-      try {
-        const prevMark = JSON.parse(localStorage.getItem('bandLastAuth') || 'null');
-        localStorage.setItem('bandLastAuth', JSON.stringify({
-          email: user.email || '', firstAt: prevMark?.firstAt || Date.now(), lastSeen: Date.now(),
-        }));
-      } catch {}
+// Registered from js/13-boot.js — the last script — not at load time here:
+// Firebase can report the auth state while the browser is still fetching the
+// later scripts, and this callback renders and starts listeners that call
+// into them ("viewLogin is not defined" on a slow load). Covered by the
+// "startup" case in tests/e2e/smoke.test.js.
+function _startAuthWatch() {
+  auth.onAuthStateChanged(user => {
+    const prev = STATE.user;
+    STATE.user = user;
+    STATE.authChecking = false;
+    if (user) {
+      if (!user.isAnonymous) {
+        // Durable "we had a session" marker: survives app restarts (unless storage
+        // is evicted) so a sign-out that happens while the app is closed can still
+        // be detected on next launch. lastSeen refreshes every open.
+        try {
+          const prevMark = JSON.parse(localStorage.getItem('bandLastAuth') || 'null');
+          localStorage.setItem('bandLastAuth', JSON.stringify({
+            email: user.email || '', firstAt: prevMark?.firstAt || Date.now(), lastSeen: Date.now(),
+          }));
+        } catch {}
+      }
+      if (user.isAnonymous) {
+        // Legacy pre-PIN anonymous student sessions are no longer supported (the
+        // rules no longer accept anonymous student joins). Sign the session out;
+        // the wizard prefills their remembered code, so they just set a PIN.
+        localStorage.removeItem('bandStudentNum'); // legacy key, no longer read
+        showToast('Student sign-in has changed — enter your code again to set up a PIN.');
+        auth.signOut();
+        return;
+      }
+      startListeners();
+    } else {
+      // Unexpected sign-out if we had a session this run OR a marker from a prior
+      // run says we did (i.e. dropped while the app was closed) — and it wasn't a
+      // deliberate logout.
+      let hadSession = !!(prev && !prev.isAnonymous);
+      try { hadSession = hadSession || !!localStorage.getItem('bandLastAuth'); } catch {}
+      if (hadSession && !_userInitiatedSignOut) _recordAuthLoss();
+      try { localStorage.removeItem('bandLastAuth'); } catch {} // consumed
+      _userInitiatedSignOut = false;
+      STATE._unsubs.forEach(u => u());
+      STATE._unsubs = [];
+      STATE.loading    = false;
+      STATE.orgId      = null;
+      STATE.org        = null;
+      STATE.needsOnboarding = false;
+      STATE.isAdmin    = false;
+      STATE.isStaff    = false;
+      STATE.studentNum = null;
+      STATE.students   = {};
+      STATE.rehearsals = [];
+      STATE.entries    = {};
+      STATE.songs      = [];
+      STATE.tasks      = [];
+      _tasksMirrorReady = false;
+      STATE.anticipatedAbsences = [];
+      _absencesMirrorReady = false;
+      STATE.spotHistory = {};
+      STATE.publicStats = null;
+      STATE.dirNames   = {};
+      _lastDirectoryJson = '';
+      STATE.activeSeason = '';
+      STATE.seasons      = [];
+      _seasonView          = null;
+      _restartSeasonScoped = null;
+      _scopedReady         = null;
+      _lastPublishedJson = '';
+      _liveError       = null;
+      _setAppNotice('live-error', null);
+      _authMode        = 'signin';
+      _studentStep     = null;
+      render(); // direct-render-ok: signed out — the whole UI must swap to login now
     }
-    if (user.isAnonymous) {
-      // Legacy pre-PIN anonymous student sessions are no longer supported (the
-      // rules no longer accept anonymous student joins). Sign the session out;
-      // the wizard prefills their remembered code, so they just set a PIN.
-      localStorage.removeItem('bandStudentNum'); // legacy key, no longer read
-      showToast('Student sign-in has changed — enter your code again to set up a PIN.');
-      auth.signOut();
-      return;
-    }
-    startListeners();
-  } else {
-    // Unexpected sign-out if we had a session this run OR a marker from a prior
-    // run says we did (i.e. dropped while the app was closed) — and it wasn't a
-    // deliberate logout.
-    let hadSession = !!(prev && !prev.isAnonymous);
-    try { hadSession = hadSession || !!localStorage.getItem('bandLastAuth'); } catch {}
-    if (hadSession && !_userInitiatedSignOut) _recordAuthLoss();
-    try { localStorage.removeItem('bandLastAuth'); } catch {} // consumed
-    _userInitiatedSignOut = false;
-    STATE._unsubs.forEach(u => u());
-    STATE._unsubs = [];
-    STATE.loading    = false;
-    STATE.orgId      = null;
-    STATE.org        = null;
-    STATE.needsOnboarding = false;
-    STATE.isAdmin    = false;
-    STATE.isStaff    = false;
-    STATE.studentNum = null;
-    STATE.students   = {};
-    STATE.rehearsals = [];
-    STATE.entries    = {};
-    STATE.songs      = [];
-    STATE.tasks      = [];
-    _tasksMirrorReady = false;
-    STATE.anticipatedAbsences = [];
-    _absencesMirrorReady = false;
-    STATE.spotHistory = {};
-    STATE.publicStats = null;
-    STATE.dirNames   = {};
-    _lastDirectoryJson = '';
-    STATE.activeSeason = '';
-    STATE.seasons      = [];
-    _seasonView          = null;
-    _restartSeasonScoped = null;
-    _scopedReady         = null;
-    _lastPublishedJson = '';
-    _liveError       = null;
-    _setAppNotice('live-error', null);
-    _authMode        = 'signin';
-    _studentStep     = null;
-    render(); // direct-render-ok: signed out — the whole UI must swap to login now
-  }
-});
+  });
+}

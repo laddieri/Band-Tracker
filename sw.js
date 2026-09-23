@@ -1,4 +1,4 @@
-const CACHE = 'band-tracker-v95';
+const CACHE = 'band-tracker-v96';
 // Deploy stamp (epoch seconds), rewritten by .github/workflows/deploy.yml to
 // match APP_BUILD in js/01-core.js. Its only job is to make every deploy change
 // this file's bytes, which is what makes browsers install the new worker (and
@@ -32,10 +32,10 @@ const PRECACHE = [
   '/icons/icon-180.png',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
-  'https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js',
-  'https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check-compat.js',
-  'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js',
-  'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js',
+  'https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js',
+  'https://www.gstatic.com/firebasejs/12.19.0/firebase-app-check-compat.js',
+  'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth-compat.js',
+  'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore-compat.js',
 ];
 
 // Precache everything on install, activate immediately. `cache: 'reload'`

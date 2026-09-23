@@ -13,7 +13,8 @@
 // Run:  npm run test:e2e   (starts the emulators; needs Java, like test:rules)
 // The app loads the Firebase SDK from the gstatic CDN as in production. Where
 // that CDN is unreachable, BT_E2E_LOCAL_SDK=1 serves the SDK from the npm
-// `firebase` package instead (may be a slightly newer 10.x than index.html's).
+// `firebase` package instead (pulled in by @firebase/rules-unit-testing); the
+// test refuses to run if that version differs from the one index.html loads.
 
 'use strict';
 
@@ -100,6 +101,9 @@ async function newAppPage() {
     { projectId: PROJECT, auth: AUTH_URL, firestore: { host: FS_HOST, port: FS_PORT } });
   if (process.env.BT_E2E_LOCAL_SDK === '1') {
     const sdkDir = path.join(ROOT, 'node_modules', 'firebase');
+    const local  = JSON.parse(fs.readFileSync(path.join(sdkDir, 'package.json'), 'utf8')).version;
+    const html   = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8').match(/firebasejs\/([\d.]+)\//)[1];
+    assert.equal(local, html, `BT_E2E_LOCAL_SDK: npm firebase ${local} != index.html's ${html} — the test would not exercise the SDK the app ships`);
     await context.route('https://www.gstatic.com/firebasejs/**', route => route.fulfill({
       path: path.join(sdkDir, path.basename(new URL(route.request().url()).pathname)),
       contentType: 'text/javascript',
@@ -159,6 +163,27 @@ after(async () => {
 
 // ── Flows (sequential: the student checks what the director recorded) ───────
 
+describe('startup', () => {
+  // Regression: the auth listener used to be registered in js/02-data.js,
+  // before the later scripts had loaded. When Firebase reported the auth state
+  // while the browser was still fetching them, the callback's render() hit
+  // "viewLogin is not defined". A slow script makes that race deterministic.
+  it('a slow-loading script does not break the first render', async () => {
+    const { context, page, errors } = await newAppPage();
+    try {
+      await context.route('**/js/05-auth-views.js', async route => {
+        await new Promise(r => setTimeout(r, 1500));
+        await route.continue();
+      });
+      await page.goto(baseUrl);
+      await page.locator('#auth-email').waitFor();
+      await assertHealthy(page, errors);
+    } finally {
+      await context.close();
+    }
+  });
+});
+
 describe('smoke: director records, student sees it', () => {
   it('director signs in, takes attendance and adds a mark', async () => {
     const { context, page, errors } = await newAppPage();
@@ -195,6 +220,12 @@ describe('smoke: director records, student sees it', () => {
       // The director client publishes the student-safe snapshot, build-stamped.
       const pub = await waitForDoc(`orgs/${ORG}/settings/public`, d => d.bandName === 'Smoke Band', 'settings/public');
       assert.equal(pub.appBuild, 0, 'unstamped local build publishes appBuild 0');
+
+      // Offline cache: enablePersistence() is best-effort (its failure is
+      // swallowed on purpose), so check it really created its IndexedDB store —
+      // an SDK upgrade could otherwise break offline mode without any error.
+      const idb = await page.evaluate(async () => (await indexedDB.databases()).map(d => d.name));
+      assert.ok(idb.some(n => n.startsWith('firestore/')), `Firestore offline cache missing; IndexedDB has: ${idb.join(', ')}`);
 
       await assertHealthy(page, errors);
     } finally {
