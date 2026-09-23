@@ -945,11 +945,13 @@ html, body {
 
 /* ── Roster rows ────────────────────────────────────────────────────────── */
 
+/* Stacked card: the name gets its own full-width line so badges never squeeze
+   it, then the details line, then a wrapping badge row. */
 .roster-row {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 13px 16px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px;
   background: var(--surface);
   border-radius: var(--r-sm);
   margin-bottom: 8px;
@@ -960,10 +962,23 @@ html, body {
 .roster-row:active { transform: scale(.985); }
 .roster-row:hover { box-shadow: var(--shadow-md); }
 
-.student-info { flex: 1; min-width: 0; }
-.student-name { font-weight: 600; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.roster-row-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.attention-dot {
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+.student-name { flex: 1; font-weight: 600; font-size: 0.9rem; overflow-wrap: anywhere; }
 .student-detail { font-size: 0.8rem; color: var(--text-muted); margin-top: 1px; }
-.student-badges { display: flex; gap: 4px; flex-wrap: wrap; flex-shrink: 0; }
+.student-badges { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
+.roster-row .badge { font-variant-numeric: tabular-nums; }
+.badge-sub { margin-left: 4px; font-weight: 600; opacity: .82; }
+/* Combined marks tally: +positives / −negatives in one pill. */
+.badge-marks { background: var(--surface-raised); gap: 6px; }
+.badge-marks .marks-pos { color: var(--success); }
+.badge-marks .marks-neg { color: var(--danger); }
 
 /* ── Hero ───────────────────────────────────────────────────────────────── */
 

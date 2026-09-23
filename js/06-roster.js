@@ -353,26 +353,35 @@ function rosterRows(list, scoreMap = _rosterScoreMap()) {
     // Overdue: songs past their due date this student hasn't passed. Only shown
     // for memorizing students who actually have one or more overdue.
     const overdue     = showSongs ? (sc.overdue || 0) : 0;
+    // Badges in a fixed order (marks → absences → sit-outs → songs → overdue)
+    // so the eye learns where each one sits when scanning down the list.
+    // Short labels keep them on one line; the tooltip carries the full wording.
+    const showMarks = featureOn('marks') && (errs > 0 || pos > 0);
+    const badges = [
+      showMarks ? `<span class="badge badge-marks" title="Marks — ${pos} positive, ${errs} negative">${pos > 0 ? `<span class="marks-pos">+${pos}</span>` : ''}${errs > 0 ? `<span class="marks-neg">−${errs}</span>` : ''}</span>` : '',
+      absences > 0 ? `<span class="badge badge-warn" title="Absences — ${absences} total${weekAbsences > 0 ? `, ${weekAbsences} this week` : ''}">${absences} abs${weekAbsences > 0 ? `<span class="badge-sub">· ${weekAbsences} wk</span>` : ''}</span>` : '',
+      sitOuts > 0 ? `<span class="badge badge-sitout" title="Sat out — ${sitOuts} time${sitOuts !== 1 ? 's' : ''}">🪑 ${sitOuts}</span>` : '',
+      showSongs ? `<span class="badge badge-song" title="Songs passed off — ${songsPassed} of ${songsTotal}">🎵 ${songsPassed}/${songsTotal}</span>` : '',
+      overdue > 0 ? `<span class="badge badge-overdue" title="${overdue} song${overdue !== 1 ? 's' : ''} past due, not passed">⏰ ${overdue}</span>` : ''
+    ].filter(Boolean).join('');
+    // Needs-attention dot: something the director should act on now.
+    const attention = [
+      overdue > 0      ? `${overdue} overdue song${overdue !== 1 ? 's' : ''}` : '',
+      weekAbsences > 0 ? `${weekAbsences} absence${weekAbsences !== 1 ? 's' : ''} this week` : ''
+    ].filter(Boolean).join(', ');
     return `
       <div class="roster-row" onclick="navigate('student',{num:'${esc(s.number)}'})">
-        <div class="student-info">
+        <div class="roster-row-head">
           ${s.name ? `<div class="student-name">${esc(s.name)}</div>` : `<div class="student-name text-muted">#${esc(s.number)}</div>`}
-          <div class="student-detail">${esc([
-            _studentSpotText(s),
-            hasField('instrument') ? normInstrument(s.instrument) : '',
-            hasField('section')    ? s.section : '',
-            ...(STATE.customStudentFields||[]).map(cf => s[cf.key] ? `${cf.label}: ${s[cf.key]}` : '')
-          ].filter(Boolean).join(' · ')) || '<em style="color:var(--text-muted)">No details set</em>'}</div>
+          ${attention ? `<span class="attention-dot" role="img" aria-label="Needs attention: ${esc(attention)}" title="Needs attention: ${esc(attention)}"></span>` : ''}
         </div>
-        <div class="student-badges">
-          ${featureOn('marks') ? `
-          ${errs > 0 ? `<span class="badge badge-danger">${errs}✗</span>` : ''}
-          ${pos > 0  ? `<span class="badge badge-success">${pos}✓</span>` : ''}` : ''}
-          ${absences > 0 ? `<span class="badge badge-warn" title="Absences — ${absences} total${weekAbsences > 0 ? `, ${weekAbsences} this week` : ''}">${absences} absent${weekAbsences > 0 ? `<span style="font-weight:600;opacity:.82"> · ${weekAbsences} wk</span>` : ''}</span>` : ''}
-          ${sitOuts > 0 ? `<span class="badge badge-sitout" title="Sat out — ${sitOuts} time${sitOuts !== 1 ? 's' : ''}">🪑 ${sitOuts}</span>` : ''}
-          ${showSongs ? `<span class="badge badge-song" title="Songs passed off">${songsPassed}/${songsTotal} 🎵</span>` : ''}
-          ${overdue > 0 ? `<span class="badge badge-overdue" title="Songs past due, not passed">⏰ ${overdue} overdue</span>` : ''}
-        </div>
+        <div class="student-detail">${esc([
+          _studentSpotText(s),
+          hasField('instrument') ? normInstrument(s.instrument) : '',
+          hasField('section')    ? s.section : '',
+          ...(STATE.customStudentFields||[]).map(cf => s[cf.key] ? `${cf.label}: ${s[cf.key]}` : '')
+        ].filter(Boolean).join(' · ')) || '<em>No details set</em>'}</div>
+        ${badges ? `<div class="student-badges">${badges}</div>` : ''}
       </div>`;
   }).join('');
 }
