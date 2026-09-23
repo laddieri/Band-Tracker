@@ -1,4 +1,4 @@
-const CACHE = 'band-tracker-v98';
+const CACHE = 'band-tracker-v99';
 // Deploy stamp (epoch seconds), rewritten by .github/workflows/deploy.yml to
 // match APP_BUILD in js/01-core.js. Its only job is to make every deploy change
 // this file's bytes, which is what makes browsers install the new worker (and
@@ -26,6 +26,7 @@ const PRECACHE = [
   '/js/15-export.js',
   '/js/16-absences.js',
   '/js/17-spot-challenge.js',
+  '/js/18-drill3d.js',
   '/js/13-boot.js',
   '/firebase-config.js',
   '/manifest.json',
@@ -70,9 +71,11 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Firebase CDN scripts are versioned — cache forever once fetched (only a
-  // successful response: a cached error would stick until the next CACHE bump)
-  if (url.hostname === 'www.gstatic.com') {
+  // Firebase CDN scripts, and the three.js build the 3D drill view loads on
+  // demand (js/18-drill3d.js), are versioned — cache forever once fetched (only
+  // a successful response: a cached error would stick until the next CACHE bump)
+  if (url.hostname === 'www.gstatic.com' ||
+      (url.hostname === 'cdn.jsdelivr.net' && url.pathname.startsWith('/npm/three@'))) {
     e.respondWith(
       caches.match(request).then(hit => hit || fetch(request).then(res => {
         if (res.ok) {

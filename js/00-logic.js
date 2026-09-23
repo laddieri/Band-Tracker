@@ -1405,6 +1405,143 @@ function suggestSeasonLabel(dateStr) {
   return `${startY}-${String((startY + 1) % 100).padStart(2, '0')}`;
 }
 
+// ── 3D drill view math (pure; the renderer lives in js/18-drill3d.js) ────────
+//
+// World units are metres. The field is centred on the 50 at the middle of the
+// field, +X toward Side 2 (east), +Z toward the FRONT sideline (the audience /
+// press box), +Y up. A marcher model faces +Z, so a yaw of 0 means "facing the
+// front", and yaw = atan2(dx, dz) turns them toward a direction of travel.
+
+const DRILL3D_STEP_M = 0.5715; // one 8-to-5 step: 22.5 in (5 yards / 8)
+
+// A drill position (steps from the west goal line, steps off the front
+// sideline) in world metres. flipV mirrors front/back the way the 2D chart's
+// "flip facing" does for files built the other way round.
+function drill3dFieldXZ(stepsX, stepsY, flipV) {
+  const fromFront = flipV ? 84 - stepsY : stepsY;
+  return { x: (stepsX - 80) * DRILL3D_STEP_M, z: (42 - fromFront) * DRILL3D_STEP_M };
+}
+
+// Angle into (-PI, PI].
+function drill3dWrapAngle(a) {
+  a = (a + Math.PI) % (2 * Math.PI);
+  if (a < 0) a += 2 * Math.PI;
+  return a - Math.PI;
+}
+
+// Turn from `cur` toward `target` by at most `maxStep` radians, the short way.
+function drill3dTurnToward(cur, target, maxStep) {
+  const d = drill3dWrapAngle(target - cur);
+  if (Math.abs(d) <= maxStep) return drill3dWrapAngle(target);
+  return drill3dWrapAngle(cur + Math.sign(d) * maxStep);
+}
+
+// Which way a performer faces, and whether they march forward (dir 1) or
+// backward (dir -1), from their velocity in metres per count. Drill files carry
+// positions only, so facing is inferred:
+//   'travel' — always face the direction of travel;
+//   'front'  — always face the front (horns to the box), marching backward when
+//              the move heads upfield;
+//   'auto'   — backfield when the move heads mostly toward the back sideline
+//              (within 60° of straight back), otherwise face the travel direction.
+// Standing still returns moving:false with yaw 0 (face front), or yaw null in
+// 'travel' mode (keep whatever way they were facing).
+function drill3dFacing(vx, vz, mode) {
+  const speed = Math.hypot(vx, vz);
+  if (speed < 0.12 * DRILL3D_STEP_M) return { moving: false, yaw: mode === 'travel' ? null : 0, dir: 1 };
+  const travelYaw = Math.atan2(vx, vz);
+  if (mode === 'travel') return { moving: true, yaw: travelYaw, dir: 1 };
+  const towardBack = -vz > 0.2 * speed;
+  if (mode === 'front') return { moving: true, yaw: 0, dir: towardBack ? -1 : 1 };
+  const offBack = Math.atan2(Math.abs(vx), -vz); // 0 = straight toward the back sideline
+  if (offBack < Math.PI / 3) return { moving: true, yaw: 0, dir: -1 };
+  return { moving: true, yaw: travelYaw, dir: 1 };
+}
+
+// Hip swing amplitude (radians) for a step size in steps per count: an 8-to-5
+// step (1 step/count) swings 0.34 rad; tiny drifts read as standing still.
+function drill3dStride(stepsPerCount) {
+  if (!(stepsPerCount >= 0.12)) return 0;
+  return Math.min(0.5, 0.34 * stepsPerCount);
+}
+
+// Joint angles for a marcher at a (fractional) count. amp is the signed stride
+// from drill3dStride (negative = backward march). Index 0 is the wearer's
+// right, 1 their left; a positive hip angle swings that leg behind the body.
+// Feet land ON the count, left foot on odd counts (step off on the left).
+// style: 'roll' (default) — straight-legged glide, toe up on the lead foot;
+// 'high' — high step (chair step): the swinging leg's thigh comes up to about
+// level, shin hanging straight down and toe pointed, before it plants.
+// Backfield marching uses the same platform step in either style.
+function drill3dLegPose(count, amp, style) {
+  const a = Math.min(0.5, Math.abs(amp || 0));
+  if (a < 0.01) return { hip: [0, 0], knee: [0, 0], ankle: [0, 0], arm: [0, 0], bob: 0, tail: 0 };
+  const dir = amp < 0 ? -1 : 1, r = Math.min(1.4, a / 0.34);
+  const phase = (count - 0.5) * Math.PI, sn = Math.sin(phase), cs = Math.cos(phase);
+  const behind = [sn, -sn];
+  const hip = behind.map(k => dir * a * k);
+  let knee, ankle;
+  if (dir > 0 && style === 'high') {
+    // Each leg lifts while it swings forward (half a count), peaking mid-swing
+    // and back on the ground at its footfall. Lift doesn't scale with the step
+    // size — a short high step still comes up to level.
+    const lift = _drill3dHighLift(cs).map(l => l * Math.min(1, a / 0.15));
+    lift.forEach((l, i) => { hip[i] -= 1.45 * l; });
+    knee = lift.map(l => 1.5 * l);
+    ankle = lift.map(l => 0.7 * l);          // toe pointed down
+  } else if (dir > 0) {
+    knee = [0, 1].map(i => 0.45 * r * Math.max(0, Math.sin(phase + (i ? Math.PI : 0) + 0.7)));
+    ankle = behind.map(k => -0.35 * r * Math.max(0, -k)); // roll step: toe up on the lead foot
+  } else {
+    knee = [0, 1].map(i => 0.15 * r * Math.max(0, behind[i]));
+    ankle = [0.25 * r, 0.25 * r];                         // backfield: up on the platforms
+  }
+  return {
+    hip, knee, ankle,
+    arm: behind.map(k => -0.06 * r * k),
+    bob: 0.012 * r * Math.abs(cs),
+    tail: 0.07 * r * Math.abs(sn),
+  };
+}
+
+// How far each leg (0 = right, 1 = left) is lifted in a high step, 0..1: a leg
+// comes up while it's between footfalls and is down on its own count.
+function _drill3dHighLift(cs) { return [Math.max(0, -cs), Math.max(0, cs)]; }
+
+// Marking time in place during a hold. High-step bands mark time with high
+// knees — thigh to level, shin down, toe pointed — in step with the moving
+// marchers: the left foot lands on odd counts, so the right knee comes up
+// between 1 and 2, the left between 2 and 3. Roll-step bands just stand still.
+function drill3dMarkTime(count, style) {
+  const still = { hip: [0, 0], knee: [0, 0], ankle: [0, 0], arm: [0, 0], bob: 0, tail: 0 };
+  if (style !== 'high') return still;
+  const cs = Math.cos((count - 0.5) * Math.PI);
+  const lift = _drill3dHighLift(cs);
+  return {
+    hip: lift.map(l => -1.45 * l), knee: lift.map(l => 1.5 * l), ankle: lift.map(l => 0.7 * l),
+    arm: [0, 0], bob: 0.008 * Math.abs(cs), tail: 0.05 * Math.abs(cs),
+  };
+}
+
+// The band's look for the 3D marchers, stored on the show (or on an ungrouped
+// drill) as `uniform`: six #rrggbb colours plus `step`, the marching style
+// ('roll' or 'high'). Anything missing or invalid falls back to the default.
+const DRILL3D_STEP_STYLES = Object.freeze(['roll', 'high']);
+const DRILL3D_UNIFORM_DEFAULT = Object.freeze({
+  jacket: '#1f3f9e', pants: '#1f3f9e', facing: '#b5162f',
+  gold: '#d3a53a', white: '#f3f1ea', black: '#16171b',
+  step: 'roll',
+});
+function drill3dUniform(raw) {
+  const out = {};
+  for (const k of Object.keys(DRILL3D_UNIFORM_DEFAULT)) {
+    const v = raw && typeof raw[k] === 'string' ? raw[k].trim() : '';
+    if (k === 'step') out[k] = DRILL3D_STEP_STYLES.includes(v) ? v : DRILL3D_UNIFORM_DEFAULT[k];
+    else out[k] = /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : DRILL3D_UNIFORM_DEFAULT[k];
+  }
+  return out;
+}
+
 // ── Pyware drill file parsing (pure; the viewer UI lives in js/12-drill.js) ───
 //
 // Two on-disk formats, both reverse-engineered against real Pyware exports and
@@ -1942,5 +2079,7 @@ if (typeof module !== 'undefined' && module.exports) {
     studentLastName, compareStudentsByInstrumentThenLastName,
     _hasMarker, _indexOfMarker, _parsePywareFile, _pywareAssembleDrill, _pyware3daPageNote,
     _pyware3daCast,
+    DRILL3D_STEP_M, drill3dFieldXZ, drill3dWrapAngle, drill3dTurnToward, drill3dFacing,
+    drill3dStride, drill3dLegPose, drill3dMarkTime, DRILL3D_STEP_STYLES, DRILL3D_UNIFORM_DEFAULT, drill3dUniform,
   };
 }
