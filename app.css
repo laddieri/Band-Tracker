@@ -4070,6 +4070,106 @@ html, body {
 /* ── Reduced motion ────────────────────────────────────────────────────────────
    Honour the OS "reduce motion" setting: animations and transitions finish
    instantly. Delays are kept, so e.g. toasts still fade out on schedule. */
+/* ── Spot challenges (js/17-spot-challenge.js) ──────────────────────────────
+   Shared-spot mistake tallies: pick a pair, then tap "+ Mistake" per student. */
+.sc-spot-list { display: flex; flex-direction: column; gap: 6px; }
+.sc-spot-row, .sc-result-row {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 12px; border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.sc-spot-row:hover, .sc-result-row:hover { background: var(--hover-bg); }
+.sc-spot-label { font-weight: 800; flex-shrink: 0; }
+.sc-spot-names { flex: 1; min-width: 0; font-weight: 600; }
+.sc-spot-row { min-height: 52px; }
+.sc-spot-on { border-color: var(--primary); background: var(--primary-bg); }
+.sc-spot-dim { opacity: .5; }
+.sc-check {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 6px; border: 2px solid var(--border);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: .8rem; font-weight: 800; color: var(--surface);
+}
+.sc-spot-on .sc-check { background: var(--primary); border-color: var(--primary); }
+/* Sticky action bar on the picker once a pair is ticked. */
+.sc-watch-bar {
+  position: sticky; bottom: 8px; display: flex; gap: 8px; margin-top: 12px; padding: 8px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--shadow-md);
+}
+.sc-watch-btn { flex: 1; }
+.sc-spot-score { flex-shrink: 0; font-weight: 700; color: var(--primary); font-variant-numeric: tabular-nums; }
+.sc-vs { color: var(--text-muted); font-weight: 400; margin: 0 4px; }
+.sc-result-row { flex-direction: column; align-items: stretch; gap: 4px; }
+.sc-result-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: .85rem; color: var(--text-muted); }
+.sc-result-scores { font-size: .92rem; }
+.sc-result-lead { color: var(--success); font-weight: 700; }
+
+.sc-page { max-width: 720px; margin: 0 auto; }
+.sc-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; }
+.sc-head-spot { font-weight: 700; font-size: 1.05rem; }
+.sc-head-date { color: var(--text-muted); font-size: .85rem; }
+.sc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.sc-card {
+  display: flex; flex-direction: column; align-items: stretch; gap: 8px;
+  padding: 14px; border-radius: var(--r); background: var(--surface);
+  border: 2px solid var(--border); box-shadow: var(--shadow); text-align: center;
+}
+.sc-card.sc-lead { border-color: var(--success); }
+.sc-card-name { font-weight: 700; font-size: 1.02rem; overflow-wrap: anywhere; }
+.sc-card-sub { font-size: .78rem; color: var(--text-muted); margin-top: -6px; }
+.sc-card-count { font-size: 2.6rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.sc-card.sc-lead .sc-card-count { color: var(--success); }
+.sc-card-tally {
+  display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px;
+  min-height: 30px; color: var(--text);
+}
+.sc-tally-group { width: 28px; height: 28px; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; fill: none; }
+.sc-tally-none { font-size: .8rem; color: var(--text-muted); }
+.sc-add-btn {
+  width: 100%; min-height: 72px; font-size: 1.15rem; font-weight: 800;
+  background: var(--danger-bg); color: var(--danger); border: 2px solid var(--danger);
+  touch-action: manipulation; user-select: none; -webkit-user-select: none;
+}
+.sc-add-btn:active { transform: scale(.97); }
+.sc-undo-btn { align-self: center; touch-action: manipulation; }
+.sc-verdict { margin: 14px 0 6px; text-align: center; font-size: .95rem; min-height: 1.4em; }
+/* Multi-pair screen: pairs share the visible height so each button is as tall
+   as it can be (1 pair per row, students side by side). */
+.sc-multi {
+  display: flex; flex-direction: column; gap: 8px; max-width: 720px; margin: 0 auto;
+  /* The visible content area: viewport minus header, floating nav and
+     #main-content's own padding — so the pairs fill it without scrolling. */
+  min-height: calc(100dvh - var(--header-h) - var(--nav-h) - 108px);
+}
+.sc-pair {
+  flex: 1; display: flex; flex-direction: column; gap: 4px; min-height: 120px;
+  padding: 6px; border-radius: var(--r); background: var(--surface); box-shadow: var(--shadow);
+}
+.sc-pair-head {
+  display: flex; align-items: center; gap: 8px; padding: 0 4px; min-height: 26px;
+  background: none; border: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.sc-pair-show { font-size: .8rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-pair-verdict { flex: 1; margin: 0; text-align: right; font-size: .85rem; min-height: 0; color: var(--success); }
+.sc-pair-open { color: var(--text-muted); font-size: 1.1rem; }
+.sc-pair-btns { flex: 1; display: grid; gap: 6px; }
+.sc-mcell { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sc-mbtn {
+  flex: 1; min-height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  padding: 6px; border-radius: var(--r-sm); border: 2px solid var(--danger); background: var(--danger-bg); color: var(--text);
+  font: inherit; cursor: pointer; touch-action: manipulation; user-select: none; -webkit-user-select: none;
+  transition: transform .1s;
+}
+.sc-mbtn:active { transform: scale(.97); }
+.sc-mbtn-name { font-weight: 700; font-size: .92rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-mbtn-count { font-size: 1.9rem; font-weight: 800; line-height: 1; color: var(--danger); font-variant-numeric: tabular-nums; }
+.sc-mcell.sc-lead .sc-mbtn { box-shadow: 0 0 0 3px var(--success); }
+.sc-mcell.sc-lead .sc-mbtn-count { color: var(--success); }
+.sc-mundo {
+  min-height: 30px; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--surface-alt);
+  color: var(--text-muted); font: inherit; font-size: .8rem; font-weight: 600; cursor: pointer; touch-action: manipulation;
+}
+.sc-foot { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

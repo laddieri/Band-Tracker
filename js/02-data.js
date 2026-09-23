@@ -75,6 +75,7 @@ async function startListeners() {
   // Drop any drill state from a previous session/org; listeners repopulate it.
   STATE.drills = {}; STATE.shows = {}; STATE.spotHistory = {}; STATE.activeDrillId = null; _activeDrillLoadedId = null;
   STATE.anticipatedAbsences = []; _absencesMirrorReady = false;
+  STATE.spotChallenges = [];
   _drillData = null; _drillPages = null; _drillFileName = null; _drillFlipV = false;
 
   // Resolve the user's org before reading any data; bail if redirected.
@@ -332,6 +333,14 @@ async function startListeners() {
         _syncStudentSpotsMirror(); // director-only: publish spots onto student docs
         if (!STATE.loading) renderFromData();
       }, err => _listenerFailed('shows', err)),
+
+      // Spot challenges (shared-spot mistake tallies, js/17-spot-challenge.js).
+      // Directors and staff read + tally; students can't read them. Only the
+      // most recent sheets are kept live — the list shows recent history.
+      orgCol('spotChallenges').orderBy('date', 'desc').limit(200).onSnapshot(snap => {
+        STATE.spotChallenges = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        if (!STATE.loading) renderFromData();
+      }, err => _listenerFailed('spot challenges', err)),
 
       // School-wide active-drill pointer. Also performs the one-time migration of
       // the legacy single-drill doc into the library (directors only — it writes).

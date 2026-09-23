@@ -76,6 +76,9 @@ async function seed() {
     await db.doc('orgs/a/anticipatedAbsences/ab1').set({
       studentNumber: '42', type: 'absent', date: '2026-06-01',
     });
+    await db.doc('orgs/a/spotChallenges/2026-06-01_sh1_M1').set({
+      showId: 'sh1', show: 'Halftime', label: 'M1', date: '2026-06-01', nums: ['42', '7'], counts: { 42: 2, 7: 1 },
+    });
 
     await db.doc('orgs/b').set({ createdBy: 'dirB', name: 'Org B' });
     await db.doc('members/dirB').set({ orgId: 'b', role: 'director', email: 'dir@b.com' });
@@ -243,6 +246,25 @@ describe('student data visibility', () => {
   it('a director CANNOT read another org\'s anticipated absences', async () => {
     await assertFails(director('dirB').doc('orgs/a/anticipatedAbsences/ab1').get());
   });
+  it('a director can read, tally and delete spot challenges', async () => {
+    await assertSucceeds(director('dirA').collection('orgs/a/spotChallenges').get());
+    await assertSucceeds(director('dirA').doc('orgs/a/spotChallenges/2026-06-01_sh1_M1').set(
+      { counts: { 42: 3 }, updatedBy: 'dirA' }, { merge: true }));
+    await assertSucceeds(director('dirA').doc('orgs/a/spotChallenges/2026-06-02_sh1_M1').set({
+      showId: 'sh1', label: 'M1', date: '2026-06-02', nums: ['42', '7'], counts: { 7: 1 },
+    }));
+    await assertSucceeds(director('dirA').doc('orgs/a/spotChallenges/2026-06-01_sh1_M1').delete());
+  });
+  it('a student CANNOT read or write spot challenges (not even their own tally)', async () => {
+    await assertFails(director('studA').doc('orgs/a/spotChallenges/2026-06-01_sh1_M1').get());
+    await assertFails(director('studA').collection('orgs/a/spotChallenges').get());
+    await assertFails(director('studA').doc('orgs/a/spotChallenges/2026-06-01_sh1_M1').set({ counts: { 42: 0 } }, { merge: true }));
+    await assertFails(director('studA').doc('orgs/a/spotChallenges/2026-06-01_sh1_M1').delete());
+  });
+  it('a director CANNOT read another org\'s spot challenges', async () => {
+    await assertFails(director('dirB').doc('orgs/a/spotChallenges/2026-06-01_sh1_M1').get());
+    await assertFails(director('dirB').doc('orgs/a/spotChallenges/2026-06-01_sh1_M1').set({ counts: {} }, { merge: true }));
+  });
   it('a student CANNOT write drills', async () => {
     await assertFails(director('studA').doc('orgs/a/drills/d1').set({ name: 'hacked' }));
     await assertFails(director('studA').doc('orgs/a/drills/d1/data/main').set({ pages: [] }));
@@ -374,6 +396,15 @@ describe('staff role (recording access, no admin control)', () => {
     await assertFails(staff().doc('orgs/a/anticipatedAbsences/ab2').set({ studentNumber: '7', type: 'late', date: '2026-06-05' }));
     await assertFails(staff().doc('orgs/a/anticipatedAbsences/ab1').set({ note: 'x' }, { merge: true }));
     await assertFails(staff().doc('orgs/a/anticipatedAbsences/ab1').delete());
+  });
+  it('staff can read and tally spot challenges but CANNOT delete one', async () => {
+    await assertSucceeds(staff().collection('orgs/a/spotChallenges').get());
+    await assertSucceeds(staff().doc('orgs/a/spotChallenges/2026-06-01_sh1_M1').set(
+      { counts: { 7: 3 }, updatedBy: 'staffA' }, { merge: true }));
+    await assertSucceeds(staff().doc('orgs/a/spotChallenges/2026-06-05_sh1_M1').set({
+      showId: 'sh1', label: 'M1', date: '2026-06-05', nums: ['42', '7'], counts: {},
+    }));
+    await assertFails(staff().doc('orgs/a/spotChallenges/2026-06-01_sh1_M1').delete());
   });
   it('staff can switch the active drill (settings/drill activeId) but not other drill settings', async () => {
     await assertSucceeds(staff().doc('orgs/a/settings/drill').set({ activeId: 'd1' }, { merge: true }));

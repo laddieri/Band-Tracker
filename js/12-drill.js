@@ -1939,6 +1939,7 @@ function _drillInfoPanelHtml() {
       <div class="drill-info-pop-actions">
         <button class="btn btn-sm ${_drillTraceLabel === label ? 'btn-secondary' : 'btn-primary'}" onclick="drillTracePerformer('${esc(label)}')">${_drillTraceLabel === label ? 'Tracing ✓' : 'Trace path'}</button>
         ${(STATE.isAdmin && _activeShow()) ? `<button class="btn btn-sm btn-secondary" onclick="drillSpotHistoryModal('${esc(label)}')">View spot history</button>` : ''}
+        ${(nums.length > 1 && _activeShow()) ? `<button class="btn btn-sm btn-secondary" onclick="navigate('spot-challenge',{showId:'${esc(_activeShow().id)}',label:'${esc(label)}'})">Tally mistakes</button>` : ''}
       </div>
     </div>`;
 }
@@ -2384,6 +2385,10 @@ function showDrillOptionsModal() {
       <button class="options-menu-item" onclick="closeModal();showDrillLibraryModal()">
         <div class="options-menu-icon">📚</div>
         <div><div class="options-menu-label">Chart Library</div><div class="options-menu-sub">${count ? `${count} chart${count!==1?'s':''} · ${STATE.isAdmin ? 'switch, add or remove' : 'switch charts'}` : (STATE.isAdmin ? 'Add your first chart file' : 'No charts yet')}</div></div>
+      </button>
+      <button class="options-menu-item" onclick="closeModal();navigate('spot-challenges')">
+        <div class="options-menu-icon">👥</div>
+        <div><div class="options-menu-label">Spot Challenges</div><div class="options-menu-sub">Tally mistakes for students sharing a spot</div></div>
       </button>
       ${(has && STATE.isAdmin) ? `
       <button class="options-menu-item" onclick="closeModal();showDrillMappingModal()">

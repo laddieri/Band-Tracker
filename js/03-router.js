@@ -994,6 +994,8 @@ const VIEW_FEATURE = {
   'songs':          'songs',
   'song':           'songs',
   'drill':          'drill',
+  'spot-challenges': 'drill',
+  'spot-challenge':  'drill',
   'tasks':          'tasks',
   'task':           'tasks',
 };

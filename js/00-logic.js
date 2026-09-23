@@ -927,6 +927,48 @@ function drillSpotLabelParts(label) {
   return { section: (String(label || '').trim() || '?').toUpperCase(), rank: 0 };
 }
 
+// ── Spot challenges (shared-spot mistake tallies) ───────────────────────────
+// When two (or more) students share a spot, a director watches each march it
+// and tallies their mistakes; whoever makes fewer marches the spot that week.
+// The view lives in js/17-spot-challenge.js; these are its pure helpers.
+
+// Every shared spot (2+ students on one label) across all shows, as
+// [{ showId, show, label, nums }], ordered by show name then label (natural,
+// so M2 sorts before M10).
+function sharedSpotsFromShows(shows) {
+  const out = [];
+  Object.keys(shows || {}).forEach(showId => {
+    const show = shows[showId] || {};
+    const mapping = show.mapping || {};
+    Object.keys(mapping).forEach(label => {
+      const nums = drillSpotNums(mapping[label]);
+      if (nums.length > 1) out.push({ showId, show: show.name || 'Show', label, nums });
+    });
+  });
+  const cmp = (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+  return out.sort((a, b) => cmp(a.show, b.show) || cmp(a.showId, b.showId) || cmp(a.label, b.label));
+}
+
+// One challenge doc per spot per day, so re-opening the same pair on the same
+// date resumes its tally sheet. Firestore ids can't contain '/', so any
+// character outside a safe set is replaced.
+function spotChallengeId(date, showId, label) {
+  const safe = v => String(v == null ? '' : v).replace(/[^A-Za-z0-9_-]/g, '-');
+  return `${safe(date)}_${safe(showId)}_${safe(label)}`;
+}
+
+// Who's ahead: the student(s) with the fewest tallied mistakes among `nums`
+// (a missing count is 0). { leaders: [num…], min, tie } — tie when 2+ share
+// the lowest count. Empty nums → no leaders.
+function spotChallengeLeaders(counts, nums) {
+  const list = (nums || []).map(String);
+  if (!list.length) return { leaders: [], min: 0, tie: false };
+  const c = n => Math.max(0, Number((counts || {})[n]) || 0);
+  const min = Math.min(...list.map(c));
+  const leaders = list.filter(n => c(n) === min);
+  return { leaders, min, tie: leaders.length > 1 };
+}
+
 // Enforce "one spot per student per show": pull `num` out of every spot except
 // `keepLabel`, so a student never holds two spots in the same show. Shared spots
 // (2+ students at ONE label) are preserved — only the student's OTHER labels are
@@ -1881,6 +1923,7 @@ if (typeof module !== 'undefined' && module.exports) {
     buildSongRosterExportTable, buildTaskRosterExportTable,
     DRILL_LABEL_ALIASES, drillSpotNums, drillSpotStripOthers, drillSpotLabelParts, applyDrillSpotCsv,
     drillMappingDiff, spotHistorySpans,
+    sharedSpotsFromShows, spotChallengeId, spotChallengeLeaders,
     drillPositionPairs, drillRelabelMapping,
     suggestSeasonLabel,
     normInstrument, instrOrder, GRADE_LEVELS, filterAndSortStudents, studentSortValue, sortKeys,

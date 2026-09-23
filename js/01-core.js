@@ -253,6 +253,11 @@ const STATE = {
   // read their own via the students/{num}.anticipatedAbsences mirror. See
   // js/16-absences.js.
   anticipatedAbsences:        [],
+  // Spot challenges: mistake tallies from watching students who share a field
+  // spot march it, one doc per spot per day ({ id, showId, show, label, date,
+  // nums, counts:{num:n}, … }), newest first. Directors + staff only — see
+  // js/17-spot-challenge.js.
+  spotChallenges:             [],
   // Per-feature student portal visibility (independent of whether the feature is
   // enabled for directors). Default true = visible; false = hidden from portal.
   portalVisible: { attendance: true, marks: true, songs: true, stats: true, tasks: true },
