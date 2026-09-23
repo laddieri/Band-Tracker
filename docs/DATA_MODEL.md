@@ -211,7 +211,9 @@ re-entry.
   spot, a director watches each march it and tallies their mistakes; fewer
   mistakes marches the spot that weekend. The "Spot Challenges" screen (Field
   Chart → ⚙ options, or "Tally mistakes" on a shared dot's panel) lists every
-  shared spot across the shows (`sharedSpotsFromShows`). Tick up to 4 pairs
+  shared spot in one show at a time (`sharedSpotsFromShows`; a dropdown switches
+  shows, starting on the Field Chart's current show, or it asks "Which show are
+  you watching?" when there's no way to tell). Tick up to 4 pairs
   (`SC_MAX_WATCH`) and tap Watch: one pair opens the full tally sheet (a
   "+ Mistake" button per student, tally marks, reset/delete); 2–4 pairs open a
   compact screen with one row of buttons per pair, sized to fill the phone. It's
