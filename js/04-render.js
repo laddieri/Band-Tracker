@@ -282,7 +282,7 @@ function render() {
       break;
 
     case 'spot-challenge':
-      title.textContent = 'Spot Challenge';
+      title.textContent = _scSpots(_params).length > 1 ? `Watching ${_scSpots(_params).length} pairs` : 'Spot Challenge';
       actions.innerHTML = userBtn();
       main.innerHTML = viewSpotChallenge(_params);
       break;

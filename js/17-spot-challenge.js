@@ -5,10 +5,15 @@
 // each of them march it once in a rehearsal and tallies their mistakes; whoever
 // makes fewer marches the spot that weekend. This file is that tally sheet:
 //
-//   • 'spot-challenges' — every shared spot across the band's shows (pick the
-//     pair you're about to watch) plus recent results.
-//   • 'spot-challenge'  — the tally sheet for one spot on one day: a big
-//     "+ Mistake" button per student, tally marks, and who's ahead.
+//   • 'spot-challenges' — every shared spot across the band's shows. Tick the
+//     pair(s) you're about to watch (up to SC_MAX_WATCH at once) and tap Watch.
+//     Recent results are listed underneath.
+//   • 'spot-challenge'  — the tally sheet. One pair gets the full sheet (big
+//     "+ Mistake" button per student, tally marks, who's ahead, reset/delete);
+//     2–4 pairs get a compact screen with one row of buttons per pair, sized to
+//     fill the phone so each button stays easy to hit while watching the field.
+//     Params: { showId, label, date? } for one pair, { spots:[{showId,label}] }
+//     for several (always today).
 //
 // Data: orgs/{orgId}/spotChallenges/{date_showId_label} =
 //   { showId, show, label, date, nums, counts:{num:n}, season?, updatedAt, updatedBy }
@@ -50,6 +55,26 @@ function _scCount(doc, num) {
   return Math.max(0, Number(doc?.counts?.[num]) || 0);
 }
 
+// Pairs ticked on the picker for multi-pair watching: [{ showId, label }].
+// Kept for the session so coming back to the list keeps the selection.
+const SC_MAX_WATCH = 4;
+let _scSelected = [];
+
+function _scSelIdx(showId, label) {
+  return _scSelected.findIndex(x => x.showId === showId && x.label === label);
+}
+
+// The spots the open tally sheet covers, from the route params.
+function _scSpots(params) {
+  if (params && Array.isArray(params.spots) && params.spots.length) return params.spots;
+  return (params && params.showId) ? [{ showId: params.showId, label: params.label }] : [];
+}
+
+// The pair container a tap patches in place — keyed by a DOM-safe id.
+function _scPairKey(showId, label) {
+  return spotChallengeId('p', showId, label);
+}
+
 // ── Tally marks ───────────────────────────────────────────────────────────────
 
 // Classic tally marks: groups of four strokes crossed by a fifth. Each group is
@@ -77,15 +102,22 @@ function viewSpotChallenges() {
   const spots = sharedSpotsFromShows(STATE.shows);
   const date  = today();
 
+  // Drop ticks for spots that are no longer shared (re-assigned since).
+  _scSelected = _scSelected.filter(x => spots.some(sp => sp.showId === x.showId && sp.label === x.label));
+  const full = _scSelected.length >= SC_MAX_WATCH;
+
   const spotRow = sp => {
     const doc  = _scDoc(date, sp.showId, sp.label);
     const nums = _scNums(sp.showId, sp.label, date, doc);
     const any  = nums.some(n => _scCount(doc, n) > 0);
+    const on   = _scSelIdx(sp.showId, sp.label) >= 0;
     return `
-      <button class="sc-spot-row" onclick="navigate('spot-challenge',{showId:'${esc(sp.showId)}',label:'${esc(sp.label)}'})">
+      <button class="sc-spot-row${on ? ' sc-spot-on' : ''}${full && !on ? ' sc-spot-dim' : ''}" aria-pressed="${on}"
+              onclick="scToggleSpot('${esc(sp.showId)}','${esc(sp.label)}')">
+        <span class="sc-check" aria-hidden="true">${on ? '✓' : ''}</span>
         <span class="badge badge-primary sc-spot-label">${esc(sp.label)}</span>
         <span class="sc-spot-names">${nums.map(n => esc(_scName(n))).join(' <span class="sc-vs">vs</span> ')}</span>
-        <span class="sc-spot-score">${any ? nums.map(n => _scCount(doc, n)).join(' – ') : 'Watch ›'}</span>
+        ${any ? `<span class="sc-spot-score">${nums.map(n => _scCount(doc, n)).join(' – ')}</span>` : ''}
       </button>`;
   };
 
@@ -128,7 +160,7 @@ function viewSpotChallenges() {
 
   return `<div class="songs-page">
     <p class="setting-hint" style="margin:0 0 12px">
-      Pick the pair you're about to watch. Tap <strong>+ Mistake</strong> each time a student misses something while marching the spot — fewer mistakes wins the spot.
+      Tick the pairs you're about to watch — up to ${SC_MAX_WATCH} at once — then tap <strong>Watch</strong>. Tap <strong>+ Mistake</strong> each time a student misses something while marching the spot; fewer mistakes wins the spot.
     </p>
     ${spots.length ? spotCards : empty}
     ${results.length ? `
@@ -136,14 +168,40 @@ function viewSpotChallenges() {
       <div class="sec-hdr sec-hdr-open" style="cursor:default"><span class="section-title">Recent results</span></div>
       <div class="sc-spot-list">${results.map(resultRow).join('')}</div>
     </div>` : ''}
+    ${_scSelected.length ? `
+    <div class="sc-watch-bar">
+      <button class="btn btn-secondary" onclick="scClearSelection()">Clear</button>
+      <button class="btn btn-primary sc-watch-btn" onclick="scWatchSelected()">Watch ${_scSelected.length} pair${_scSelected.length !== 1 ? 's' : ''} ›</button>
+    </div>` : ''}
   </div>`;
+}
+
+function scToggleSpot(showId, label) {
+  const i = _scSelIdx(showId, label);
+  if (i >= 0) _scSelected.splice(i, 1);
+  else if (_scSelected.length >= SC_MAX_WATCH) { showToast(`Up to ${SC_MAX_WATCH} pairs at once.`); return; }
+  else _scSelected.push({ showId, label });
+  render();
+}
+
+function scClearSelection() {
+  _scSelected = [];
+  render();
+}
+
+function scWatchSelected() {
+  if (!_scSelected.length) return;
+  if (_scSelected.length === 1) navigate('spot-challenge', { ..._scSelected[0] });
+  else navigate('spot-challenge', { spots: _scSelected.map(x => ({ ...x })) });
 }
 
 // ── View: the tally sheet ─────────────────────────────────────────────────────
 
 function viewSpotChallenge(params) {
   if (!canRecord()) return `<div class="empty-state"><p>Directors only.</p></div>`;
-  const { showId, label } = params || {};
+  const spots = _scSpots(params);
+  if (spots.length > 1) return _scMultiHtml(spots);
+  const { showId, label } = spots[0] || {};
   const date = (params && params.date) || today();
   const show = (STATE.shows || {})[showId];
   const doc  = _scDoc(date, showId, label);
@@ -158,14 +216,15 @@ function viewSpotChallenge(params) {
   }
 
   const isToday = date === today();
-  return `<div class="sc-page" id="sc-root">
+  const lead = _scSoleLeader(doc, nums);
+  return `<div class="sc-page" id="sc-root" data-sc-pair="${esc(_scPairKey(showId, label))}">
     <div class="sc-head">
       <div class="sc-head-spot"><span class="badge badge-primary sc-spot-label">${esc(label)}</span> ${esc(showName)}</div>
       <div class="sc-head-date">${isToday ? 'Today' : esc(fmtDate(date))}</div>
     </div>
     ${nums.length < 2 ? `<p class="setting-hint" style="margin:0 0 10px">Only one student is on this spot now.</p>` : ''}
-    <div class="sc-grid">${nums.map(n => _scCardHtml(n, doc)).join('')}</div>
-    <div class="sc-verdict" id="sc-verdict" role="status">${_scVerdictHtml(doc, nums)}</div>
+    <div class="sc-grid">${nums.map(n => _scCardHtml(showId, label, n, doc, lead)).join('')}</div>
+    <div class="sc-verdict" role="status">${_scVerdictHtml(doc, nums)}</div>
     <div class="sc-foot">
       <button class="btn btn-secondary btn-sm" onclick="scResetPrompt()">Reset tallies</button>
       ${STATE.isAdmin && doc ? `<button class="btn btn-sm btn-danger" onclick="scDeletePrompt()">Delete sheet</button>` : ''}
@@ -174,27 +233,67 @@ function viewSpotChallenge(params) {
   </div>`;
 }
 
-function _scCardHtml(num, doc) {
+function _scCardHtml(showId, label, num, doc, lead) {
   const n    = _scCount(doc, num);
   const name = _scName(num);
   const inst = STATE.students[num]?.instrument || '';
-  const lead = _scIsSoleLeader(doc, num);
+  const a    = `'${esc(showId)}','${esc(label)}','${esc(num)}'`;
   return `
-    <div class="sc-card${lead ? ' sc-card-lead' : ''}" id="sc-card-${esc(num)}">
+    <div class="sc-card${lead === num ? ' sc-lead' : ''}" data-sc-num="${esc(num)}">
       <div class="sc-card-name">${esc(name)}</div>
       ${inst ? `<div class="sc-card-sub">${esc(inst)}</div>` : ''}
-      <div class="sc-card-count" id="sc-ct-${esc(num)}" aria-live="polite">${n}</div>
-      <div class="sc-card-tally" id="sc-tally-${esc(num)}">${_scTallyHtml(n)}</div>
-      <button class="btn sc-add-btn" onclick="scTally('${esc(num)}',1)" aria-label="Add a mistake for ${esc(name)}">+ Mistake</button>
-      <button class="btn btn-secondary btn-sm sc-undo-btn" onclick="scTally('${esc(num)}',-1)" aria-label="Remove a mistake for ${esc(name)}">Undo</button>
+      <div class="sc-card-count sc-n" aria-live="polite">${n}</div>
+      <div class="sc-card-tally">${_scTallyHtml(n)}</div>
+      <button class="btn sc-add-btn" onclick="scTally(${a},1)" aria-label="Add a mistake for ${esc(name)}">+ Mistake</button>
+      <button class="btn btn-secondary btn-sm sc-undo-btn" onclick="scTally(${a},-1)" aria-label="Remove a mistake for ${esc(name)}">Undo</button>
     </div>`;
 }
 
-function _scIsSoleLeader(doc, num) {
-  const nums = _scNums(_params.showId, _params.label, _params.date || today(), doc);
-  if (nums.length < 2 || !nums.some(n => _scCount(doc, n) > 0)) return false;
+// Several pairs at once (today): one row per pair, each student a big tap
+// target showing their name and count. The rows share the screen height, so
+// with fewer pairs each button is taller. Tapping a pair's heading opens its
+// full sheet (tally marks, reset, delete).
+function _scMultiHtml(spots) {
+  const date = today();
+  const multiShow = new Set(spots.map(sp => sp.showId)).size > 1;
+  const rows = spots.map(({ showId, label }) => {
+    const show = (STATE.shows || {})[showId];
+    const doc  = _scDoc(date, showId, label);
+    const nums = _scNums(showId, label, date, doc);
+    const lead = _scSoleLeader(doc, nums);
+    const cells = nums.map(num => {
+      const name = _scName(num);
+      const a = `'${esc(showId)}','${esc(label)}','${esc(num)}'`;
+      return `
+        <div class="sc-mcell${lead === num ? ' sc-lead' : ''}" data-sc-num="${esc(num)}">
+          <button class="sc-mbtn" onclick="scTally(${a},1)" aria-label="Add a mistake for ${esc(name)} on ${esc(label)}">
+            <span class="sc-mbtn-name">${esc(name)}</span>
+            <span class="sc-mbtn-count sc-n">${_scCount(doc, num)}</span>
+          </button>
+          <button class="sc-mundo" onclick="scTally(${a},-1)" aria-label="Remove a mistake for ${esc(name)} on ${esc(label)}">Undo</button>
+        </div>`;
+    }).join('');
+    return `
+      <div class="sc-pair" data-sc-pair="${esc(_scPairKey(showId, label))}">
+        <button class="sc-pair-head" onclick="navigate('spot-challenge',{showId:'${esc(showId)}',label:'${esc(label)}'})" aria-label="Open the full sheet for ${esc(label)}">
+          <span class="badge badge-primary sc-spot-label">${esc(label)}</span>
+          ${multiShow ? `<span class="sc-pair-show">${esc(show?.name || 'Show')}</span>` : ''}
+          <span class="sc-verdict sc-pair-verdict" role="status">${_scShortVerdictHtml(doc, nums)}</span>
+          <span class="sc-pair-open" aria-hidden="true">›</span>
+        </button>
+        ${nums.length ? `<div class="sc-pair-btns" style="grid-template-columns:repeat(${nums.length},1fr)">${cells}</div>`
+                      : `<p class="setting-hint">No one is on this spot now.</p>`}
+      </div>`;
+  }).join('');
+  return `<div class="sc-multi" id="sc-root">${rows}</div>`;
+}
+
+// The one student with the fewest mistakes (null before any tally, on a tie,
+// or with fewer than two students) — they get the green outline.
+function _scSoleLeader(doc, nums) {
+  if (nums.length < 2 || !nums.some(n => _scCount(doc, n) > 0)) return null;
   const { leaders, tie } = spotChallengeLeaders(doc?.counts, nums);
-  return !tie && leaders[0] === num;
+  return tie ? null : leaders[0];
 }
 
 function _scVerdictHtml(doc, nums) {
@@ -205,36 +304,49 @@ function _scVerdictHtml(doc, nums) {
   return `<strong>${esc(_scName(leaders[0]))}</strong> has the fewest mistakes`;
 }
 
-// Update just the counts, tally marks and verdict in place after a tap, so
-// feedback is instant and the buttons under the finger aren't rebuilt. The
-// snapshot echo re-renders the full view a moment later via renderFromData().
-function _scPatch() {
-  if (_view !== 'spot-challenge' || !document.getElementById('sc-root')) return;
-  const date = _params.date || today();
-  const doc  = _scDoc(date, _params.showId, _params.label);
-  const nums = _scNums(_params.showId, _params.label, date, doc);
+// One-line verdict for a pair's heading on the multi-pair screen.
+function _scShortVerdictHtml(doc, nums) {
+  if (nums.length < 2 || !nums.some(n => _scCount(doc, n) > 0)) return '';
+  const { leaders, tie } = spotChallengeLeaders(doc?.counts, nums);
+  if (tie) return 'Tied';
+  const first = _scName(leaders[0]).split(/\s+/)[0];
+  return `<strong>${esc(first)}</strong> ahead`;
+}
+
+// Update just one pair's counts, tally marks, leader outline and verdict in
+// place after a tap, so feedback is instant and the buttons under the finger
+// aren't rebuilt. The snapshot echo re-renders the full view a moment later
+// via renderFromData().
+function _scPatch(showId, label, date) {
+  if (_view !== 'spot-challenge') return;
+  const box = document.querySelector(`[data-sc-pair="${CSS.escape(_scPairKey(showId, label))}"]`);
+  if (!box) return;
+  const doc  = _scDoc(date, showId, label);
+  const nums = _scNums(showId, label, date, doc);
+  const lead = _scSoleLeader(doc, nums);
   nums.forEach(num => {
+    const el = box.querySelector(`[data-sc-num="${CSS.escape(num)}"]`);
+    if (!el) return;
     const n = _scCount(doc, num);
-    const ct = document.getElementById(`sc-ct-${num}`);
-    const tl = document.getElementById(`sc-tally-${num}`);
-    const cd = document.getElementById(`sc-card-${num}`);
+    const ct = el.querySelector('.sc-n');
+    const tl = el.querySelector('.sc-card-tally');
     if (ct) ct.textContent = n;
     if (tl) tl.innerHTML = _scTallyHtml(n);
-    if (cd) cd.classList.toggle('sc-card-lead', _scIsSoleLeader(doc, num));
+    el.classList.toggle('sc-lead', lead === num);
   });
-  const v = document.getElementById('sc-verdict');
-  if (v) v.innerHTML = _scVerdictHtml(doc, nums);
+  const v = box.querySelector('.sc-verdict');
+  if (v) v.innerHTML = v.classList.contains('sc-pair-verdict') ? _scShortVerdictHtml(doc, nums) : _scVerdictHtml(doc, nums);
 }
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 
-// +1 / −1 a student's mistake tally on the open sheet. Creates the day's sheet
-// on the first tap. increment() keeps simultaneous tallies from two devices
-// from overwriting each other.
-function scTally(num, delta) {
+// +1 / −1 a student's mistake tally for one spot. Creates the day's sheet on
+// the first tap. increment() keeps simultaneous tallies from two devices from
+// overwriting each other. The date is the open sheet's (a past sheet can be
+// corrected); the multi-pair screen is always today.
+function scTally(showId, label, num, delta) {
   if (!canRecord()) return;
-  const { showId, label } = _params;
-  const date = _params.date || today();
+  const date = (_params && _params.date) || today();
   let doc = _scDoc(date, showId, label);
   if (delta < 0 && _scCount(doc, num) <= 0) return; // nothing to undo
   const nums = _scNums(showId, label, date, doc);
@@ -247,7 +359,7 @@ function scTally(num, delta) {
     STATE.spotChallenges = [doc, ...(STATE.spotChallenges || [])];
   }
   doc.counts = { ...(doc.counts || {}), [num]: _scCount(doc, num) + delta };
-  _scPatch();
+  _scPatch(showId, label, date);
   if (delta > 0 && navigator.vibrate) { try { navigator.vibrate(12); } catch {} }
 
   orgCol('spotChallenges').doc(id).set({
