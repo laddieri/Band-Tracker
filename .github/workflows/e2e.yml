@@ -1,0 +1,59 @@
+name: End-to-end smoke test
+
+# Runs the real app in headless Chromium against the local Firebase emulators
+# (Auth + Firestore, with the real firestore.rules): a director signs in, takes
+# attendance and adds a mark; a student claims their code and sees it in their
+# portal, and can't read a classmate's entry. See tests/e2e/smoke.test.js.
+# The emulators run under a demo- project id, so nothing touches production.
+
+on:
+  pull_request:
+    paths:
+      - 'js/**'
+      - 'index.html'
+      - 'app.css'
+      - 'sw.js'
+      - 'firebase-config.js'
+      - 'firestore.rules'
+      - 'firebase.json'
+      - 'tests/e2e/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/e2e.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'js/**'
+      - 'index.html'
+      - 'app.css'
+      - 'sw.js'
+      - 'firebase-config.js'
+      - 'firestore.rules'
+      - 'firebase.json'
+      - 'tests/e2e/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/e2e.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: Smoke test (emulators + Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - run: npm install
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e

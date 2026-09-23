@@ -7,10 +7,12 @@
     "test:unit": "node --test tests/unit/*.test.js",
     "check:static": "node tests/check-precache.js && node tests/check-handlers.js && node tests/check-render-calls.js",
     "test:rules": "firebase emulators:exec --only firestore \"node --test tests/firestore.test.js\"",
+    "test:e2e": "firebase emulators:exec --only auth,firestore --project demo-band-tracker \"node --test tests/e2e/*.test.js\"",
     "deploy:rules": "firebase deploy --only firestore:rules --project band-tracker-ae9b4"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^3.0.4",
-    "firebase-tools": "^13.23.0"
+    "firebase-tools": "^13.23.0",
+    "playwright": "1.56.1"
   }
 }
