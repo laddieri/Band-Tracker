@@ -612,3 +612,73 @@ describe('removing directors (owner protection)', () => {
     await assertFails(director('dirA').doc('members/dirB').delete());
   });
 });
+
+describe('entry shape (studentNumber string, keyed {rehearsalId}_{studentNumber})', () => {
+  const dir = () => director('dirA');
+  it('a well-formed new entry is accepted (director, staff, with or without season)', async () => {
+    await assertSucceeds(dir().doc('orgs/a/entries/r2_42').set(
+      { rehearsalId: 'r2', studentNumber: '42', season: '2026-27', attendance: 'present' }));
+    await assertSucceeds(director('staffA').doc('orgs/a/entries/r2_7').set(
+      { rehearsalId: 'r2', studentNumber: '7', attendance: 'late' }));
+  });
+  it('a NUMERIC studentNumber is rejected (student queries filter on the string)', async () => {
+    await assertFails(dir().doc('orgs/a/entries/r2_42').set({ rehearsalId: 'r2', studentNumber: 42 }));
+  });
+  it('a new entry missing rehearsalId or studentNumber is rejected', async () => {
+    await assertFails(dir().doc('orgs/a/entries/r2_42').set({ studentNumber: '42' }));
+    await assertFails(dir().doc('orgs/a/entries/r2_42').set({ rehearsalId: 'r2' }));
+    await assertFails(dir().doc('orgs/a/entries/r2_').set({ rehearsalId: 'r2', studentNumber: '' }));
+  });
+  it('a doc id that does not match {rehearsalId}_{studentNumber} is rejected', async () => {
+    await assertFails(dir().doc('orgs/a/entries/r2_7').set({ rehearsalId: 'r2', studentNumber: '42' }));
+    await assertFails(dir().doc('orgs/a/entries/whatever').set({ rehearsalId: 'r2', studentNumber: '42' }));
+  });
+  it('a non-string season is rejected', async () => {
+    await assertFails(dir().doc('orgs/a/entries/r2_42').set(
+      { rehearsalId: 'r2', studentNumber: '42', season: 2026 }));
+  });
+  it('an update that leaves the keys alone is accepted, one that breaks them is not', async () => {
+    await assertSucceeds(dir().doc('orgs/a/entries/r1_7').update({ mistakes: 3 }));
+    await assertFails(dir().doc('orgs/a/entries/r1_7').update({ studentNumber: 7 }));
+    await assertFails(dir().doc('orgs/a/entries/r1_7').update({ studentNumber: '42' }));
+    await assertFails(dir().doc('orgs/a/entries/r1_7').update({ season: 1 }));
+  });
+  it('a legacy entry with a numeric studentNumber can still be updated (and repaired)', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc('orgs/a/entries/r1_9').set({ rehearsalId: 'r1', studentNumber: 9 });
+    });
+    await assertSucceeds(dir().doc('orgs/a/entries/r1_9').update({ attendance: 'absent' }));
+    await assertSucceeds(dir().doc('orgs/a/entries/r1_9').set({ studentNumber: '9' }, { merge: true }));
+  });
+  it('recorders can still delete entries; students still cannot write them', async () => {
+    await assertSucceeds(director('staffA').doc('orgs/a/entries/r1_7').delete());
+    await assertFails(director('studA').doc('orgs/a/entries/r1_42').set(
+      { rehearsalId: 'r1', studentNumber: '42', attendance: 'present' }));
+  });
+});
+
+describe('settings/public build stamp (appBuild never goes backwards)', () => {
+  const pub = 'orgs/a/settings/public';
+  const stamp = async (appBuild) => testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().doc(pub).set({ bandName: 'Org A', appBuild });
+  });
+  it('an unstamped doc (pre-stamp clients) accepts any publish', async () => {
+    await assertSucceeds(director('dirA').doc(pub).set({ bandName: 'Org A' }));
+    await assertSucceeds(director('dirA').doc(pub).set({ bandName: 'Org A', appBuild: 100 }));
+  });
+  it('the same or a newer build may publish (director and staff)', async () => {
+    await stamp(100);
+    await assertSucceeds(director('dirA').doc(pub).set({ bandName: 'Org A', appBuild: 100 }));
+    await assertSucceeds(director('staffA').doc(pub).set({ bandName: 'Org A', appBuild: 200 }));
+  });
+  it('an OLDER build, or a client that sends no stamp, cannot overwrite it', async () => {
+    await stamp(200);
+    await assertFails(director('dirA').doc(pub).set({ bandName: 'Org A', appBuild: 100 }));
+    await assertFails(director('staffA').doc(pub).set({ bandName: 'Org A', appBuild: 100 }));
+    await assertFails(director('dirA').doc(pub).set({ bandName: 'Org A' }));
+  });
+  it('the stamp does not affect other settings docs', async () => {
+    await stamp(200);
+    await assertSucceeds(director('dirA').doc('orgs/a/settings/presets').set({ bandName: 'x' }, { merge: true }));
+  });
+});

@@ -28,12 +28,47 @@ function setSeasonView(v) {
   navigate('rehearsals');
 }
 
+// ── Listener failures ─────────────────────────────────────────────────────────
+// Firestore stops a listener for good when it errors (permission-denied after a
+// membership change, a backend failure…) and never re-subscribes it. Ignoring
+// that left the app on the loading spinner forever, or quietly showing data
+// that had stopped updating. Every listener routes its error here instead:
+//   - a listener the loading gate waits on (critical) fails during load → the
+//     "Can't reach the server" screen with Retry;
+//   - anything else, or after load → a persistent "Live updates stopped" notice
+//     with a Reconnect button (the current view stays put: no mid-edit render).
+// Either way this device stops publishing settings/public until it reconnects —
+// stats computed from a dead or empty listener would overwrite the student
+// portal with wrong numbers. See _publishBlocked().
+let _liveError = null; // first listener failure since startListeners(): { name, detail }
+
+function _listenerFailed(name, err, { critical = false } = {}) {
+  console.error(`${name} listener error:`, err);
+  if (!STATE.user) return; // signing out: listener teardown races produce permission errors
+  const detail = err ? (err.code || err.message || String(err)) : '';
+  if (!_liveError) _liveError = { name, detail };
+  clearTimeout(_publishTimer);
+  if (critical && STATE.loading) {
+    STATE.connError       = true;
+    STATE.connErrorDetail = detail;
+    STATE.loading         = false;
+    render(); // direct-render-ok: load failed — only the spinner is on screen
+    return;
+  }
+  _setAppNotice('live-error',
+    `Live updates stopped — this screen won't show changes from other devices${canRecord() ? ', and the student portal isn\u2019t being updated from here' : ''}.`,
+    'Reconnect', retryConnect);
+}
+
 // ── Firestore listeners ───────────────────────────────────────────────────────
 
 async function startListeners() {
   STATE._unsubs.forEach(u => u());
   STATE._unsubs = [];
   STATE.loading = true;
+  _liveError = null;
+  _setAppNotice('live-error', null);
+  _publishedBuild = null;
   _lastPublishedJson = '';
   _restartSeasonScoped = null;
   _scopedReady = null;
@@ -93,7 +128,7 @@ async function startListeners() {
           .sort(compareRehearsalsDesc);
         tick('rehearsals');
         schedulePublishPublicStats();
-      }),
+      }, err => _listenerFailed('rehearsals', err, { critical: true })),
 
       entQ.onSnapshot(snap => {
         _scopedReady.ent = true;
@@ -110,7 +145,7 @@ async function startListeners() {
         });
         tick('entries');
         schedulePublishPublicStats();
-      }),
+      }, err => _listenerFailed('entries', err, { critical: true })),
     ];
     // Old-scope unsubs stay in STATE._unsubs; calling an unsubscribe twice is a
     // safe no-op, so tearing them down here and again at sign-out is fine.
@@ -133,7 +168,7 @@ async function startListeners() {
       db.collection('orgs').doc(STATE.orgId).onSnapshot(doc => {
         STATE.org = doc.exists ? { id: doc.id, ...doc.data() } : null;
         if (!STATE.loading) renderFromData();
-      }),
+      }, err => _listenerFailed('org', err)),
 
       // Spot-assignment history, one doc per show (see _spotHistoryRecord in
       // js/12-drill.js). Director-ONLY — the rules deny staff and students, so
@@ -142,7 +177,7 @@ async function startListeners() {
         STATE.spotHistory = {};
         snap.docs.forEach(d => { STATE.spotHistory[d.id] = { id: d.id, ...d.data() }; });
         if (!STATE.loading) renderFromData();
-      }, err => console.error('spot history listener error:', err)),
+      }, err => _listenerFailed('spot history', err)),
     ] : []),
 
     // Settings — all members (students need the leaderboard toggle + pseudonym salt)
@@ -205,7 +240,7 @@ async function startListeners() {
       if (!STATE.loading) renderFromData();
       schedulePublishPublicStats();
     }, err => {
-      console.error('settings/presets listener error:', err);
+      _listenerFailed('settings/presets', err);
       // Still bind the rehearsals/entries listeners (unbounded) so the app
       // isn't stuck on the loading spinner if only the settings read failed.
       rescopeIfNeeded();
@@ -228,7 +263,7 @@ async function startListeners() {
       _syncTaskMirror();         // director-only: keep each student's task mirror current
       _syncAbsenceMirror();      // director-only: keep each student's notice mirror current
       schedulePublishPublicStats();
-    }),
+    }, err => _listenerFailed('students', err, { critical: true })),
 
     orgCol('songs').onSnapshot(snap => {
       STATE.songs = snap.docs
@@ -238,7 +273,7 @@ async function startListeners() {
       tick('songs');
       schedulePublishPublicStats();
     }, err => {
-      console.error('songs listener error:', err);
+      _listenerFailed('songs', err);
       tick('songs'); // don't hang the app — songs will be empty
     }),
 
@@ -257,7 +292,7 @@ async function startListeners() {
       _syncTaskMirror();           // director-only: keep each student's task mirror current
       schedulePublishPublicStats();
     }, err => {
-      console.error('tasks listener error:', err);
+      _listenerFailed('tasks', err);
       tick('tasks'); // don't hang the app — tasks will be empty
     }),
 
@@ -272,7 +307,7 @@ async function startListeners() {
       _absencesMirrorReady = true; // safe to reconcile mirrors now that notices have loaded
       _syncAbsenceMirror();        // director-only: keep each student's notice mirror current
       if (!STATE.loading) renderFromData();
-    }, err => console.error('anticipated-absences listener error:', err)),
+    }, err => _listenerFailed('anticipated absences', err)),
 
     // Drill library — one small metadata doc per drill (the heavy position
     // payload lives in each drill's data/main subdoc, loaded on demand for the
@@ -286,7 +321,7 @@ async function startListeners() {
         _migrateDrillShows(); // director-only: group ungrouped drills into shows
         _drillSyncActive();
         if (!STATE.loading) renderFromData();
-      }, err => console.error('drills listener error:', err)),
+      }, err => _listenerFailed('drills', err)),
 
       // Shows group drills that share one spot map (see js/12-drill.js). Directors
       // and staff read them; only directors write. Kept in STATE.shows so the
@@ -296,7 +331,7 @@ async function startListeners() {
         snap.docs.forEach(d => { STATE.shows[d.id] = { id: d.id, ...d.data() }; });
         _syncStudentSpotsMirror(); // director-only: publish spots onto student docs
         if (!STATE.loading) renderFromData();
-      }, err => console.error('shows listener error:', err)),
+      }, err => _listenerFailed('shows', err)),
 
       // School-wide active-drill pointer. Also performs the one-time migration of
       // the legacy single-drill doc into the library (directors only — it writes).
@@ -306,7 +341,7 @@ async function startListeners() {
         STATE.activeDrillId = d.activeId || null;
         _drillSyncActive();
         if (!STATE.loading) renderFromData();
-      }, err => console.error('active-drill listener error:', err)),
+      }, err => _listenerFailed('active drill', err)),
     ] : []),
 
     // uid → name for this org's directors + staff, for resolving mark-author
@@ -325,11 +360,21 @@ async function startListeners() {
             snap.docs.forEach(d => { STATE.dirNames[d.id] = d.data().email || ''; });
             _publishDirectory();
             if (!STATE.loading) renderFromData();
-          }, err => console.error('directors listener error:', err))
+          }, err => _listenerFailed('directors', err))
       : orgCol('settings').doc('directory').onSnapshot(doc => {
           STATE.dirNames = (doc.exists && doc.data().names) || {};
           if (!STATE.loading) renderFromData();
-        }, err => console.error('directory listener error:', err))
+        }, err => _listenerFailed('directory', err)),
+
+    // The published student snapshot, read back only for its build stamp: a
+    // device running older code than whoever published last must not overwrite
+    // it with its older calculation, and should reload. Publishing waits for
+    // this first snapshot — see _publishBlocked() and APP_BUILD in js/01-core.js.
+    orgCol('settings').doc('public').onSnapshot(doc => {
+      _publishedBuild = (doc.exists && Number(doc.data().appBuild)) || 0;
+      if (_publishedBuild > APP_BUILD) _promptAppUpdate();
+      else schedulePublishPublicStats(); // may have been held until the stamp was known
+    }, err => _listenerFailed('public snapshot', err))
   ];
 
   // push, not assign: subscribeScoped adds the season-scoped unsubs to
@@ -569,7 +614,7 @@ function studentListeners() {
           .sort(compareRehearsalsDesc);
         tick('rehearsals');
       }, err => {
-        console.error('rehearsals listener error:', err);
+        _listenerFailed('rehearsals', err);
         tick('rehearsals');
       }),
 
@@ -587,7 +632,7 @@ function studentListeners() {
         });
         tick('entries');
       }, err => {
-        console.error('entries listener error:', err);
+        _listenerFailed('entries', err);
         tick('entries');
       }),
     ];
@@ -625,7 +670,7 @@ function studentListeners() {
       if (scopedSeason === undefined || (STATE.activeSeason || '') !== scopedSeason) subscribeScoped();
       tick('settings');
     }, err => {
-      console.error('public settings listener error:', err);
+      _listenerFailed('public settings', err);
       // Still bind the data listeners (unbounded) so the portal isn't blank if
       // only the settings read failed.
       if (scopedSeason === undefined) subscribeScoped();
@@ -637,7 +682,7 @@ function studentListeners() {
       STATE.students = doc.exists ? { [num]: { ...doc.data(), _id: num } } : {};
       tick('students');
     }, err => {
-      console.error('student doc listener error:', err);
+      _listenerFailed('student doc', err);
       tick('students');
     }),
   ];
@@ -679,9 +724,16 @@ function computePublicStats() {
 // True when local rehearsal/entry state doesn't reflect the live season —
 // mid-re-scope or while a director is viewing an archived season. Publishing
 // then would push stale/partial stats to every student.
+// Build stamp on settings/public as of the last snapshot; null until the first
+// one arrives (publishing waits for it). 0 = never stamped (older clients).
+let _publishedBuild = null;
+
 function _publishBlocked() {
   return _seasonView !== null
-    || (_scopedReady && (!_scopedReady.reh || !_scopedReady.ent));
+    || (_scopedReady && (!_scopedReady.reh || !_scopedReady.ent))
+    || !!_liveError                    // a listener died: STATE may be stale or empty
+    || _publishedBuild === null        // don't know yet whether newer code published
+    || _publishedBuild > APP_BUILD;    // newer code published — this device must reload
 }
 
 function schedulePublishPublicStats() {
@@ -703,6 +755,7 @@ function schedulePublishPublicStats() {
       songCategories:             STATE.songCategories,
       memorizationExclusions:     STATE.memorizationExclusions,
       activeSeason:               STATE.activeSeason || '',
+      appBuild:                   APP_BUILD,
       stats:                      computePublicStats(),
     };
     const json = JSON.stringify(pub);
@@ -839,6 +892,8 @@ auth.onAuthStateChanged(user => {
     _restartSeasonScoped = null;
     _scopedReady         = null;
     _lastPublishedJson = '';
+    _liveError       = null;
+    _setAppNotice('live-error', null);
     _authMode        = 'signin';
     _studentStep     = null;
     render(); // direct-render-ok: signed out — the whole UI must swap to login now

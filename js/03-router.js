@@ -758,6 +758,44 @@ function showToast(msg) {
 
 // ── Exporting data out of the app ─────────────────────────────────────────────
 
+// ── Persistent notices ────────────────────────────────────────────────────────
+// Sticky bars (unlike toasts, they stay until acted on) for app-level state:
+// 'live-error' (a Firestore listener died — see _listenerFailed in
+// js/02-data.js) and 'update' (a newer version is deployed). They live in
+// #app-notices outside #main-content, so showing one never re-renders the view
+// (safe from listeners — no focused field is replaced). text = null hides it.
+function _setAppNotice(key, text, btnLabel, onAction) {
+  const box = document.getElementById('app-notices');
+  if (!box) return;
+  let el = box.querySelector(`[data-notice="${key}"]`);
+  if (text == null) { if (el) el.remove(); return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'app-notice';
+    el.dataset.notice = key;
+    box.appendChild(el);
+  }
+  el.textContent = '';
+  const msg = document.createElement('span');
+  msg.textContent = text;
+  el.appendChild(msg);
+  if (btnLabel && onAction) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'app-notice-btn';
+    btn.textContent = btnLabel;
+    btn.addEventListener('click', () => onAction());
+    el.appendChild(btn);
+  }
+}
+
+// A newer deploy is live (the service worker picked it up, or a newer build
+// published settings/public). Reloading is the user's call — they may be
+// mid-entry — so just offer it.
+function _promptAppUpdate() {
+  _setAppNotice('update', 'A new version of the app is available.', 'Reload', () => location.reload());
+}
+
 // Hand the user a generated CSV as a download.
 function _downloadCsv(filename, text) {
   try {
