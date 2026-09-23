@@ -143,6 +143,16 @@ app doesn't show it" is never a justification. Full model:
   bind it to STATE via thin wrappers elsewhere. The drill parser lives here
   (pure byte-wrangling); the viewer UI that consumes it is in `js/12-drill.js`.
 - `npm run test:rules` — Firestore rules tests against the emulator.
+- `npm run test:e2e` — end-to-end smoke test (`tests/e2e/smoke.test.js`, CI:
+  `e2e.yml`): the real app in headless Chromium against the Auth + Firestore
+  emulators (demo- project, real rules). A director signs in, takes
+  attendance and adds a mark; a student claims their code, sees it in the
+  portal, and can't read a classmate's entry. Needs Java; set
+  `BT_E2E_LOCAL_SDK=1` where the gstatic CDN is blocked. The app reaches the
+  emulators only via `window.__BT_EMULATORS__` (set by the test) — keep that
+  hook in `js/01-core.js`. If you rename a selector the test uses (login
+  fields, `setAttendance`/`pickStudent`/`confirmMark` handlers, portal
+  classes), update the test too.
 - There is no build step; do not introduce one casually. The one deploy-time
   edit is `deploy.yml` stamping the deploy time into `const APP_BUILD = 0;`
   (`js/01-core.js`) and `const BUILD = 0;` (`sw.js`) — keep those lines

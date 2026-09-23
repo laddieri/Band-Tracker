@@ -98,11 +98,20 @@ const DEFAULT_AUTO_MARKS = [
 
 // ── Firebase init ─────────────────────────────────────────────────────────────
 
+// Test hook: the end-to-end tests (tests/e2e/) set window.__BT_EMULATORS__
+// before the app loads to run it against the local Auth + Firestore emulators
+// under a demo- project id (no real project is ever touched). It is never set
+// in production; setting it by hand only points your own browser at
+// localhost, where there is no data.
+const _EMULATORS = window.__BT_EMULATORS__ || null;
+if (_EMULATORS) FIREBASE_CONFIG.projectId = _EMULATORS.projectId;
+
 firebase.initializeApp(FIREBASE_CONFIG);
 
 // Activate App Check before any Auth/Firestore calls so tokens attach to
-// requests. Dormant until RECAPTCHA_V3_SITE_KEY is set (see firebase-config.js).
-if (typeof RECAPTCHA_V3_SITE_KEY !== 'undefined' && RECAPTCHA_V3_SITE_KEY && firebase.appCheck) {
+// requests. Dormant until RECAPTCHA_V3_SITE_KEY is set (see firebase-config.js),
+// and skipped against the emulators (they don't check App Check tokens).
+if (!_EMULATORS && typeof RECAPTCHA_V3_SITE_KEY !== 'undefined' && RECAPTCHA_V3_SITE_KEY && firebase.appCheck) {
   try {
     firebase.appCheck().activate(RECAPTCHA_V3_SITE_KEY, /* autoRefresh */ true);
     // Pre-fetch an App Check token right away so one is cached BEFORE Firebase
@@ -118,6 +127,11 @@ if (typeof RECAPTCHA_V3_SITE_KEY !== 'undefined' && RECAPTCHA_V3_SITE_KEY && fir
 
 const auth = firebase.auth();
 const db   = firebase.firestore();
+if (_EMULATORS) {
+  // Must run before any other Auth/Firestore call (incl. enablePersistence).
+  auth.useEmulator(_EMULATORS.auth, { disableWarnings: true });
+  db.useEmulator(_EMULATORS.firestore.host, _EMULATORS.firestore.port);
+}
 
 // Students sign in with Firebase email/password using a synthetic address
 // derived from their (non-secret) student code; the PIN is the password, which
