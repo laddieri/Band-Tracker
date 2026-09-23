@@ -169,4 +169,5 @@ document.addEventListener('visibilitychange', () => {
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
-render();
+render();          // the "checking sign-in" spinner until auth reports
+_startAuthWatch(); // only now: every script is loaded (see js/02-data.js)

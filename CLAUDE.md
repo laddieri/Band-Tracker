@@ -153,6 +153,11 @@ app doesn't show it" is never a justification. Full model:
   hook in `js/01-core.js`. If you rename a selector the test uses (login
   fields, `setAttendance`/`pickStudent`/`confirmMark` handlers, portal
   classes), update the test too.
+- **Firebase SDK version** (compat builds from the gstatic CDN) appears in
+  `index.html` AND the `sw.js` `PRECACHE` list — change both together and
+  bump `CACHE`. Keep `@firebase/rules-unit-testing` on the release whose
+  `firebase` peer matches that major: the e2e test's `BT_E2E_LOCAL_SDK` mode
+  serves the npm copy and refuses to run on a version mismatch.
 - There is no build step; do not introduce one casually. The one deploy-time
   edit is `deploy.yml` stamping the deploy time into `const APP_BUILD = 0;`
   (`js/01-core.js`) and `const BUILD = 0;` (`sw.js`) — keep those lines
