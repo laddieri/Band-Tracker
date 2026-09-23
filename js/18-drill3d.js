@@ -600,6 +600,7 @@ function _d3PoseBand(dt) {
   const rig = band.rig, parts = rig.parts, flip = _drillFlipV;
   const turn = dt * 7; // rad per frame budget for turning
   const step = (_d3.uniformDraft || _d3.uniform).step; // previews an unsaved change
+  const holding = c > _d3.range.start + 1e-6 && c < _d3.range.end - 1e-6;
   let selPos = null;
   for (let i = 0; i < labels.length; i++) {
     const lbl = labels[i], p = cur[lbl];
@@ -611,7 +612,9 @@ function _d3PoseBand(dt) {
     const f = drill3dFacing(vx, vz, _d3.facing);
     if (f.yaw != null) _d3.yaw[i] = drill3dTurnToward(_d3.yaw[i], f.yaw, turn);
     const stride = f.moving ? drill3dStride(Math.hypot(vx, vz) / DRILL3D_STEP_M) * f.dir : 0;
-    rig.applyPose(drill3dLegPose(c, stride, step));
+    // A hold mid-drill is marked time (high knees for a high-step band); before
+    // the step-off and at the final set everyone stands still.
+    rig.applyPose(stride || !holding ? drill3dLegPose(c, stride, step) : drill3dMarkTime(c, step));
     rig.root.position.set(at.x, rig.root.position.y, at.z);
     rig.root.rotation.y = _d3.yaw[i];
     rig.root.updateMatrixWorld(true);

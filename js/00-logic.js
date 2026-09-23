@@ -1485,7 +1485,7 @@ function drill3dLegPose(count, amp, style) {
     // Each leg lifts while it swings forward (half a count), peaking mid-swing
     // and back on the ground at its footfall. Lift doesn't scale with the step
     // size — a short high step still comes up to level.
-    const lift = [Math.max(0, -cs), Math.max(0, cs)].map(l => l * Math.min(1, a / 0.15));
+    const lift = _drill3dHighLift(cs).map(l => l * Math.min(1, a / 0.15));
     lift.forEach((l, i) => { hip[i] -= 1.45 * l; });
     knee = lift.map(l => 1.5 * l);
     ankle = lift.map(l => 0.7 * l);          // toe pointed down
@@ -1501,6 +1501,25 @@ function drill3dLegPose(count, amp, style) {
     arm: behind.map(k => -0.06 * r * k),
     bob: 0.012 * r * Math.abs(cs),
     tail: 0.07 * r * Math.abs(sn),
+  };
+}
+
+// How far each leg (0 = right, 1 = left) is lifted in a high step, 0..1: a leg
+// comes up while it's between footfalls and is down on its own count.
+function _drill3dHighLift(cs) { return [Math.max(0, -cs), Math.max(0, cs)]; }
+
+// Marking time in place during a hold. High-step bands mark time with high
+// knees — thigh to level, shin down, toe pointed — in step with the moving
+// marchers: the left foot lands on odd counts, so the right knee comes up
+// between 1 and 2, the left between 2 and 3. Roll-step bands just stand still.
+function drill3dMarkTime(count, style) {
+  const still = { hip: [0, 0], knee: [0, 0], ankle: [0, 0], arm: [0, 0], bob: 0, tail: 0 };
+  if (style !== 'high') return still;
+  const cs = Math.cos((count - 0.5) * Math.PI);
+  const lift = _drill3dHighLift(cs);
+  return {
+    hip: lift.map(l => -1.45 * l), knee: lift.map(l => 1.5 * l), ankle: lift.map(l => 0.7 * l),
+    arm: [0, 0], bob: 0.008 * Math.abs(cs), tail: 0.05 * Math.abs(cs),
   };
 }
 
@@ -2061,6 +2080,6 @@ if (typeof module !== 'undefined' && module.exports) {
     _hasMarker, _indexOfMarker, _parsePywareFile, _pywareAssembleDrill, _pyware3daPageNote,
     _pyware3daCast,
     DRILL3D_STEP_M, drill3dFieldXZ, drill3dWrapAngle, drill3dTurnToward, drill3dFacing,
-    drill3dStride, drill3dLegPose, DRILL3D_STEP_STYLES, DRILL3D_UNIFORM_DEFAULT, drill3dUniform,
+    drill3dStride, drill3dLegPose, drill3dMarkTime, DRILL3D_STEP_STYLES, DRILL3D_UNIFORM_DEFAULT, drill3dUniform,
   };
 }

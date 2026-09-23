@@ -1844,6 +1844,18 @@ describe('3D drill view math', () => {
     assert.deepStrictEqual(L.drill3dLegPose(1.5, -0.34, 'high'), L.drill3dLegPose(1.5, -0.34, 'roll'));
     assert.deepStrictEqual(L.drill3dLegPose(1.5, 0, 'high'), L.drill3dLegPose(1.5, 0));
   });
+  it('high-step bands mark time with high knees during holds', () => {
+    const up = L.drill3dMarkTime(1.5, 'high');           // right knee up between 1 and 2
+    assert.ok(up.hip[0] < -1.4 && up.knee[0] > 1.4 && up.ankle[0] > 0.6);
+    near(up.hip[1], 0);                                  // left foot planted
+    const up2 = L.drill3dMarkTime(2.5, 'high');          // then the left
+    assert.ok(up2.hip[1] < -1.4); near(up2.hip[0], 0);
+    const down = L.drill3dMarkTime(2, 'high');           // both feet down on the count
+    assert.ok(Math.abs(down.hip[0]) < 1e-9 && Math.abs(down.hip[1]) < 1e-9);
+    // Same leg, same moment as the moving high step — no hitch starting or stopping.
+    near(L.drill3dMarkTime(1.5, 'high').knee[0], L.drill3dLegPose(1.5, 0.34, 'high').knee[0]);
+    assert.deepStrictEqual(L.drill3dMarkTime(1.5, 'roll'), L.drill3dLegPose(1.5, 0));
+  });
   it('sanitises stored uniform colours', () => {
     assert.deepStrictEqual(L.drill3dUniform(null), { ...L.DRILL3D_UNIFORM_DEFAULT });
     const u = L.drill3dUniform({ jacket: '#AABBCC', pants: 'red', gold: '#12345', extra: '#000000' });
