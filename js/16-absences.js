@@ -190,17 +190,17 @@ function _absenceModalHtml(title, a, saveCall, editId) {
     </div>
 
     <div class="form-group">
-      <label class="form-label">Through <span style="font-weight:400;color:var(--text-muted)">(optional — for a multi-day absence)</span></label>
+      <label class="form-label">Through <span class="label-hint">(optional — for a multi-day absence)</span></label>
       <input class="form-input" id="m-abs-enddate" type="date" value="${esc(a.endDate || '')}">
     </div>
 
     <div class="form-group" id="abs-time-wrap" style="${type === 'absent' ? 'display:none' : ''}">
-      <label class="form-label" id="abs-time-label">${type === 'late' ? 'Expected arrival time' : 'Expected departure time'} <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+      <label class="form-label" id="abs-time-label">${type === 'late' ? 'Expected arrival time' : 'Expected departure time'} <span class="label-hint">(optional)</span></label>
       <input class="form-input" id="m-abs-time" type="time" value="${esc(a.time || '')}">
     </div>
 
     <div class="form-group">
-      <label class="form-label">Reason / note <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+      <label class="form-label">Reason / note <span class="label-hint">(optional)</span></label>
       <textarea class="form-textarea" id="m-abs-note" rows="2" maxlength="300" style="resize:none"
                 placeholder="e.g. Orthodontist appointment">${esc(a.note || '')}</textarea>
     </div>

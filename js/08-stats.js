@@ -132,13 +132,13 @@ function viewDashboard() {
 
       ${topPerformers.length ? `
         <div class="section-title" style="margin:20px 0 8px">Top Performers</div>
-        <div class="card" style="padding:0;overflow:hidden">
+        <div class="card card-flush">
           ${topPerformers.map(s => stuRow(s, 'pos', 'dash-val-pos')).join('')}
         </div>` : ''}
 
       ${mostMistakes.length ? `
         <div class="section-title" style="margin:20px 0 8px">Most Mistakes</div>
-        <div class="card" style="padding:0;overflow:hidden">
+        <div class="card card-flush">
           ${mostMistakes.map(s => stuRow(s, 'mis', 'dash-val-mis')).join('')}
         </div>` : ''}
 
@@ -194,7 +194,7 @@ function showStudentMarksModal(num, rid) {
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">${esc(name)}
-      <div style="font-size:0.78rem;font-weight:400;color:var(--text-muted);margin-top:2px">
+      <div class="title-sub">
         ${rid ? (() => { const r = STATE.rehearsals.find(r => r.id === rid); return r ? fmtDate(r.date) + (r.label ? ' — ' + esc(r.label) : '') : ''; })() : 'All Events'}
       </div>
     </div>
@@ -283,7 +283,7 @@ function _lbAttendanceSectionHtml(rehearsalRows) {
         <span class="sec-chevron">▾</span>
       </div>
       <div id="lb-sec-attendance">
-        <div class="card mb-12" style="padding:0;overflow:hidden">
+        <div class="card mb-12 card-flush">
           ${last ? `
           <div class="lb-stat-row ${recentClick ? 'lb-row-clickable' : ''}"
                ${recentClick ? `onclick="navigate('attendance',{rid:'${esc(last.id)}',from:'leaderboard'})"` : ''}>
@@ -342,7 +342,7 @@ function showLbAttendanceModal(scope) {
     <div class="modal-handle"></div>
     <div class="modal-title">${title}</div>
     <div class="form-hint" style="margin:0 0 12px">${total} absence${total !== 1 ? 's' : ''} across ${rows.length} event${rows.length !== 1 ? 's' : ''}</div>
-    <div class="card" style="padding:0;overflow:hidden">
+    <div class="card card-flush">
       ${rows.map(({ r, absent }) => `
         <div class="dash-stu-row" onclick="closeModal();navigate('attendance',{rid:'${esc(r.id)}',from:'leaderboard'})">
           <span class="dash-stu-name">${isPerformance(r) ? '🎪 ' : ''}${fmtDate(r.date)}${r.label ? ` · ${esc(r.label)}` : ''}</span>
@@ -384,7 +384,7 @@ function _lbSongsSectionHtml(songRows) {
 
   let body;
   if (!cats.length) {
-    body = `<div class="card mb-12" style="padding:0;overflow:hidden">${songRows.map(lbSongRow).join('')}</div>`;
+    body = `<div class="card mb-12 card-flush">${songRows.map(lbSongRow).join('')}</div>`;
   } else {
     const grouped = {};
     const uncategorized = [];
@@ -404,7 +404,7 @@ function _lbSongsSectionHtml(songRows) {
           <span class="sec-chevron">▾</span>
         </div>
         <div id="${id}">
-          <div class="card mb-12" style="padding:0;overflow:hidden">${grouped[cat].map(lbSongRow).join('')}</div>
+          <div class="card mb-12 card-flush">${grouped[cat].map(lbSongRow).join('')}</div>
         </div>`;
     });
     if (uncategorized.length) {
@@ -416,7 +416,7 @@ function _lbSongsSectionHtml(songRows) {
           <span class="sec-chevron">▾</span>
         </div>
         <div id="${id}">
-          <div class="card mb-12" style="padding:0;overflow:hidden">${uncategorized.map(lbSongRow).join('')}</div>
+          <div class="card mb-12 card-flush">${uncategorized.map(lbSongRow).join('')}</div>
         </div>`;
     }
   }
@@ -463,7 +463,7 @@ function viewLeaderboardStudent() {
             <span class="sec-chevron">▾</span>
           </div>
           <div id="lb-sec-ranking">
-            <div class="card mb-12" style="padding:0;overflow:hidden">
+            <div class="card mb-12 card-flush">
               ${lbRows.map((r, i) => {
                 const isMe  = String(r.num) === String(STATE.studentNum);
                 const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
@@ -509,7 +509,7 @@ function viewLeaderboard() {
             {value:'positives',  label:'Positives'},
             {value:'mistakes',   label:'Mistakes'}
           ])}
-          <div id="lb-rank-list" class="card mb-12" style="padding:0;overflow:hidden">
+          <div id="lb-rank-list" class="card mb-12 card-flush">
             ${_buildLbRankRows()}
           </div>
         </div>
@@ -659,7 +659,7 @@ function viewStudent(num) {
       const wkAbs  = absences.filter(({rehearsal:r}) => r.date >= mon && r.date <= fri);
       const wkLate = lates.filter(({rehearsal:r}) => r.date >= mon && r.date <= fri);
       return `
-        <div class="card mb-12" style="padding:0;overflow:hidden">
+        <div class="card mb-12 card-flush">
           <div class="att-card-title">Attendance Record</div>
           ${streak > 0 ? `
           <div class="att-streak-banner">

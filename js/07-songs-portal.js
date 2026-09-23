@@ -619,11 +619,11 @@ function songGroupFailAll(sid) {
   const names = nums.map(n => STATE.students[n]?.name || `#${n}`).sort((a, b) => a.localeCompare(b));
   openModal(`
     <div class="modal-title">↻ Try Again — ${nums.length} student${nums.length !== 1 ? 's' : ''}
-      <div style="font-size:0.78rem;font-weight:400;color:var(--text-muted);margin-top:2px">${names.map(esc).join(', ')}</div>
+      <div class="title-sub">${names.map(esc).join(', ')}</div>
     </div>
     <div class="form-label" style="margin-bottom:6px">
       What to work on?
-      <span style="font-weight:400;color:var(--text-muted)"> (optional)</span>
+      <span class="label-hint"> (optional)</span>
     </div>
     <textarea class="form-textarea" id="group-fail-note-input" rows="3"
               placeholder="e.g. Bars 12–16, entrance timing…"
@@ -732,11 +732,11 @@ function showSongFailNoteModal(sid, num, song) {
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">↻ Try Again
-      <div style="font-size:0.78rem;font-weight:400;color:var(--text-muted);margin-top:2px">${esc(name)}</div>
+      <div class="title-sub">${esc(name)}</div>
     </div>
     <div class="form-label" style="margin-bottom:6px">
       What to work on?
-      <span style="font-weight:400;color:var(--text-muted)"> (optional)</span>
+      <span class="label-hint"> (optional)</span>
     </div>
     <textarea class="form-textarea" id="fail-note-input" rows="3"
               placeholder="e.g. Bars 12–16, entrance timing…"
@@ -1828,7 +1828,7 @@ function showMarkStudentsModal(note, type) {
     <div class="modal-handle"></div>
     <div class="modal-title">${typeIcon} ${esc(note)}</div>
     <div class="form-hint" style="margin:0 0 12px">${rows.length} student${rows.length !== 1 ? 's' : ''} received this mark</div>
-    <div class="card" style="padding:0;overflow:hidden">
+    <div class="card card-flush">
       ${rows.map(s => `
         <div class="dash-stu-row" onclick="closeModal();navigate('student',{num:'${esc(s.num)}'})">
           <span class="dash-stu-name">${esc(s.name)}</span>

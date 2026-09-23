@@ -75,6 +75,12 @@ app doesn't show it" is never a justification. Full model:
   `orgs/{STATE.orgId}/...`). Role split happens in `startListeners()`:
   directors get full-collection listeners, students get `studentListeners()`.
 - Always escape user data with `esc()` when interpolating into HTML.
+- Styling: use the theme tokens in `app.css` (`:root` + `[data-theme="dark"]`)
+  — never a hard-coded colour or a `var(--x, #light)` fallback in markup, or
+  dark mode breaks. Shared helpers for common inline patterns live at the end
+  of `app.css` (`.label-hint`, `.setting-hint`, `.check-desc`, `.title-sub`,
+  `.check-lg`, `.card-flush`); motion is disabled under
+  `prefers-reduced-motion`.
 - Keyboard access for clickable non-button elements is retrofitted at render
   time (`_a11yRetrofit` in `js/13-boot.js` stamps `role="button"` +
   `tabindex`; Enter/Space activate). Still prefer real `<button>`s for new
@@ -135,7 +141,9 @@ app doesn't show it" is never a justification. Full model:
   renamed/misspelled functions that would only fail at tap time) and
   `tests/check-render-calls.js` (no untagged direct `render()` in
   `js/02-data.js` — listeners must use `renderFromData()`, see the mobile
-  keyboard note above).
+  keyboard note above) and `tests/check-css-vars.js` (every `var(--x)` is
+  declared in `app.css` or set via `setProperty` — a fallback alone doesn't
+  count; light-only fallbacks once made dark-mode text unreadable).
 - `npm run test:unit` — unit tests for the pure logic in `js/00-logic.js`
   (scoring, published stats, auto marks, pseudonyms, CSV parsing, and the
   Pyware `.3dj`/`.3da` drill-file parser). Also runs in CI on every PR. Keep

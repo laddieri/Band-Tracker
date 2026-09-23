@@ -839,7 +839,7 @@ function _drillChartHtml(fs = false) {
   const positions = _drillPages[idx].performers;
   const total     = _drillPages.length;
 
-  const navLabel     = `Set ${idx + 1} <span style="font-weight:400;color:var(--text-muted)">of ${total} · count ${_drillPages[idx].count}</span>`;
+  const navLabel     = `Set ${idx + 1} <span class="label-hint">of ${total} · count ${_drillPages[idx].count}</span>`;
   const prevDisabled = idx <= 0;
   const nextDisabled = idx >= total - 1;
 
@@ -2252,7 +2252,7 @@ function drillViewExpand() {
 // in the bottom bar since a modal would sit behind the fullscreen layer).
 function _drillViewFsHtml() {
   const idx = _drillCurrentSet, total = _drillPages.length;
-  const navLabel = `Set ${idx + 1} <span style="font-weight:400;color:var(--text-muted)">of ${total} · count ${_drillPages[idx].count}</span>`;
+  const navLabel = `Set ${idx + 1} <span class="label-hint">of ${total} · count ${_drillPages[idx].count}</span>`;
   const legend   = _drillLegendHtml();
   const svgField = _drillFieldSvg(_drillPages[idx].performers,
     { fs: true, labelMode: _drillLabelMode, traceLabel: _drillTraceLabel, focusLabel: _drillTraceLabel, selectMode: false, fsView: true, traceIdx: _drillActiveIdx() });

@@ -757,7 +757,7 @@ function showMarkAllModal(rid) {
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Mark All
-      <div style="font-size:0.78rem;font-weight:400;color:var(--text-muted);margin-top:2px">${esc(filterLabel)} · ${count} student${count!==1?'s':''}</div>
+      <div class="title-sub">${esc(filterLabel)} · ${count} student${count!==1?'s':''}</div>
     </div>
     <div class="modal-actions" style="margin-top:8px">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
@@ -858,7 +858,7 @@ function showGroupMarkModal(rid, groupName, type) {
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">${isMistake ? '✗' : '✓'} ${esc(displayName)}
-      <div style="font-size:0.78rem;font-weight:400;color:var(--text-muted);margin-top:2px">${students.length} student${students.length!==1?'s':''}</div>
+      <div class="title-sub">${students.length} student${students.length!==1?'s':''}</div>
     </div>
     ${segHtml}
     <div class="quick-note-grid">
