@@ -309,22 +309,50 @@ async function startListeners() {
       }, err => console.error('active-drill listener error:', err)),
     ] : []),
 
-    // Directors + staff of this org, for resolving mark-author uids to names
-    // via dirLabel(). Mark events store uids — never emails — because students
-    // can read their own entries. Not part of the loading gate.
-    db.collection('members')
-      .where('orgId', '==', STATE.orgId)
-      .where('role', 'in', ['director', 'staff'])
-      .onSnapshot(snap => {
-        STATE.dirNames = {};
-        snap.docs.forEach(d => { STATE.dirNames[d.id] = d.data().email || ''; });
-        if (!STATE.loading) renderFromData();
-      }, err => console.error('directors listener error:', err))
+    // uid → name for this org's directors + staff, for resolving mark-author
+    // uids via dirLabel(). Mark events store uids — never emails — because
+    // students can read their own entries. Not part of the loading gate.
+    // Directors read the memberships directly and publish the names to
+    // settings/directory; staff read that doc instead, because the rules deny
+    // staff other members' docs (a co-director's doc carries the director
+    // invite code it joined with).
+    STATE.isAdmin
+      ? db.collection('members')
+          .where('orgId', '==', STATE.orgId)
+          .where('role', 'in', ['director', 'staff'])
+          .onSnapshot(snap => {
+            STATE.dirNames = {};
+            snap.docs.forEach(d => { STATE.dirNames[d.id] = d.data().email || ''; });
+            _publishDirectory();
+            if (!STATE.loading) renderFromData();
+          }, err => console.error('directors listener error:', err))
+      : orgCol('settings').doc('directory').onSnapshot(doc => {
+          STATE.dirNames = (doc.exists && doc.data().names) || {};
+          if (!STATE.loading) renderFromData();
+        }, err => console.error('directory listener error:', err))
   ];
 
   // push, not assign: subscribeScoped adds the season-scoped unsubs to
   // STATE._unsubs as they (re)bind — don't replace the array out from under it.
   STATE._unsubs.push(...listeners);
+}
+
+// Publish the uid → name map staff clients use for dirLabel() (they can't read
+// other members' docs). Names only — the part before the '@', which is all
+// dirLabel() shows — so no full director emails leave the members collection.
+// Deduped per session; the members listener re-runs this on every change.
+let _lastDirectoryJson = '';
+function _publishDirectory() {
+  if (!STATE.isAdmin || !STATE.orgId) return;
+  const names = {};
+  Object.keys(STATE.dirNames).sort().forEach(uid => {
+    names[uid] = (STATE.dirNames[uid] || '').split('@')[0];
+  });
+  const json = JSON.stringify(names);
+  if (json === _lastDirectoryJson) return;
+  _lastDirectoryJson = json;
+  orgCol('settings').doc('directory').set({ names })
+    .catch(e => { _lastDirectoryJson = ''; throw e; }); // retry on the next change; the global handler toasts
 }
 
 // Students can't read the director-only `shows` collection, so a director client
@@ -804,6 +832,7 @@ auth.onAuthStateChanged(user => {
     STATE.spotHistory = {};
     STATE.publicStats = null;
     STATE.dirNames   = {};
+    _lastDirectoryJson = '';
     STATE.activeSeason = '';
     STATE.seasons      = [];
     _seasonView          = null;

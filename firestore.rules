@@ -111,7 +111,11 @@ service cloud.firestore {
       function canRecord() { return canWrite() || isStaffOf(orgId); }
 
       // settings/public is the student-safe doc that director clients publish
-      // (branding, feature flags, derived stats with pseudonyms). Everything
+      // (branding, feature flags, derived stats with pseudonyms).
+      // settings/directory ({ names: {uid: label} }) is the director-published
+      // uid→name map staff use to label mark authors, since staff can't read
+      // other members' docs; it's director-write like every doc but 'public'
+      // and 'drill'. Everything
       // else under settings — notably 'presets', which holds the pseudonym
       // salt, score weights and drill data — is director/staff-only. Staff may
       // READ presets (their client needs presets, features, the active season
@@ -255,12 +259,14 @@ service cloud.firestore {
     // an org you are entitled to.
 
     match /members/{uid} {
-      // Staff also read the org's memberships (to resolve mark-author uids to
-      // names via dirLabel), but only directors may remove members.
+      // Staff may read ONLY their own membership. A co-director's member doc
+      // carries the director invite code they joined with (the join rule needs
+      // it on the doc), so letting staff read other memberships would hand
+      // them a working director code. Staff resolve mark-author uids to names
+      // via settings/directory instead, which director clients publish.
       allow read: if isSignedIn() && (
         request.auth.uid == uid
         || isDirectorOf(resource.data.orgId)
-        || isStaffOf(resource.data.orgId)
       );
 
       // Director join: allowed if you either created the org (create-a-band) or

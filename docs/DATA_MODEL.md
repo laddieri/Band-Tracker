@@ -32,6 +32,8 @@ orgs/{orgId}                          # org metadata
   ├─ settings/presets                 # was: /settings/presets
   ├─ settings/public                  # director-published student-safe snapshot
   ├─ settings/drill                   # pointer: { activeId } — the school-wide active drill
+  ├─ settings/directory               # { names: {uid: label} } — director-published mark-author
+  │                                    #   names for staff clients (staff can't read members/*)
   ├─ students/{studentNumber}         # was: /students/{studentNumber}
   │    (fields) number, name, …, createdAt?   # createdAt (epoch ms) = roster join time;
   │                                    #   attendance streak/history skip rehearsals held
@@ -278,8 +280,9 @@ guard tech — who should record data but not administer the band.
   `{ orgId, role: 'staff', inviteCode: CODE }`. The rules pair code and role
   strictly: a staff code can never mint a director membership and vice versa.
 - **Can read:** the roster, entries, songs, rehearsals, drills and shows (to
-  view the field chart and its spot map), all `settings/*` docs and the org's
-  director/staff memberships (to resolve mark authors).
+  view the field chart and its spot map), all `settings/*` docs — including
+  `settings/directory`, the uid→name map director clients publish so staff can
+  resolve mark authors — and **only their own** membership doc.
 - **Can write:** entries (attendance + marks), rehearsal *edits* only (label,
   date, plan segments, `attendanceSubmitted` — **not** start, end, reopen or
   delete), song `statuses` (field-restricted), the
@@ -297,7 +300,9 @@ guard tech — who should record data but not administer the band.
   rename or change spot assignments — the label→student map lives on the show
   doc, which only directors write), **`spotHistory` in either direction**
   (assignment history is roster management, not recording), student/invite
-  codes, member management.
+  codes, member management, **other members' docs** (a co-director's
+  membership carries the director invite code it joined with, so reading it
+  would let staff escalate — the same reason the org doc is off-limits).
   Directors remove staff from Band Settings like co-directors.
 
 ### How students get an org (code + PIN)

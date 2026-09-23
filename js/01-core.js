@@ -235,8 +235,9 @@ const STATE = {
   // (per-rehearsal absence counts, song progress, pseudonymized leaderboard).
   // Students cannot read the raw roster/entries/songs — see firestore.rules.
   publicStats:  null,
-  // uid → email for this org's directors (director clients only; used by
-  // dirLabel to show mark authors without storing emails in entries).
+  // uid → email (director clients, from the memberships) or name (staff
+  // clients, from settings/directory) for this org's directors + staff; used
+  // by dirLabel to show mark authors without storing emails in entries.
   dirNames:     {},
   _unsubs:      []
 };
