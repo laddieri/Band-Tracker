@@ -356,12 +356,15 @@ function rosterRows(list, scoreMap = _rosterScoreMap()) {
     // Badges in a fixed order (marks → absences → sit-outs → songs → overdue)
     // so the eye learns where each one sits when scanning down the list.
     // Short labels keep them on one line; the tooltip carries the full wording.
+    // Colour is reserved for things to act on (overdue songs, absences this
+    // week); routine info — songs progress, sit-outs, older absences — is muted
+    // so the cards that need attention stand out.
     const showMarks = featureOn('marks') && (errs > 0 || pos > 0);
     const badges = [
       showMarks ? `<span class="badge badge-marks" title="Marks — ${pos} positive, ${errs} negative">${pos > 0 ? `<span class="marks-pos">+${pos}</span>` : ''}${errs > 0 ? `<span class="marks-neg">−${errs}</span>` : ''}</span>` : '',
-      absences > 0 ? `<span class="badge badge-warn" title="Absences — ${absences} total${weekAbsences > 0 ? `, ${weekAbsences} this week` : ''}">${absences} abs${weekAbsences > 0 ? `<span class="badge-sub">· ${weekAbsences} wk</span>` : ''}</span>` : '',
-      sitOuts > 0 ? `<span class="badge badge-sitout" title="Sat out — ${sitOuts} time${sitOuts !== 1 ? 's' : ''}">🪑 ${sitOuts}</span>` : '',
-      showSongs ? `<span class="badge badge-song" title="Songs passed off — ${songsPassed} of ${songsTotal}">🎵 ${songsPassed}/${songsTotal}</span>` : '',
+      absences > 0 ? `<span class="badge ${weekAbsences > 0 ? 'badge-warn' : 'badge-neutral'}" title="Absences — ${absences} total${weekAbsences > 0 ? `, ${weekAbsences} this week` : ''}">${absences} abs${weekAbsences > 0 ? `<span class="badge-sub">· ${weekAbsences} wk</span>` : ''}</span>` : '',
+      sitOuts > 0 ? `<span class="badge badge-neutral" title="Sat out — ${sitOuts} time${sitOuts !== 1 ? 's' : ''}">🪑 ${sitOuts}</span>` : '',
+      showSongs ? `<span class="badge badge-neutral" title="Songs passed off — ${songsPassed} of ${songsTotal}">🎵 ${songsPassed}/${songsTotal}</span>` : '',
       overdue > 0 ? `<span class="badge badge-overdue" title="${overdue} song${overdue !== 1 ? 's' : ''} past due, not passed">⏰ ${overdue}</span>` : ''
     ].filter(Boolean).join('');
     // Needs-attention dot: something the director should act on now.
