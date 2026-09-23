@@ -4196,7 +4196,9 @@ html, body {
 
 /* ── 3D drill view (js/18-drill3d.js) ───────────────────────────────────────── */
 .drill3d {
-  position: fixed; inset: 0; z-index: 2100;
+  /* Above the header, nav and modals (1000); below app notices (1900) and
+     toasts (2000) so "Uniform saved", save errors and "Reconnect" stay visible. */
+  position: fixed; inset: 0; z-index: 1800;
   background: var(--surface); color: var(--text);
   display: flex; flex-direction: column;
   padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
