@@ -4233,7 +4233,7 @@ html, body {
 .d3-msg[hidden], .d3-pick[hidden], .d3-uniform[hidden] { display: none; }
 .d3-controls { flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 12px; border-top: 1px solid var(--border); }
 .d3-scrub-row { display: flex; align-items: center; gap: 10px; }
-.d3-play { min-width: 44px; }
+.d3-play, .d3-setnav { min-width: 44px; }
 .d3-scrub { flex: 1; min-width: 0; accent-color: var(--primary); }
 .d3-opts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .d3-opt { display: flex; align-items: center; gap: 6px; font-size: .8rem; color: var(--text-muted); }

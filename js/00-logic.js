@@ -1458,6 +1458,20 @@ function drill3dFacing(vx, vz, mode) {
   return { moving: true, yaw: travelYaw, dir: 1 };
 }
 
+// The set to jump to from `count` with the previous/next set buttons, given
+// the sets' counts in order. Next is the first set after `count`; previous is
+// the start of the set you're in when you're partway through it (like a
+// music player's back button), otherwise the set before. null at either end.
+function drill3dAdjacentSet(setCounts, count, dir) {
+  const eps = 0.01;
+  if (dir > 0) {
+    const n = setCounts.find(c => c > count + eps);
+    return n === undefined ? null : n;
+  }
+  for (let i = setCounts.length - 1; i >= 0; i--) if (setCounts[i] < count - eps) return setCounts[i];
+  return null;
+}
+
 // Hip swing amplitude (radians) for a step size in steps per count: an 8-to-5
 // step (1 step/count) swings 0.34 rad; tiny drifts read as standing still.
 function drill3dStride(stepsPerCount) {
@@ -2080,6 +2094,6 @@ if (typeof module !== 'undefined' && module.exports) {
     _hasMarker, _indexOfMarker, _parsePywareFile, _pywareAssembleDrill, _pyware3daPageNote,
     _pyware3daCast,
     DRILL3D_STEP_M, drill3dFieldXZ, drill3dWrapAngle, drill3dTurnToward, drill3dFacing,
-    drill3dStride, drill3dLegPose, drill3dMarkTime, DRILL3D_STEP_STYLES, DRILL3D_UNIFORM_DEFAULT, drill3dUniform,
+    drill3dAdjacentSet, drill3dStride, drill3dLegPose, drill3dMarkTime, DRILL3D_STEP_STYLES, DRILL3D_UNIFORM_DEFAULT, drill3dUniform,
   };
 }

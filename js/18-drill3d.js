@@ -145,7 +145,9 @@ function _d3ShellHtml() {
     </div>
     <div class="d3-controls">
       <div class="d3-scrub-row">
+        <button class="btn btn-sm btn-secondary d3-setnav" id="d3-prev" onclick="drill3dSetNav(-1)" aria-label="Previous set" title="Previous set">⏮</button>
         <button class="btn btn-sm btn-primary d3-play" id="d3-play" onclick="drill3dTogglePlay()" aria-label="Play">▶</button>
+        <button class="btn btn-sm btn-secondary d3-setnav" id="d3-next" onclick="drill3dSetNav(1)" aria-label="Next set" title="Next set">⏭</button>
         <input type="range" class="d3-scrub" id="d3-scrub" min="${start}" max="${end}" step="0.05" value="${start}"
                oninput="drill3dScrub(this.value)" aria-label="Count">
       </div>
@@ -279,6 +281,23 @@ function drill3dScrub(v) {
   _d3.scrubAt = performance.now();
 }
 
+// The counts of the sets you can jump between (the "choose sets to animate"
+// selection when there is one, else every set).
+function _d3SetCounts() {
+  return _drillActiveIdx().map(i => _drillPages[i].count);
+}
+
+// Jump to the previous / next set and hold there, like the 2D chart's arrows.
+function drill3dSetNav(dir) {
+  if (!_d3) return;
+  const to = drill3dAdjacentSet(_d3SetCounts(), _d3.count, dir);
+  if (to == null) return;
+  _d3.playing = false;
+  _d3SyncPlayBtn();
+  _d3.count = to;
+  _d3.scrubAt = 0; // move the slider now
+}
+
 function drill3dSetBpm(v) {
   if (!_d3) return;
   _d3.bpm = +v || 144;
@@ -322,8 +341,11 @@ function _d3Keydown(e) {
   if (e.key === 'Escape') { drill3dClose(); return; }
   if (tag === 'SELECT' || tag === 'INPUT') return;
   if (e.key === ' ') { e.preventDefault(); drill3dTogglePlay(); }
-  else if (e.key === 'ArrowRight') { e.preventDefault(); drill3dScrub(Math.floor(_d3.count + 1e-6) + 1); }
-  else if (e.key === 'ArrowLeft')  { e.preventDefault(); drill3dScrub(Math.ceil(_d3.count - 1e-6) - 1); }
+  // ← → jump set to set like the 2D chart; with Shift, one count at a time.
+  else if (e.key === 'ArrowRight' && e.shiftKey) { e.preventDefault(); drill3dScrub(Math.floor(_d3.count + 1e-6) + 1); }
+  else if (e.key === 'ArrowLeft'  && e.shiftKey) { e.preventDefault(); drill3dScrub(Math.ceil(_d3.count - 1e-6) - 1); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); drill3dSetNav(1); }
+  else if (e.key === 'ArrowLeft')  { e.preventDefault(); drill3dSetNav(-1); }
 }
 
 function _d3Select(label) {
@@ -427,7 +449,7 @@ function _d3Start() {
     facing: _D3_FACING[prefs.facing] ? prefs.facing : 'auto',
     cam: _D3_CAMS[prefs.cam] && prefs.cam !== 'follow' ? prefs.cam : 'box',
     yaw: new Float32Array(labels.length),
-    selected: null, tween: null, scrubAt: 0, last: performance.now(), raf: 0, ro: null, shownWhere: '', shownCount: NaN,
+    selected: null, tween: null, scrubAt: 0, last: performance.now(), raf: 0, ro: null, shownWhere: '', shownCount: NaN, shownNav: '',
   };
   const resize = () => {
     const w = stage.clientWidth, h = stage.clientHeight;
@@ -601,6 +623,9 @@ function _d3PoseBand(dt) {
   const turn = dt * 7; // rad per frame budget for turning
   const step = (_d3.uniformDraft || _d3.uniform).step; // previews an unsaved change
   const holding = c > _d3.range.start + 1e-6 && c < _d3.range.end - 1e-6;
+  // Paused exactly on a set (e.g. after jumping to it): everyone stands on their
+  // spot, rather than frozen mid-stride on that set's footfall.
+  const atSet = !_d3.playing && _d3SetCounts().some(sc => Math.abs(sc - c) < 1e-6);
   let selPos = null;
   for (let i = 0; i < labels.length; i++) {
     const lbl = labels[i], p = cur[lbl];
@@ -614,7 +639,8 @@ function _d3PoseBand(dt) {
     const stride = f.moving ? drill3dStride(Math.hypot(vx, vz) / DRILL3D_STEP_M) * f.dir : 0;
     // A hold mid-drill is marked time (high knees for a high-step band); before
     // the step-off and at the final set everyone stands still.
-    rig.applyPose(stride || !holding ? drill3dLegPose(c, stride, step) : drill3dMarkTime(c, step));
+    rig.applyPose(atSet ? drill3dLegPose(c, 0)
+      : stride || !holding ? drill3dLegPose(c, stride, step) : drill3dMarkTime(c, step));
     rig.root.position.set(at.x, rig.root.position.y, at.z);
     rig.root.rotation.y = _d3.yaw[i];
     rig.root.updateMatrixWorld(true);
@@ -689,6 +715,15 @@ function _d3SyncReadout() {
     const w = document.getElementById('d3-where');
     if (w) w.textContent = where;
     _d3.shownWhere = where;
+  }
+  const sets = _d3SetCounts();
+  const nav = `${drill3dAdjacentSet(sets, c, -1) == null}|${drill3dAdjacentSet(sets, c, 1) == null}`;
+  if (nav !== _d3.shownNav) {
+    const [noPrev, noNext] = nav.split('|').map(v => v === 'true');
+    const prev = document.getElementById('d3-prev'), next = document.getElementById('d3-next');
+    if (prev) prev.disabled = noPrev;
+    if (next) next.disabled = noNext;
+    _d3.shownNav = nav;
   }
   if (!(Math.abs(c - _d3.shownCount) <= 0.01)) {
     const s = document.getElementById('d3-scrub');
