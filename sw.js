@@ -1,4 +1,4 @@
-const CACHE = 'band-tracker-v94';
+const CACHE = 'band-tracker-v95';
 // Deploy stamp (epoch seconds), rewritten by .github/workflows/deploy.yml to
 // match APP_BUILD in js/01-core.js. Its only job is to make every deploy change
 // this file's bytes, which is what makes browsers install the new worker (and
@@ -38,9 +38,13 @@ const PRECACHE = [
   'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js',
 ];
 
-// Precache everything on install, activate immediately
+// Precache everything on install, activate immediately. `cache: 'reload'`
+// skips the browser's HTTP cache: GitHub Pages serves app files with
+// max-age=600, so a plain addAll right after a deploy could precache the
+// previous version's files.
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(PRECACHE)));
+  e.waitUntil(caches.open(CACHE).then(c =>
+    c.addAll(PRECACHE.map(u => new Request(u, { cache: 'reload' })))));
   self.skipWaiting();
 });
 
@@ -65,16 +69,24 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Firebase CDN scripts are versioned — cache forever once fetched
+  // Firebase CDN scripts are versioned — cache forever once fetched (only a
+  // successful response: a cached error would stick until the next CACHE bump)
   if (url.hostname === 'www.gstatic.com') {
     e.respondWith(
       caches.match(request).then(hit => hit || fetch(request).then(res => {
-        caches.open(CACHE).then(c => c.put(request, res.clone()));
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then(c => c.put(request, copy));
+        }
         return res;
       }))
     );
     return;
   }
+
+  // Any other cross-origin request (reCAPTCHA for App Check, images from other
+  // sites…) isn't ours to cache: leave it to the browser.
+  if (url.origin !== self.location.origin) return;
 
   // App files — network-first, bypassing the HTTP cache. `cache: 'no-store'`
   // is essential: GitHub Pages serves these with Cache-Control max-age=600, so
@@ -82,12 +94,16 @@ self.addEventListener('fetch', e => {
   // ~10 min after a deploy (changes wouldn't show without clearing browser
   // data). We always pull fresh from the server when online, and fall back to
   // the SW cache only when offline.
+  // Only successful responses are cached, so a 404 or a 5xx during a deploy
+  // can't replace a good offline copy.
   if (request.method === 'GET') {
     e.respondWith(
       fetch(request, { cache: 'no-store' })
         .then(res => {
-          const copy = res.clone();
-          caches.open(CACHE).then(c => c.put(request, copy));
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then(c => c.put(request, copy));
+          }
           return res;
         })
         .catch(() => caches.match(request))

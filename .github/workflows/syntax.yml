@@ -19,6 +19,8 @@ on:
       - '**/*.js'
       - 'index.html'
       - '.github/workflows/syntax.yml'
+  # deploy.yml calls this workflow and deploys only if it passes.
+  workflow_call:
 
 jobs:
   check:

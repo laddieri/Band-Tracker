@@ -9,13 +9,16 @@
 //   3. every local PRECACHE entry must exist as a file in the repo.
 //
 // No dependencies — runs with plain `node tests/check-precache.js`.
+// An optional directory argument checks that directory instead of the repo:
+// deploy.yml runs it on the staged _site/ so a file the app needs can't be
+// left out of the upload.
 
 'use strict';
 
 const fs   = require('node:fs');
 const path = require('node:path');
 
-const root = path.resolve(__dirname, '..');
+const root = process.argv[2] ? path.resolve(process.argv[2]) : path.resolve(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const sw   = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
 
@@ -53,7 +56,7 @@ for (const entry of precache) {
   if (entry.startsWith('http')) continue;
   const rel = entry === '/' ? 'index.html' : entry.replace(/^\//, '');
   if (!fs.existsSync(path.join(root, rel))) {
-    problems.push(`sw.js PRECACHE lists '${entry}' but ${rel} does not exist`);
+    problems.push(`sw.js PRECACHE lists '${entry}' but ${rel} does not exist in ${root}`);
   }
 }
 
