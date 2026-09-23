@@ -4223,6 +4223,7 @@ html, body {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-md);
 }
 .d3-uniform-head { font-weight: 700; }
+.d3-step-row { display: flex; align-items: center; gap: 8px; font-size: .85rem; }
 .d3-uniform-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 6px 12px; }
 .d3-swatch { display: flex; align-items: center; gap: 8px; font-size: .85rem; cursor: pointer; }
 .d3-swatch input { width: 34px; height: 28px; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: none; cursor: pointer; flex-shrink: 0; }

@@ -4,7 +4,8 @@
 // Plays the active drill chart on a 3D field, every performer a marcher in the
 // band's uniform. Opened from the Drill tab, which only directors and staff
 // reach (drill data is director/staff-readable in the rules); uniform colours
-// are director-edited and stored on the show (or on an ungrouped drill).
+// and the marching style (roll step / high step) are director-edited and
+// stored on the show (or on an ungrouped drill).
 //
 // three.js is loaded from the CDN the first time the view opens, so ordinary
 // app loads pay nothing for it. The whole band is drawn with instancing: the
@@ -202,7 +203,12 @@ function drill3dToggleUniform() {
     _d3.uniformDraft = { ..._d3.uniform };
     const o = _d3UniformOwner();
     p.innerHTML = `
-      <div class="d3-uniform-head">Uniform colours <span class="label-hint">for ${esc(o ? o.name : 'this chart')}</span></div>
+      <div class="d3-uniform-head">Uniform &amp; step <span class="label-hint">for ${esc(o ? o.name : 'this chart')}</span></div>
+      <label class="d3-step-row">Marching style
+        <select class="form-input d3-select" id="d3-u-step" onchange="drill3dUniformInput('step', this.value)">
+          <option value="roll"${_d3.uniformDraft.step === 'roll' ? ' selected' : ''}>Roll step (glide)</option>
+          <option value="high"${_d3.uniformDraft.step === 'high' ? ' selected' : ''}>High step</option>
+        </select></label>
       <div class="d3-uniform-grid">
         ${_D3_UNIFORM_PARTS.map(([k, label]) => `
           <label class="d3-swatch">
@@ -211,12 +217,13 @@ function drill3dToggleUniform() {
           </label>`).join('')}
       </div>
       <div class="d3-uniform-actions">
-        <button class="btn btn-sm btn-secondary" onclick="drill3dUniformReset()">Default colours</button>
+        <button class="btn btn-sm btn-secondary" onclick="drill3dUniformReset()">Defaults</button>
         <button class="btn btn-sm btn-secondary" onclick="drill3dToggleUniform()">Cancel</button>
         <button class="btn btn-sm btn-primary" onclick="drill3dUniformSave()">Save</button>
       </div>`;
   } else {
     _d3ApplyUniform(_d3.uniform); // cancel: drop the unsaved preview
+    _d3.uniformDraft = null;
   }
   p.hidden = !open;
   if (btn) btn.setAttribute('aria-expanded', String(open));
@@ -231,7 +238,7 @@ function drill3dUniformInput(key, value) {
 function drill3dUniformReset() {
   if (!_d3) return;
   _d3.uniformDraft = { ...DRILL3D_UNIFORM_DEFAULT };
-  _D3_UNIFORM_PARTS.forEach(([k]) => { const i = document.getElementById('d3-u-' + k); if (i) i.value = _d3.uniformDraft[k]; });
+  [..._D3_UNIFORM_PARTS.map(([k]) => k), 'step'].forEach(k => { const i = document.getElementById('d3-u-' + k); if (i) i.value = _d3.uniformDraft[k]; });
   _d3ApplyUniform(_d3.uniformDraft);
 }
 
@@ -592,6 +599,7 @@ function _d3PoseBand(dt) {
   const cur = byLabel(_drillFrameAt(c)), before = byLabel(_drillFrameAt(c - 0.25)), after = byLabel(_drillFrameAt(c + 0.25));
   const rig = band.rig, parts = rig.parts, flip = _drillFlipV;
   const turn = dt * 7; // rad per frame budget for turning
+  const step = (_d3.uniformDraft || _d3.uniform).step; // previews an unsaved change
   let selPos = null;
   for (let i = 0; i < labels.length; i++) {
     const lbl = labels[i], p = cur[lbl];
@@ -603,7 +611,7 @@ function _d3PoseBand(dt) {
     const f = drill3dFacing(vx, vz, _d3.facing);
     if (f.yaw != null) _d3.yaw[i] = drill3dTurnToward(_d3.yaw[i], f.yaw, turn);
     const stride = f.moving ? drill3dStride(Math.hypot(vx, vz) / DRILL3D_STEP_M) * f.dir : 0;
-    rig.applyPose(drill3dLegPose(c, stride));
+    rig.applyPose(drill3dLegPose(c, stride, step));
     rig.root.position.set(at.x, rig.root.position.y, at.z);
     rig.root.rotation.y = _d3.yaw[i];
     rig.root.updateMatrixWorld(true);

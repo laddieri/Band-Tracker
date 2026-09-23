@@ -1828,6 +1828,22 @@ describe('3D drill view math', () => {
     assert.deepStrictEqual(L.drill3dLegPose(1, 0),
       { hip: [0, 0], knee: [0, 0], ankle: [0, 0], arm: [0, 0], bob: 0, tail: 0 });
   });
+  it('high step lifts the swinging leg to level, shin down, toe pointed', () => {
+    // Count 1.5: the right leg (index 0) is mid-swing between footfalls.
+    const hi = L.drill3dLegPose(1.5, 0.34, 'high');
+    assert.ok(hi.hip[0] < -1.3, `thigh near level: ${hi.hip[0]}`);
+    assert.ok(Math.abs(hi.hip[0] + hi.knee[0]) < 0.2, 'shin hangs about straight down');
+    assert.ok(hi.ankle[0] > 0.5, 'toe pointed');
+    near(hi.hip[1], L.drill3dLegPose(1.5, 0.34, 'roll').hip[1]); // support leg unchanged
+    // On the count both feet are down: same stance as the roll step.
+    const onCount = L.drill3dLegPose(1, 0.34, 'high');
+    near(onCount.hip[0], 0.34); near(onCount.hip[1], -0.34);
+    assert.deepStrictEqual(onCount.knee.map(v => +v.toFixed(9)), [0, 0]);
+    // Short steps still lift high; backfield and standing still don't lift.
+    assert.ok(L.drill3dLegPose(1.5, 0.17, 'high').hip[0] < -1.2);
+    assert.deepStrictEqual(L.drill3dLegPose(1.5, -0.34, 'high'), L.drill3dLegPose(1.5, -0.34, 'roll'));
+    assert.deepStrictEqual(L.drill3dLegPose(1.5, 0, 'high'), L.drill3dLegPose(1.5, 0));
+  });
   it('sanitises stored uniform colours', () => {
     assert.deepStrictEqual(L.drill3dUniform(null), { ...L.DRILL3D_UNIFORM_DEFAULT });
     const u = L.drill3dUniform({ jacket: '#AABBCC', pants: 'red', gold: '#12345', extra: '#000000' });
@@ -1835,5 +1851,8 @@ describe('3D drill view math', () => {
     assert.strictEqual(u.pants, L.DRILL3D_UNIFORM_DEFAULT.pants);
     assert.strictEqual(u.gold, L.DRILL3D_UNIFORM_DEFAULT.gold);
     assert.ok(!('extra' in u));
+    assert.strictEqual(u.step, 'roll');
+    assert.strictEqual(L.drill3dUniform({ step: 'high' }).step, 'high');
+    assert.strictEqual(L.drill3dUniform({ step: 'moonwalk' }).step, 'roll');
   });
 });

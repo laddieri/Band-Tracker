@@ -125,9 +125,9 @@ re-entry.
 - `orgs/{orgId}/shows/{showId}` = `{ name, mapping, uniform? }`, where `mapping` is the
   shared `label → studentNumber | [studentNumbers]` map (an array is a spot two+
   students share). Each drill doc carries a `showId` pointing at its show.
-  `uniform` is the 3D view's marcher colours (`{ jacket, pants, facing, gold,
-  white, black }`, `#rrggbb` each; sanitised by `drill3dUniform()`), director-set
-  from the 3D view. An ungrouped drill keeps its own `uniform` on the drill doc.
+  `uniform` is the 3D view's marcher look (`{ jacket, pants, facing, gold,
+  white, black }` as `#rrggbb` colours, plus `step`: `'roll'` or `'high'`;
+  sanitised by `drill3dUniform()`), director-set from the 3D view. An ungrouped drill keeps its own `uniform` on the drill doc.
 - **Resolution order** (`drillStudentNumsByLabel` in js/12-drill.js): the active
   drill's *show* mapping (or, for an ungrouped drill, the drill's own legacy
   `mapping`) → the band-wide `settings/presets.pywareMapping`. An explicit entry

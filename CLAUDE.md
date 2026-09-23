@@ -133,8 +133,9 @@ app doesn't show it" is never a justification. Full model:
   first use. Changing the version means new hashes. The band is instanced (one
   InstancedMesh per body part and material), positions come from
   `_drillFrameAt()`, and the pure math (field coordinates, facing, leg pose,
-  uniform colours) is `drill3d*` in `js/00-logic.js`. Uniform colours live on
-  the show doc (`uniform`), director-written like the spot map.
+  uniform colours) is `drill3d*` in `js/00-logic.js`. Uniform colours and the
+  marching style (roll / high step) live on the show doc (`uniform`),
+  director-written like the spot map.
 - One-off admin scripts live in `scripts/` (run locally with a service
   account, never in CI). `service-account.json` and `backup-*.json` are
   gitignored — keep it that way.

@@ -1469,39 +1469,56 @@ function drill3dStride(stepsPerCount) {
 // from drill3dStride (negative = backward march). Index 0 is the wearer's
 // right, 1 their left; a positive hip angle swings that leg behind the body.
 // Feet land ON the count, left foot on odd counts (step off on the left).
-function drill3dLegPose(count, amp) {
+// style: 'roll' (default) — straight-legged glide, toe up on the lead foot;
+// 'high' — high step (chair step): the swinging leg's thigh comes up to about
+// level, shin hanging straight down and toe pointed, before it plants.
+// Backfield marching uses the same platform step in either style.
+function drill3dLegPose(count, amp, style) {
   const a = Math.min(0.5, Math.abs(amp || 0));
   if (a < 0.01) return { hip: [0, 0], knee: [0, 0], ankle: [0, 0], arm: [0, 0], bob: 0, tail: 0 };
   const dir = amp < 0 ? -1 : 1, r = Math.min(1.4, a / 0.34);
-  const phase = (count - 0.5) * Math.PI, sn = Math.sin(phase);
+  const phase = (count - 0.5) * Math.PI, sn = Math.sin(phase), cs = Math.cos(phase);
   const behind = [sn, -sn];
   const hip = behind.map(k => dir * a * k);
-  const knee = dir > 0
-    ? [0, 1].map(i => 0.45 * r * Math.max(0, Math.sin(phase + (i ? Math.PI : 0) + 0.7)))
-    : [0, 1].map(i => 0.15 * r * Math.max(0, behind[i]));
-  const ankle = dir > 0
-    ? behind.map(k => -0.35 * r * Math.max(0, -k)) // roll step: toe up on the lead foot
-    : [0.25 * r, 0.25 * r];                        // backfield: up on the platforms
+  let knee, ankle;
+  if (dir > 0 && style === 'high') {
+    // Each leg lifts while it swings forward (half a count), peaking mid-swing
+    // and back on the ground at its footfall. Lift doesn't scale with the step
+    // size — a short high step still comes up to level.
+    const lift = [Math.max(0, -cs), Math.max(0, cs)].map(l => l * Math.min(1, a / 0.15));
+    lift.forEach((l, i) => { hip[i] -= 1.45 * l; });
+    knee = lift.map(l => 1.5 * l);
+    ankle = lift.map(l => 0.7 * l);          // toe pointed down
+  } else if (dir > 0) {
+    knee = [0, 1].map(i => 0.45 * r * Math.max(0, Math.sin(phase + (i ? Math.PI : 0) + 0.7)));
+    ankle = behind.map(k => -0.35 * r * Math.max(0, -k)); // roll step: toe up on the lead foot
+  } else {
+    knee = [0, 1].map(i => 0.15 * r * Math.max(0, behind[i]));
+    ankle = [0.25 * r, 0.25 * r];                         // backfield: up on the platforms
+  }
   return {
     hip, knee, ankle,
     arm: behind.map(k => -0.06 * r * k),
-    bob: 0.012 * r * Math.abs(Math.cos(phase)),
+    bob: 0.012 * r * Math.abs(cs),
     tail: 0.07 * r * Math.abs(sn),
   };
 }
 
-// The band's uniform colours for the 3D marchers, stored on the show (or on an
-// ungrouped drill) as `uniform`. Anything missing or not a #rrggbb colour falls
-// back to the default.
+// The band's look for the 3D marchers, stored on the show (or on an ungrouped
+// drill) as `uniform`: six #rrggbb colours plus `step`, the marching style
+// ('roll' or 'high'). Anything missing or invalid falls back to the default.
+const DRILL3D_STEP_STYLES = Object.freeze(['roll', 'high']);
 const DRILL3D_UNIFORM_DEFAULT = Object.freeze({
   jacket: '#1f3f9e', pants: '#1f3f9e', facing: '#b5162f',
   gold: '#d3a53a', white: '#f3f1ea', black: '#16171b',
+  step: 'roll',
 });
 function drill3dUniform(raw) {
   const out = {};
   for (const k of Object.keys(DRILL3D_UNIFORM_DEFAULT)) {
     const v = raw && typeof raw[k] === 'string' ? raw[k].trim() : '';
-    out[k] = /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : DRILL3D_UNIFORM_DEFAULT[k];
+    if (k === 'step') out[k] = DRILL3D_STEP_STYLES.includes(v) ? v : DRILL3D_UNIFORM_DEFAULT[k];
+    else out[k] = /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : DRILL3D_UNIFORM_DEFAULT[k];
   }
   return out;
 }
@@ -2044,6 +2061,6 @@ if (typeof module !== 'undefined' && module.exports) {
     _hasMarker, _indexOfMarker, _parsePywareFile, _pywareAssembleDrill, _pyware3daPageNote,
     _pyware3daCast,
     DRILL3D_STEP_M, drill3dFieldXZ, drill3dWrapAngle, drill3dTurnToward, drill3dFacing,
-    drill3dStride, drill3dLegPose, DRILL3D_UNIFORM_DEFAULT, drill3dUniform,
+    drill3dStride, drill3dLegPose, DRILL3D_STEP_STYLES, DRILL3D_UNIFORM_DEFAULT, drill3dUniform,
   };
 }
