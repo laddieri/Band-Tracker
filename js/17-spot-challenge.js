@@ -5,9 +5,10 @@
 // each of them march it once in a rehearsal and tallies their mistakes; whoever
 // makes fewer marches the spot that weekend. This file is that tally sheet:
 //
-//   • 'spot-challenges' — every shared spot across the band's shows. Tick the
-//     pair(s) you're about to watch (up to SC_MAX_WATCH at once) and tap Watch.
-//     Recent results are listed underneath.
+//   • 'spot-challenges' — the shared spots in one show (a dropdown switches
+//     shows; it starts on the Field Chart's show, or asks "Which show are you
+//     watching?"). Tick the pair(s) you're about to watch (up to SC_MAX_WATCH
+//     at once) and tap Watch. That show's recent results are listed underneath.
 //   • 'spot-challenge'  — the tally sheet. One pair gets the full sheet (big
 //     "+ Mistake" button per student, tally marks, who's ahead, reset/delete);
 //     2–4 pairs get a compact screen with one row of buttons per pair, sized to
@@ -59,6 +60,9 @@ function _scCount(doc, num) {
 // Kept for the session so coming back to the list keeps the selection.
 const SC_MAX_WATCH = 4;
 let _scSelected = [];
+// The show the picker is showing pairs for (null = not chosen yet this session;
+// then it defaults to the Field Chart's current show, or asks).
+let _scShowId = null;
 
 function _scSelIdx(showId, label) {
   return _scSelected.findIndex(x => x.showId === showId && x.label === label);
@@ -99,8 +103,15 @@ function _scTallyHtml(n) {
 
 function viewSpotChallenges() {
   if (!canRecord()) return `<div class="empty-state"><p>Directors only.</p></div>`;
-  const spots = sharedSpotsFromShows(STATE.shows);
+  const allSpots = sharedSpotsFromShows(STATE.shows);
   const date  = today();
+
+  // One show at a time. Shows with at least one shared spot, in list order.
+  const shows = [];
+  allSpots.forEach(sp => { if (!shows.some(x => x.id === sp.showId)) shows.push({ id: sp.showId, name: sp.show }); });
+  const showId = _scCurrentShowId(shows);
+  if (shows.length > 1 && !showId) return _scShowQuestionHtml(shows, allSpots);
+  const spots = allSpots.filter(sp => sp.showId === showId);
 
   // Drop ticks for spots that are no longer shared (re-assigned since).
   _scSelected = _scSelected.filter(x => spots.some(sp => sp.showId === x.showId && sp.label === x.label));
@@ -121,13 +132,21 @@ function viewSpotChallenges() {
       </button>`;
   };
 
-  const byShow = {};
-  spots.forEach(sp => { (byShow[sp.showId] = byShow[sp.showId] || { name: sp.show, rows: [] }).rows.push(sp); });
-  const spotCards = Object.keys(byShow).map(sid => `
+  const showName = (shows.find(x => x.id === showId) || {}).name || 'Show';
+  // With 2+ shows the heading is a dropdown to switch shows.
+  const heading = shows.length > 1
+    ? `<label class="sc-show-pick">
+         <span class="sc-show-pick-lbl">Show</span>
+         <span class="sc-show-select-wrap"><select class="form-input sc-show-select" aria-label="Which show are you watching?" onchange="scPickShow(this.value)">
+           ${shows.map(x => `<option value="${esc(x.id)}" ${x.id === showId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}
+         </select><span class="sc-show-caret" aria-hidden="true">▾</span></span>
+       </label>`
+    : `<span class="section-title">${esc(showName)}</span>`;
+  const spotCards = `
     <div class="sec-card">
-      <div class="sec-hdr sec-hdr-open" style="cursor:default"><span class="section-title">${esc(byShow[sid].name)}</span></div>
-      <div class="sc-spot-list">${byShow[sid].rows.map(spotRow).join('')}</div>
-    </div>`).join('');
+      <div class="sec-hdr sec-hdr-open" style="cursor:default">${heading}</div>
+      <div class="sc-spot-list">${spots.map(spotRow).join('')}</div>
+    </div>`;
 
   const empty = `
     <div class="empty-state" style="padding:32px 20px">
@@ -140,6 +159,7 @@ function viewSpotChallenges() {
 
   // Recent results: past and today's sheets that have at least one tally.
   const results = (STATE.spotChallenges || [])
+    .filter(c => !showId || c.showId === showId)
     .filter(c => Object.values(c.counts || {}).some(v => Number(v) > 0))
     .slice(0, 40);
   const resultRow = c => {
@@ -174,6 +194,41 @@ function viewSpotChallenges() {
       <button class="btn btn-primary sc-watch-btn" onclick="scWatchSelected()">Watch ${_scSelected.length} pair${_scSelected.length !== 1 ? 's' : ''} ›</button>
     </div>` : ''}
   </div>`;
+}
+
+// Which show the picker is on: the one picked this session, else the show of
+// the chart open on the Field Chart tab, else the only show with shared spots.
+// null means "ask" (2+ shows and no way to tell).
+function _scCurrentShowId(shows) {
+  const has = id => id && shows.some(x => x.id === id);
+  if (has(_scShowId)) return _scShowId;
+  const active = (typeof _activeShow === 'function') ? _activeShow() : null;
+  if (active && has(active.id)) return active.id;
+  return shows.length === 1 ? shows[0].id : null;
+}
+
+// Asked when the band has shared spots in 2+ shows and none is chosen yet.
+function _scShowQuestionHtml(shows, allSpots) {
+  return `<div class="songs-page">
+    <div class="sec-card">
+      <div class="sec-hdr sec-hdr-open" style="cursor:default"><span class="section-title">Which show are you watching?</span></div>
+      <div class="sc-spot-list">${shows.map(x => {
+        const n = allSpots.filter(sp => sp.showId === x.id).length;
+        return `<button class="sc-spot-row" onclick="scPickShow('${esc(x.id)}')">
+          <span class="sc-spot-names">${esc(x.name)}</span>
+          <span class="sc-spot-count">${n} shared spot${n !== 1 ? 's' : ''} ›</span>
+        </button>`;
+      }).join('')}</div>
+    </div>
+  </div>`;
+}
+
+// Switch the picker to another show. Ticks from the old show are dropped so
+// "Watch N pairs" never includes pairs that aren't on screen.
+function scPickShow(showId) {
+  _scShowId = showId;
+  _scSelected = _scSelected.filter(x => x.showId === showId);
+  render();
 }
 
 function scToggleSpot(showId, label) {

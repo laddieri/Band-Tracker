@@ -4096,6 +4096,12 @@ html, body {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--shadow-md);
 }
 .sc-watch-btn { flex: 1; }
+.sc-spot-count { flex-shrink: 0; font-size: .85rem; color: var(--text-muted); }
+.sc-show-pick { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+.sc-show-pick-lbl { font-size: .8rem; font-weight: 600; color: var(--text-muted); }
+.sc-show-select-wrap { position: relative; flex: 1; min-width: 0; }
+.sc-show-select { font-weight: 700; margin: 0; padding-right: 36px; cursor: pointer; }
+.sc-show-caret { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
 .sc-spot-score { flex-shrink: 0; font-weight: 700; color: var(--primary); font-variant-numeric: tabular-nums; }
 .sc-vs { color: var(--text-muted); font-weight: 400; margin: 0 4px; }
 .sc-result-row { flex-direction: column; align-items: stretch; gap: 4px; }
