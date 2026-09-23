@@ -127,6 +127,14 @@ app doesn't show it" is never a justification. Full model:
   `_saveActiveMapping()` (writes the show doc when grouped, the drill doc when
   not); the resolver is `drillStudentNumsByLabel()`. See "Drill shows and spot
   maps" in `docs/DATA_MODEL.md`. Don't reintroduce per-drill spot re-entry.
+- The **3D drill view** (`js/18-drill3d.js`, the Drill tab's "3D" button) is the
+  one place the app loads a library on demand: three.js from jsDelivr, pinned
+  to an exact version with SRI hashes (`_D3_SCRIPTS`), cached by `sw.js` after
+  first use. Changing the version means new hashes. The band is instanced (one
+  InstancedMesh per body part and material), positions come from
+  `_drillFrameAt()`, and the pure math (field coordinates, facing, leg pose,
+  uniform colours) is `drill3d*` in `js/00-logic.js`. Uniform colours live on
+  the show doc (`uniform`), director-written like the spot map.
 - One-off admin scripts live in `scripts/` (run locally with a service
   account, never in CI). `service-account.json` and `backup-*.json` are
   gitignored — keep it that way.
@@ -145,8 +153,8 @@ app doesn't show it" is never a justification. Full model:
   declared in `app.css` or set via `setProperty` — a fallback alone doesn't
   count; light-only fallbacks once made dark-mode text unreadable).
 - `npm run test:unit` — unit tests for the pure logic in `js/00-logic.js`
-  (scoring, published stats, auto marks, pseudonyms, CSV parsing, and the
-  Pyware `.3dj`/`.3da` drill-file parser). Also runs in CI on every PR. Keep
+  (scoring, published stats, auto marks, pseudonyms, CSV parsing, the
+  Pyware `.3dj`/`.3da` drill-file parser, and the 3D drill view's math). Also runs in CI on every PR. Keep
   `00-logic.js` free of Firebase/STATE/DOM so it stays requireable from Node;
   bind it to STATE via thin wrappers elsewhere. The drill parser lives here
   (pure byte-wrangling); the viewer UI that consumes it is in `js/12-drill.js`.

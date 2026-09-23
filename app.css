@@ -4194,6 +4194,48 @@ html, body {
 }
 .sc-foot { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 
+/* ── 3D drill view (js/18-drill3d.js) ───────────────────────────────────────── */
+.drill3d {
+  position: fixed; inset: 0; z-index: 2100;
+  background: var(--surface); color: var(--text);
+  display: flex; flex-direction: column;
+  padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
+}
+.d3-top { display: flex; align-items: center; gap: 8px; padding: 8px 12px; flex-shrink: 0; }
+.d3-title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.d3-name { font-weight: 700; font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d3-where { font-size: .8rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.d3-stage { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--bg); }
+.d3-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.d3-msg {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 24px; text-align: center; color: var(--text-muted);
+}
+.d3-pick {
+  position: absolute; left: 12px; right: 12px; bottom: 12px; margin: 0 auto; max-width: 420px;
+  display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-sm); box-shadow: var(--shadow-md);
+}
+.d3-pick-name { flex: 1; min-width: 0; font-weight: 600; font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d3-uniform {
+  position: absolute; left: 12px; right: 12px; bottom: 12px; margin: 0 auto; max-width: 460px;
+  display: flex; flex-direction: column; gap: 10px; padding: 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-md);
+}
+.d3-uniform-head { font-weight: 700; }
+.d3-uniform-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 6px 12px; }
+.d3-swatch { display: flex; align-items: center; gap: 8px; font-size: .85rem; cursor: pointer; }
+.d3-swatch input { width: 34px; height: 28px; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: none; cursor: pointer; flex-shrink: 0; }
+.d3-uniform-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.d3-msg[hidden], .d3-pick[hidden], .d3-uniform[hidden] { display: none; }
+.d3-controls { flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 12px; border-top: 1px solid var(--border); }
+.d3-scrub-row { display: flex; align-items: center; gap: 10px; }
+.d3-play { min-width: 44px; }
+.d3-scrub { flex: 1; min-width: 0; accent-color: var(--primary); }
+.d3-opts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.d3-opt { display: flex; align-items: center; gap: 6px; font-size: .8rem; color: var(--text-muted); }
+.d3-select { width: auto; padding: 4px 8px; font-size: .85rem; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

@@ -1777,3 +1777,63 @@ describe('spot challenges (shared-spot mistake tallies)', () => {
     assert.deepStrictEqual(L.spotChallengeLeaders({}, []), { leaders: [], min: 0, tie: false });
   });
 });
+
+describe('3D drill view math', () => {
+  const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${a} ≈ ${b}`);
+  it('places drill positions on a field centred on the 50, front sideline toward +Z', () => {
+    const p = L.drill3dFieldXZ(80, 0, false);           // 50 yard line, front sideline
+    near(p.x, 0); near(p.z, 42 * L.DRILL3D_STEP_M);
+    const q = L.drill3dFieldXZ(0, 42, false);           // west goal line, mid-field
+    near(q.x, -80 * L.DRILL3D_STEP_M); near(q.z, 0);
+    near(L.drill3dFieldXZ(80, 0, true).z, -42 * L.DRILL3D_STEP_M); // flipped: that's the back
+    near(L.DRILL3D_STEP_M * 8, 5 * 0.9144, 1e-6);       // 8 steps = 5 yards
+  });
+  it('wraps and turns angles the short way', () => {
+    near(L.drill3dWrapAngle(3 * Math.PI / 2), -Math.PI / 2);
+    near(L.drill3dTurnToward(0, 1, 0.25), 0.25);
+    near(L.drill3dTurnToward(0, 0.1, 0.25), 0.1);
+    near(L.drill3dTurnToward(3, -3, 0.1), 3.1);          // across the ±PI seam, not the long way
+  });
+  it('infers facing from the direction of travel', () => {
+    const S = L.DRILL3D_STEP_M;
+    // Standing still: face front, or keep the current facing in travel mode.
+    assert.deepStrictEqual(L.drill3dFacing(0, 0, 'auto'), { moving: false, yaw: 0, dir: 1 });
+    assert.strictEqual(L.drill3dFacing(0, 0, 'travel').yaw, null);
+    // Moving toward the side (+X) faces that way in auto and travel modes.
+    near(L.drill3dFacing(S, 0, 'auto').yaw, Math.PI / 2);
+    near(L.drill3dFacing(S, 0, 'travel').yaw, Math.PI / 2);
+    // Heading upfield: auto and front march backfield facing the box.
+    assert.deepStrictEqual(L.drill3dFacing(0, -S, 'auto'), { moving: true, yaw: 0, dir: -1 });
+    assert.deepStrictEqual(L.drill3dFacing(0, -S, 'front'), { moving: true, yaw: 0, dir: -1 });
+    near(Math.abs(L.drill3dFacing(0, -S, 'travel').yaw), Math.PI);
+    // Toward the audience everyone marches forward, facing front.
+    assert.deepStrictEqual(L.drill3dFacing(0, S, 'auto'), { moving: true, yaw: 0, dir: 1 });
+    // A shallow diagonal toward the back (more sideways than back) faces travel.
+    assert.strictEqual(L.drill3dFacing(S, -0.3 * S, 'auto').dir, 1);
+  });
+  it('scales the stride with step size', () => {
+    near(L.drill3dStride(1), 0.34);
+    assert.strictEqual(L.drill3dStride(0.05), 0);
+    assert.strictEqual(L.drill3dStride(3), 0.5);
+    assert.strictEqual(L.drill3dStride(NaN), 0);
+  });
+  it('steps off on the left and lands each foot on the count', () => {
+    const one = L.drill3dLegPose(1, 0.34);
+    assert.ok(one.hip[1] < 0 && one.hip[0] > 0, 'left leg forward on count 1');
+    near(Math.abs(one.hip[1]), 0.34);                    // full stride at the footfall
+    const two = L.drill3dLegPose(2, 0.34);
+    assert.ok(two.hip[0] < 0 && two.hip[1] > 0, 'right leg forward on count 2');
+    const back = L.drill3dLegPose(1, -0.34);
+    assert.ok(back.hip[1] > 0, 'backfield reverses the swing');
+    assert.deepStrictEqual(L.drill3dLegPose(1, 0),
+      { hip: [0, 0], knee: [0, 0], ankle: [0, 0], arm: [0, 0], bob: 0, tail: 0 });
+  });
+  it('sanitises stored uniform colours', () => {
+    assert.deepStrictEqual(L.drill3dUniform(null), { ...L.DRILL3D_UNIFORM_DEFAULT });
+    const u = L.drill3dUniform({ jacket: '#AABBCC', pants: 'red', gold: '#12345', extra: '#000000' });
+    assert.strictEqual(u.jacket, '#aabbcc');
+    assert.strictEqual(u.pants, L.DRILL3D_UNIFORM_DEFAULT.pants);
+    assert.strictEqual(u.gold, L.DRILL3D_UNIFORM_DEFAULT.gold);
+    assert.ok(!('extra' in u));
+  });
+});

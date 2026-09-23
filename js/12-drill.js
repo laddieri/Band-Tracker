@@ -1789,6 +1789,7 @@ function _drillViewInner() {
       <button class="btn btn-sm ${_drillPlaying ? 'btn-primary' : 'btn-secondary'}" onclick="drillPlayToggle()" title="Step through counts with the arrows" aria-label="${_drillPlaying ? 'Exit count-step mode' : 'Step through counts with the arrows'}">${_drillPlaying ? '⏸' : '▶'}</button>
       ${(_drillPages && _drillPages.length > 1) ? `<button class="btn btn-sm ${_drillSelectMode ? 'btn-primary' : 'btn-secondary'}" onclick="drillToggleSelectMode()" title="Choose sets to animate" aria-label="Choose sets to animate">⛶</button>` : ''}
       <button class="btn btn-sm btn-secondary" onclick="drillViewExpand()" title="Fullscreen" aria-label="Fullscreen">⤢</button>
+      <button class="btn btn-sm btn-secondary" onclick="drill3dOpen()" title="Watch it in 3D" aria-label="Open the 3D view">3D</button>
       <div class="drill-search-wrap${_drillSearchOpen ? ' is-open' : ''}${_drillSearchQuery.trim() ? ' has-q' : ''}${_drillMatchLabels.length > 1 ? ' has-multi' : ''}" id="drill-search-wrap">
         <input class="drill-search form-input" type="search" id="drill-search-input"
                placeholder="Find a performer or student…"
