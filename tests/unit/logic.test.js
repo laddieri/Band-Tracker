@@ -1811,6 +1811,16 @@ describe('3D drill view math', () => {
     // A shallow diagonal toward the back (more sideways than back) faces travel.
     assert.strictEqual(L.drill3dFacing(S, -0.3 * S, 'auto').dir, 1);
   });
+  it('jumps to the previous and next set', () => {
+    const sets = [0, 16, 32, 48];
+    assert.strictEqual(L.drill3dAdjacentSet(sets, 0, 1), 16);
+    assert.strictEqual(L.drill3dAdjacentSet(sets, 16, 1), 32);      // on a set: the one after
+    assert.strictEqual(L.drill3dAdjacentSet(sets, 20.5, 1), 32);
+    assert.strictEqual(L.drill3dAdjacentSet(sets, 48, 1), null);    // last set
+    assert.strictEqual(L.drill3dAdjacentSet(sets, 20.5, -1), 16);   // partway: back to this set's start
+    assert.strictEqual(L.drill3dAdjacentSet(sets, 16, -1), 0);      // on a set: the one before
+    assert.strictEqual(L.drill3dAdjacentSet(sets, 0, -1), null);    // first set
+  });
   it('scales the stride with step size', () => {
     near(L.drill3dStride(1), 0.34);
     assert.strictEqual(L.drill3dStride(0.05), 0);
