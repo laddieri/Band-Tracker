@@ -908,6 +908,29 @@ async function deleteRoster() {
     .map(c => String(c).toUpperCase());
 
   const CHUNK = 500;
+
+  // Take away access FIRST — switch off every login code and remove student
+  // memberships (so signed-in sessions lose access) — and stop, deleting
+  // nothing, if that fails. Deleting the roster first used to orphan codes
+  // that still worked, with nothing left in the app to switch them off. Codes
+  // go one by one: one missing code doc used to fail its whole batch silently.
+  try {
+    const results = await Promise.allSettled(codes.map(c => _retireCode('studentCodes', c)));
+    const failed  = results.filter(r => r.status === 'rejected');
+    if (failed.length) throw failed[0].reason;
+    const memSnap = await db.collection('members')
+      .where('orgId', '==', STATE.orgId).where('role', '==', 'student').get();
+    for (let i = 0; i < memSnap.docs.length; i += CHUNK) {
+      const batch = db.batch();
+      memSnap.docs.slice(i, i + CHUNK).forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+    }
+  } catch (e) {
+    console.error('revoking student access failed:', e);
+    showToast('Couldn’t switch off student logins, so nothing was deleted. Check your connection and try again.');
+    return;
+  }
+
   for (let i = 0; i < nums.length; i += CHUNK) {
     const batch = db.batch();
     nums.slice(i, i + CHUNK).forEach(num => {
@@ -916,27 +939,8 @@ async function deleteRoster() {
     await batch.commit().catch(e => { showToast('Delete failed — ' + (e.message || 'check console')); throw e; });
   }
 
-  // Retire login codes so they can't be used to rejoin as ghost students.
-  for (let i = 0; i < codes.length; i += CHUNK) {
-    const batch = db.batch();
-    codes.slice(i, i + CHUNK).forEach(code => {
-      batch.delete(db.collection('studentCodes').doc(code));
-    });
-    await batch.commit().catch(() => {});
-  }
-
-  // Remove student memberships so existing sessions lose access.
-  try {
-    const memSnap = await db.collection('members')
-      .where('orgId', '==', STATE.orgId).where('role', '==', 'student').get();
-    for (let i = 0; i < memSnap.docs.length; i += CHUNK) {
-      const batch = db.batch();
-      memSnap.docs.slice(i, i + CHUNK).forEach(doc => batch.delete(doc.ref));
-      await batch.commit();
-    }
-  } catch (e) { console.error('student membership cleanup failed:', e); }
-
-  // Clear per-student results from song docs.
+  // Clear per-student results from song docs. Not awaited-and-swallowed any
+  // more: a failure reaches the global save-error toast (js/13-boot.js).
   if (STATE.songs.some(song => song.statuses && Object.keys(song.statuses).length)) {
     const batch = db.batch();
     STATE.songs.forEach(song => {
@@ -944,7 +948,7 @@ async function deleteRoster() {
         batch.update(orgCol('songs').doc(song.id), { statuses: {} });
       }
     });
-    await batch.commit().catch(() => {});
+    batch.commit();
   }
 
   STATE.students = {};

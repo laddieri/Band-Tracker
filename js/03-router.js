@@ -829,6 +829,15 @@ function _printHtmlDocument(html) {
 // edit usually needs a fix, not a better connection. Rate-capped so a burst of
 // failures (e.g. a batch) produces one toast, not a storm.
 let _lastSaveErrToastAt = 0;
+// .catch() for an update() that may target a doc that doesn't exist yet (e.g.
+// clearing attendance for a student with no entry doc): not-found means
+// there's nothing to clear. Anything else is rethrown so it still reaches the
+// global save-error toast — don't widen this to a blanket .catch(() => {}).
+function _ignoreNotFound(e) {
+  if (e && e.code === 'not-found') return;
+  throw e;
+}
+
 function _toastSaveError(e, what = 'A change') {
   console.error(`${what} failed to save:`, e);
   const now = Date.now();

@@ -1209,7 +1209,8 @@ function confirmDeleteSong(sid) {
     () => {
       STATE.songs = STATE.songs.filter(s => s.id !== sid);
       orgCol('songs').doc(sid).delete();
-      // Best-effort cleanup of the per-student songStatuses mirrors.
+      // Clean up the per-student songStatuses mirrors. A failure reaches the
+      // global save-error toast (js/13-boot.js) rather than being swallowed.
       const batch = db.batch();
       let dirty = false;
       for (const [num, s] of Object.entries(STATE.students)) {
@@ -1220,7 +1221,7 @@ function confirmDeleteSong(sid) {
           dirty = true;
         }
       }
-      if (dirty) batch.commit().catch(() => {});
+      if (dirty) batch.commit();
       navigate('songs');
       showToast('Song deleted.');
     },

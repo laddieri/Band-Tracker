@@ -135,6 +135,9 @@ function _studentCodeForUser() {
   if (email.endsWith('@' + STUDENT_EMAIL_DOMAIN)) return email.split('@')[0].toUpperCase();
   return '';
 }
+// Best-effort: fails with 'failed-precondition' / 'unimplemented' in browsers
+// or tab setups without IndexedDB support, and the app then simply runs
+// without the offline cache.
 db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
 
 // Keep directors/students signed in across app restarts. LOCAL is already the
@@ -329,6 +332,35 @@ function setStudentCodeLookup(code, studentNumber) {
   if (!code || !STATE.orgId) return Promise.resolve();
   return db.collection('studentCodes').doc(String(code).toUpperCase())
     .set({ orgId: STATE.orgId, studentNumber: String(studentNumber) }, { merge: true });
+}
+
+// ── Revoking access ───────────────────────────────────────────────────────────
+// These take access away, so a failure must never be swallowed: callers do the
+// revoke FIRST and stop (changing nothing else) if it rejects, so a retry can
+// still find and switch off the old code. Swallowing it used to leave an old
+// code working with nothing in the app pointing at it any more.
+
+// Switch off a student login code ('studentCodes') or a co-director/staff
+// invite code ('inviteCodes') by deleting its lookup doc. Reads first: the
+// rules deny deleting a doc that doesn't exist (its resource.data is null), so
+// an already-gone code would otherwise look like a failure. Skips a code that
+// maps to another org (a collision — not ours, and the rules would deny it).
+async function _retireCode(collection, code) {
+  if (!code) return;
+  const ref  = db.collection(collection).doc(String(code).toUpperCase());
+  const snap = await ref.get();
+  if (!snap.exists || snap.data().orgId !== STATE.orgId) return;
+  await ref.delete();
+}
+
+// Delete a student's membership(s) so a signed-in session for them loses access.
+async function _removeStudentMemberships(num) {
+  const snap = await db.collection('members')
+    .where('orgId', '==', STATE.orgId).where('studentNumber', '==', String(num)).get();
+  if (snap.empty) return;
+  const batch = db.batch();
+  snap.forEach(d => batch.delete(d.ref));
+  await batch.commit();
 }
 
 // Resolve which org the signed-in user belongs to (and their role) before any

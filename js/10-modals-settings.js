@@ -197,7 +197,7 @@ function showEditStudentModal(num) {
   `);
 }
 
-function saveEditStudent(num) {
+async function saveEditStudent(num) {
   if (!STATE.students[num]) return;
   const oldCode = STATE.students[num].studentCode ? String(STATE.students[num].studentCode).toUpperCase() : '';
   const patch = {
@@ -212,13 +212,20 @@ function saveEditStudent(num) {
   for (const cf of (STATE.customStudentFields || [])) {
     patch[cf.key] = document.getElementById(`m-cf-${cf.key}`)?.value?.trim() || '';
   }
+  // Code changed: switch the old code (and the synthetic email/PIN tied to it)
+  // off BEFORE saving, and save nothing if that fails — the modal stays open to
+  // retry. Saving first used to leave the old code working, orphaned.
+  if (oldCode && oldCode !== patch.studentCode) {
+    try {
+      await _retireCode('studentCodes', oldCode);
+    } catch (e) {
+      console.error('retiring old student code failed:', e);
+      showToast('Couldn’t switch off the old login code, so nothing was saved. Try again.');
+      return;
+    }
+  }
   STATE.students[num] = { ...STATE.students[num], ...patch };
   orgCol('students').doc(num).set(patch, { merge: true });
-  // Retire the old code mapping if the code changed, so a stale code (and the
-  // synthetic email/PIN tied to it) can no longer be used.
-  if (oldCode && oldCode !== patch.studentCode) {
-    db.collection('studentCodes').doc(oldCode).delete().catch(() => {});
-  }
   // Surface a collision (a code already owned by another org is denied by rules)
   // instead of silently failing — the student would otherwise be unable to log in.
   setStudentCodeLookup(patch.studentCode, num).catch(e => {
@@ -266,19 +273,16 @@ async function _doResetStudentPin(num) {
     .map(x => x.studentCode).filter(Boolean).map(c => String(c).toUpperCase()));
   const newCode = await generateUniqueStudentCode(used);
 
-  STATE.students[num] = { ...STATE.students[num], studentCode: newCode };
   try {
+    // Old code off first: if that fails nothing has changed (the student doc
+    // still names the old code), so a retry finds it again. Ignoring the
+    // failure used to leave the old code + PIN working, orphaned.
+    if (oldCode && oldCode !== newCode) await _retireCode('studentCodes', oldCode);
     await orgCol('students').doc(num).set({ studentCode: newCode }, { merge: true });
-    if (oldCode && oldCode !== newCode) {
-      await db.collection('studentCodes').doc(oldCode).delete().catch(() => {});
-    }
+    STATE.students[num] = { ...STATE.students[num], studentCode: newCode };
     await setStudentCodeLookup(newCode, num);
     // Drop existing membership(s) so any live session loses access and must re-claim.
-    const snap = await db.collection('members')
-      .where('orgId', '==', STATE.orgId).where('studentNumber', '==', String(num)).get();
-    const batch = db.batch();
-    snap.forEach(d => batch.delete(d.ref));
-    await batch.commit();
+    await _removeStudentMemberships(num);
   } catch (e) {
     console.error('reset PIN failed:', e);
     showToast('Could not reset the PIN — please try again.');
@@ -315,9 +319,22 @@ function confirmDeleteStudent(num) {
   );
 }
 
-function _deleteStudent(num) {
+async function _deleteStudent(num) {
   const s     = STATE.students[num];
   const sName = s?.name || `#${num}`;
+  // Take away their access FIRST — retire their login code so it can't be used
+  // to rejoin as a ghost student, and remove their membership(s) so a
+  // signed-in session loses access — and delete nothing if that fails.
+  // Deleting first and ignoring these failures used to leave a working login
+  // with no student left in the app to reset it from.
+  try {
+    await _retireCode('studentCodes', s?.studentCode);
+    await _removeStudentMemberships(num);
+  } catch (e) {
+    console.error('revoking student access failed:', e);
+    showToast(`Couldn’t switch off ${sName}’s login, so nothing was deleted. Try again.`);
+    return;
+  }
   delete STATE.students[num];
   orgCol('students').doc(num).delete();
   // Delete all entries for this student
@@ -326,18 +343,6 @@ function _deleteStudent(num) {
     snap.forEach(doc => batch.delete(doc.ref));
     batch.commit();
   });
-  // Retire their login code so it can't be used to rejoin as a ghost student.
-  if (s?.studentCode) {
-    db.collection('studentCodes').doc(String(s.studentCode).toUpperCase()).delete().catch(() => {});
-  }
-  // Remove their org membership(s) so existing sessions lose access.
-  db.collection('members')
-    .where('orgId', '==', STATE.orgId).where('studentNumber', '==', String(num))
-    .get().then(snap => {
-      const batch = db.batch();
-      snap.forEach(doc => batch.delete(doc.ref));
-      batch.commit();
-    }).catch(() => {});
   // Remove their results from song docs.
   const songBatch = db.batch();
   let songDirty = false;
@@ -349,7 +354,7 @@ function _deleteStudent(num) {
       songDirty = true;
     }
   });
-  if (songDirty) songBatch.commit().catch(() => {});
+  if (songDirty) songBatch.commit(); // failures reach the global save-error toast
   // Remove their results from task docs too (mirrors the song cleanup above);
   // otherwise their {done} marks linger orphaned in every task's statuses map.
   const taskBatch = db.batch();
@@ -362,7 +367,7 @@ function _deleteStudent(num) {
       taskDirty = true;
     }
   });
-  if (taskDirty) taskBatch.commit().catch(() => {});
+  if (taskDirty) taskBatch.commit(); // failures reach the global save-error toast
   closeModal();
   showToast(`${sName} deleted`);
   navigate('roster');

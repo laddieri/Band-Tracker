@@ -83,7 +83,13 @@ app doesn't show it" is never a justification. Full model:
   handler (`js/13-boot.js`) toasts rejected writes via `_toastSaveError()`.
   Don't add `.catch(() => {})` unless a failure is genuinely best-effort —
   that swallows the error before the safety net sees it. Writes needing
-  bespoke error UI use their own try/catch.
+  bespoke error UI use their own try/catch. For an `update()` that may hit a
+  missing doc, use `.catch(_ignoreNotFound)` (rethrows everything else).
+- **Revoking access goes first, and never fails silently.** Switching off a
+  login/invite code or removing a membership uses `_retireCode()` /
+  `_removeStudentMemberships()` (`js/01-core.js`) BEFORE the rest of the
+  change, and the flow stops if they reject — otherwise a failure leaves an
+  old code working with nothing in the app pointing at it (can't be retried).
 - **Never call `render()` from a Firestore listener or any other code that can
   fire while the user is mid-interaction** (snapshot callbacks, async loads,
   timers) — use `renderFromData()` (`js/03-router.js`) instead. A direct render
