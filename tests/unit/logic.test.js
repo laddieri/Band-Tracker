@@ -173,6 +173,23 @@ describe('isDoneLate', () => {
   });
 });
 
+describe('newlyPassedSongIds', () => {
+  it('returns passed IDs not yet seen, preserving current order', () => {
+    assert.deepStrictEqual(L.newlyPassedSongIds(['a', 'b', 'c'], ['a']), ['b', 'c']);
+  });
+  it('returns nothing when every passed song was already seen', () => {
+    assert.deepStrictEqual(L.newlyPassedSongIds(['a', 'b'], ['a', 'b', 'x']), []);
+  });
+  it('treats a null/missing seen set as "nothing seen"', () => {
+    assert.deepStrictEqual(L.newlyPassedSongIds(['a', 'b'], null), ['a', 'b']);
+    assert.deepStrictEqual(L.newlyPassedSongIds(['a'], undefined), ['a']);
+  });
+  it('is empty when there are no current passes', () => {
+    assert.deepStrictEqual(L.newlyPassedSongIds([], ['a']), []);
+    assert.deepStrictEqual(L.newlyPassedSongIds(null, ['a']), []);
+  });
+});
+
 describe('buildPublicStats', () => {
   const flags = { ...ALL_ON, songsOn: true, statsOn: true, leaderboardEnabled: true };
   const args  = { students, entries, songs, weights: W, salt: 'salt', flags,
