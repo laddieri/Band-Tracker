@@ -543,7 +543,8 @@ function confirmDeleteTask(tid) {
     () => {
       STATE.tasks = STATE.tasks.filter(t => t.id !== tid);
       orgCol('tasks').doc(tid).delete();
-      // Clean up the per-student taskStatuses mirrors.
+      // Clean up the per-student taskStatuses mirrors. A failure reaches the
+      // global save-error toast (js/13-boot.js) rather than being swallowed.
       const batch = db.batch();
       let dirty = false;
       for (const [num, s] of Object.entries(STATE.students)) {
@@ -554,7 +555,7 @@ function confirmDeleteTask(tid) {
           dirty = true;
         }
       }
-      if (dirty) batch.commit().catch(() => {});
+      if (dirty) batch.commit();
       navigate('tasks');
       showToast('Task deleted.');
     },

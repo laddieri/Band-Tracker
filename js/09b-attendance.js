@@ -650,7 +650,7 @@ function _applyAttendance(rid, num, cur, next) {
   if (!next) {
     orgCol('entries').doc(docId).update({
       attendance: firebase.firestore.FieldValue.delete()
-    }).catch(() => {});
+    }).catch(_ignoreNotFound);
   } else {
     fsUpsertEntry(rid, num, {
       mistakes:  cur.mistakes  || 0,
@@ -1014,7 +1014,7 @@ function blockToggleAbsent(rid, num) {
   if (!next) {
     orgCol('entries').doc(docId).update({
       attendance: firebase.firestore.FieldValue.delete()
-    }).catch(() => {});
+    }).catch(_ignoreNotFound);
   } else {
     fsUpsertEntry(rid, num, {
       mistakes:  cur.mistakes  || 0,

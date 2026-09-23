@@ -854,11 +854,12 @@ async function generateInviteCode() {
   const code = genStudentCode();
   try {
     const old = STATE.org?.inviteCode;
+    // Switch the old code off FIRST: if that fails nothing has changed and the
+    // director can simply retry (deleting it last, and ignoring a failure, left
+    // the old code working with nothing in the app pointing at it any more).
+    if (old && old !== code) await _retireCode('inviteCodes', old);
     await db.collection('inviteCodes').doc(code).set({ orgId: STATE.orgId });
     await db.collection('orgs').doc(STATE.orgId).set({ inviteCode: code }, { merge: true });
-    if (old && old !== code) {
-      await db.collection('inviteCodes').doc(old).delete().catch(() => {});
-    }
     if (STATE.org) STATE.org.inviteCode = code; // optimistic; org listener will confirm
     showToast('Invite code generated.');
     showBrandSettingsModal();
@@ -876,11 +877,12 @@ async function generateStaffInviteCode() {
   const code = genStudentCode();
   try {
     const old = STATE.org?.staffInviteCode;
+    // Switch the old code off FIRST: if that fails nothing has changed and the
+    // director can simply retry (deleting it last, and ignoring a failure, left
+    // the old code working with nothing in the app pointing at it any more).
+    if (old && old !== code) await _retireCode('inviteCodes', old);
     await db.collection('inviteCodes').doc(code).set({ orgId: STATE.orgId, role: 'staff' });
     await db.collection('orgs').doc(STATE.orgId).set({ staffInviteCode: code }, { merge: true });
-    if (old && old !== code) {
-      await db.collection('inviteCodes').doc(old).delete().catch(() => {});
-    }
     if (STATE.org) STATE.org.staffInviteCode = code; // optimistic; org listener will confirm
     showToast('Staff invite code generated.');
     showBrandSettingsModal();

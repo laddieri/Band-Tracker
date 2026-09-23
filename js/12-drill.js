@@ -2138,7 +2138,7 @@ function _drillPersistFlip() {
   const id = STATE.activeDrillId;
   if (!id) return;
   if (STATE.drills[id]) STATE.drills[id].flipV = _drillFlipV;
-  orgCol('drills').doc(id).set({ flipV: _drillFlipV }, { merge: true }).catch(e => console.error(e));
+  orgCol('drills').doc(id).set({ flipV: _drillFlipV }, { merge: true }).catch(e => _toastSaveError(e));
 }
 
 function drillViewSearch(q) {
@@ -2629,7 +2629,7 @@ function drillShowRenameSave(showId) {
   const name = (el?.value || '').trim();
   if (!name) { showToast('Enter a name.'); return; }
   if (STATE.shows[showId]) STATE.shows[showId].name = name;
-  orgCol('shows').doc(showId).set({ name }, { merge: true }).catch(e => console.error(e));
+  orgCol('shows').doc(showId).set({ name }, { merge: true }).catch(e => _toastSaveError(e));
   showDrillLibraryModal();
   if (_view === 'drill' && _activeShow()?.id === showId) { const r = document.getElementById('drill-view-root'); if (r) _drillViewRerender(); }
 }
@@ -2695,13 +2695,13 @@ function _cleanupEmptyShow(showId) {
   if (!showId || !STATE.shows[showId]) return;
   if (Object.values(STATE.drills || {}).some(d => d.showId === showId)) return; // still in use
   delete STATE.shows[showId];
-  orgCol('shows').doc(showId).delete().catch(() => {});
+  orgCol('shows').doc(showId).delete(); // failures reach the global save-error toast
 }
 
 function drillActivate(id) {
   if (!STATE.drills[id] || id === STATE.activeDrillId) { closeModal(); if (_view !== 'drill') navigate('drill'); return; }
   STATE.activeDrillId = id;
-  orgCol('settings').doc('drill').set({ activeId: id }, { merge: true }).catch(e => console.error(e));
+  orgCol('settings').doc('drill').set({ activeId: id }, { merge: true }).catch(e => _toastSaveError(e));
   _drillSyncActive(); // loads the new payload, then re-renders
   closeModal();
   if (_view !== 'drill') navigate('drill'); else render();
@@ -2729,7 +2729,7 @@ function drillRenameSave(id) {
   if (!name) { showToast('Enter a name.'); return; }
   if (STATE.drills[id]) STATE.drills[id].name = name;
   if (id === STATE.activeDrillId) _drillFileName = name;
-  orgCol('drills').doc(id).set({ name }, { merge: true }).catch(e => console.error(e));
+  orgCol('drills').doc(id).set({ name }, { merge: true }).catch(e => _toastSaveError(e));
   showDrillLibraryModal();
   if (_view === 'drill') { const r = document.getElementById('drill-view-root'); if (r) _drillViewRerender(); }
 }
@@ -2748,8 +2748,11 @@ function drillDeletePrompt(id) {
 function drillDelete(id) {
   const wasActive = STATE.activeDrillId === id;
   const showId    = STATE.drills[id]?.showId;
-  orgCol('drills').doc(id).collection('data').doc('main').delete().catch(() => {});
-  orgCol('drills').doc(id).delete().catch(() => {});
+  // Not swallowed: a failed delete used to vanish from the library, only to
+  // reappear on the next snapshot with no explanation. The global handler
+  // (js/13-boot.js) toasts it instead.
+  orgCol('drills').doc(id).collection('data').doc('main').delete();
+  orgCol('drills').doc(id).delete();
   delete STATE.drills[id];
   _cleanupEmptyShow(showId); // drop the show if that was its last drill
   if (wasActive) {
@@ -2757,7 +2760,7 @@ function drillDelete(id) {
     STATE.activeDrillId = next;
     orgCol('settings').doc('drill').set(
       { activeId: next || firebase.firestore.FieldValue.delete() }, { merge: true }
-    ).catch(() => {});
+    );
     _drillSyncActive();
   }
   showDrillLibraryModal();
