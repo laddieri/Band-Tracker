@@ -118,11 +118,26 @@
   </div>
 
   <div id="toast-container" role="status" aria-live="polite"></div>
+  <div id="app-notices" role="status" aria-live="polite"></div>
   <div id="drill-chart-fs" class="hidden"></div>
 
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {});
+      // A deploy changes sw.js (deploy.yml stamps its BUILD line), so the
+      // browser installs the new worker, which takes over at once
+      // (skipWaiting + clients.claim) — that fires controllerchange. Offer a
+      // reload then; not on a first install, when there was no worker before.
+      const hadController = !!navigator.serviceWorker.controller;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (hadController && typeof _promptAppUpdate === 'function') _promptAppUpdate();
+      });
+      navigator.serviceWorker.register('/sw.js').then(reg => {
+        // Installed PWAs can stay open for days without a navigation, which is
+        // when browsers check for a new worker — so also check on resume.
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') reg.update().catch(() => {});
+        });
+      }).catch(() => {});
     }
   </script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>

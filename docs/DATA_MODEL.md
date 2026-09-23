@@ -406,6 +406,15 @@ and both roles run the publisher, so a publishing client is online whenever
 the data changes and the snapshot stays fresh by construction (`settings/public`
 is the only settings doc staff may write).
 
+**Build stamp.** Every publish carries `appBuild` — the deploy time stamped into
+`APP_BUILD` (`js/01-core.js`) by `deploy.yml`. The rules refuse a publish whose
+`appBuild` is lower than the stored one (or missing, once the doc is stamped),
+so a device still running older code can't overwrite the snapshot with an
+older calculation. Current clients also hold back on their own and show a
+"new version available — Reload" notice when they see a newer stamp, and they
+stop publishing while any of their listeners has failed (their data may be
+incomplete) — see `_publishBlocked()` in `js/02-data.js`.
+
 Known tradeoff: published leaderboard rows include the student number so each
 student can find their own row. A student who knows a classmate's number can
 map it to a pseudonym + aggregate score (comparable to a score sheet posted by

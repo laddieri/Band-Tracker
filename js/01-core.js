@@ -5,6 +5,14 @@
 // BAND TRACKER — Firebase Edition
 // =============================================================================
 
+// ── Build stamp ───────────────────────────────────────────────────────────────
+// Epoch seconds of the deploy, written by .github/workflows/deploy.yml (which
+// rewrites this exact line; 0 = an unstamped local copy). Director/staff
+// clients stamp it on settings/public when publishing, and a client whose
+// build is older than the published one stops publishing and asks the user to
+// reload — see _publishBlocked() in js/02-data.js.
+const APP_BUILD = 0;
+
 // ── Theme ─────────────────────────────────────────────────────────────────────
 
 function initTheme() {

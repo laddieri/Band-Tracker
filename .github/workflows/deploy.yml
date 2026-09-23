@@ -25,6 +25,20 @@ jobs:
 
       - uses: actions/configure-pages@v4
 
+      # Stamp the deploy time into the app (APP_BUILD) and the service worker
+      # (BUILD). Changing sw.js is what makes open apps notice a new version,
+      # and APP_BUILD stops out-of-date clients from overwriting the student
+      # portal snapshot. Only the uploaded copy is changed, never the repo.
+      - name: Stamp build number
+        run: |
+          set -e
+          BUILD=$(date +%s)
+          sed -i "s/^const APP_BUILD = 0;$/const APP_BUILD = ${BUILD};/" js/01-core.js
+          sed -i "s/^const BUILD = 0;$/const BUILD = ${BUILD};/" sw.js
+          grep -q "^const APP_BUILD = ${BUILD};$" js/01-core.js
+          grep -q "^const BUILD = ${BUILD};$" sw.js
+          echo "Stamped build ${BUILD}"
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: '.'

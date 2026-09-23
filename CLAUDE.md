@@ -92,11 +92,17 @@ app doesn't show it" is never a justification. Full model:
   `npm run check:static`): the rare genuinely-immediate render there carries a
   `// direct-render-ok: <why>` tag. Apply the same discipline to listeners
   added in other files (e.g. the drill payload load in `js/12-drill.js`).
+- Every `onSnapshot` needs an error callback that goes through
+  `_listenerFailed(name, err, { critical })` (`js/02-data.js`): Firestore never
+  restarts a failed listener, so an unhandled one leaves the app stuck on the
+  spinner or silently stale. It shows the retry screen (critical, during load)
+  or a sticky "Live updates stopped — Reconnect" notice, and pauses publishing.
 - Entry docs are keyed `{rehearsalId}_{studentNumber}` and must always carry
   `studentNumber` as a **string** (student queries filter on it) plus the
   rehearsal's season via `..._seasonStampFor(rid)` (listeners filter
   `season == activeSeason`; an unstamped doc drops out of view — see
-  "Seasons" in `docs/DATA_MODEL.md`).
+  "Seasons" in `docs/DATA_MODEL.md`). The rules enforce the key shape on
+  create (and on any update that touches `rehearsalId`/`studentNumber`).
 - Drill files are grouped into **shows** so all drills of one production share
   one `label→student` spot map (`orgs/{orgId}/shows/{showId}.mapping`; each
   drill doc carries a `showId`). Assign a spot once and every drill in the show
@@ -126,4 +132,8 @@ app doesn't show it" is never a justification. Full model:
   bind it to STATE via thin wrappers elsewhere. The drill parser lives here
   (pure byte-wrangling); the viewer UI that consumes it is in `js/12-drill.js`.
 - `npm run test:rules` — Firestore rules tests against the emulator.
-- There is no build step; do not introduce one casually.
+- There is no build step; do not introduce one casually. The one deploy-time
+  edit is `deploy.yml` stamping the deploy time into `const APP_BUILD = 0;`
+  (`js/01-core.js`) and `const BUILD = 0;` (`sw.js`) — keep those lines
+  exactly as written so the stamp's `sed` still matches (the step fails the
+  deploy if it doesn't).

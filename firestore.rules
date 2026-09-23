@@ -126,10 +126,23 @@ service cloud.firestore {
         // Staff may write 'public' (keep the student snapshot fresh) and may
         // switch the school-wide active drill ('drill' → activeId only, so they
         // can view any show to record marks). Everything else is director-only.
-        allow write: if canWrite()
-                     || (doc == 'public' && isStaffOf(orgId))
+        allow write: if (canWrite() && publicBuildOk())
+                     || (doc == 'public' && isStaffOf(orgId) && publicBuildOk())
                      || (doc == 'drill' && isStaffOf(orgId)
                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activeId']));
+
+        // settings/public carries the publishing client's appBuild (deploy
+        // stamp). Once stamped it can't go backwards: a device still running
+        // older code can't overwrite the student snapshot with its older
+        // calculation (current clients also hold back and offer a reload — see
+        // _publishBlocked() in js/02-data.js). Other settings docs are unaffected.
+        function publicBuildOk() {
+          return doc != 'public'
+              || request.method == 'delete'
+              || resource == null
+              || !('appBuild' in resource.data)
+              || request.resource.data.get('appBuild', 0) >= resource.data.appBuild;
+        }
       }
 
       // A student may read only their own roster doc (doc id == their number).
@@ -170,9 +183,31 @@ service cloud.firestore {
       // with where('studentNumber', '==', <own number>) so the rule can be
       // proven for the whole query. Entries (attendance + marks) are exactly
       // what staff are for, so they get full write access.
+      //
+      // Shape check on every create/update: the app finds entries by these
+      // fields (student queries filter studentNumber as a STRING, listeners
+      // filter season), so a doc that breaks them silently drops out of view.
+      // A new doc must be keyed {rehearsalId}_{studentNumber} with string ids;
+      // an update may leave legacy values alone but can't change them into
+      // anything that breaks that shape. season, when present, is a string.
       match /entries/{doc} {
-        allow read:  if canRecord() || (canRead() && resource.data.studentNumber == myStudentNumber());
-        allow write: if canWrite() || isStaffOf(orgId);
+        allow read:   if canRecord() || (canRead() && resource.data.studentNumber == myStudentNumber());
+        allow create: if canRecord() && entryKeysValid() && entrySeasonValid();
+        allow update: if canRecord() && entrySeasonValid()
+                      && (!request.resource.data.diff(resource.data).affectedKeys()
+                             .hasAny(['rehearsalId', 'studentNumber'])
+                          || entryKeysValid());
+        allow delete: if canRecord();
+
+        function entryKeysValid() {
+          let d = request.resource.data;
+          return d.rehearsalId is string && d.rehearsalId.size() > 0
+              && d.studentNumber is string && d.studentNumber.size() > 0
+              && doc == d.rehearsalId + '_' + d.studentNumber;
+        }
+        function entrySeasonValid() {
+          return !('season' in request.resource.data) || request.resource.data.season is string;
+        }
       }
 
       // Song docs embed every student's pass/fail status and fail notes, so
