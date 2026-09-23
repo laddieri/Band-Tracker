@@ -605,7 +605,7 @@ function showBrandSettingsModal() {
 
     <div class="form-group">
       <label class="form-label">App Color</label>
-      <p style="font-size:.75rem;color:var(--text-muted);margin:-2px 0 8px">
+      <p class="setting-hint">
         The accent color used across the app for your whole band (directors and students).
       </p>
       <div class="brand-color-row">
@@ -621,7 +621,7 @@ function showBrandSettingsModal() {
 
     <div class="form-group">
       <label class="form-label">Features</label>
-      <p style="font-size:.75rem;color:var(--text-muted);margin:-2px 0 8px">
+      <p class="setting-hint">
         Turn off features your band doesn’t use. Existing data is kept and
         reappears if you turn a feature back on.
       </p>
@@ -639,11 +639,11 @@ function showBrandSettingsModal() {
         <div class="feat-toggle-row">
           <label style="display:flex;align-items:flex-start;gap:10px;padding:8px 0 4px;cursor:pointer">
             <input type="checkbox" id="feat-${key}" ${featOn ? 'checked' : ''}
-              style="margin-top:3px;width:18px;height:18px;flex-shrink:0"
+              class="check-lg"
               onchange="handleFeatToggle('${key}')">
             <span>
               <span style="font-weight:600">${label}</span>
-              <span style="display:block;font-size:.75rem;color:var(--text-muted)">${desc}</span>
+              <span class="check-desc">${desc}</span>
             </span>
           </label>
           ${adminOnly ? '' : `
@@ -663,7 +663,7 @@ function showBrandSettingsModal() {
                 style="margin-top:3px;width:16px;height:16px;flex-shrink:0">
               <span>
                 <span style="font-weight:600">${label}</span>
-                <span style="display:block;font-size:.75rem;color:var(--text-muted)">${desc}</span>
+                <span class="check-desc">${desc}</span>
               </span>
             </label>`).join('')}
           </div>` : ''}
@@ -673,16 +673,16 @@ function showBrandSettingsModal() {
 
     <div class="form-group">
       <label class="form-label">Marching Leaderboard</label>
-      <p style="font-size:.75rem;color:var(--text-muted);margin:-2px 0 8px">
+      <p class="setting-hint">
         The ranking built from marks. When on, students see it under Stats (with
         fun pseudonyms); when off, only directors and staff can see it.
       </p>
       <label style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;cursor:pointer">
         <input type="checkbox" id="lb-visible-students" ${STATE.marchingLeaderboardEnabled ? 'checked' : ''}
-          style="margin-top:3px;width:18px;height:18px;flex-shrink:0">
+          class="check-lg">
         <span>
           <span style="font-weight:600">Show marching leaderboard to students</span>
-          <span style="display:block;font-size:.75rem;color:var(--text-muted)">Students see the ranking on their Stats tab</span>
+          <span class="check-desc">Students see the ranking on their Stats tab</span>
         </span>
       </label>
     </div>
@@ -691,7 +691,7 @@ function showBrandSettingsModal() {
       <label class="form-label">Co-director invite code</label>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <code id="invite-code-display"
-          style="font-size:1.1rem;letter-spacing:.15em;padding:6px 12px;background:var(--surface-2,#eee);border-radius:6px">
+          style="font-size:1.1rem;letter-spacing:.15em;padding:6px 12px;background:var(--surface-raised);border-radius:6px">
           ${STATE.org?.inviteCode ? esc(STATE.org.inviteCode) : '— none —'}
         </code>
         <button class="btn btn-secondary" onclick="generateInviteCode()">
@@ -713,7 +713,7 @@ function showBrandSettingsModal() {
       <label class="form-label">Staff invite code</label>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <code id="staff-invite-code-display"
-          style="font-size:1.1rem;letter-spacing:.15em;padding:6px 12px;background:var(--surface-2,#eee);border-radius:6px">
+          style="font-size:1.1rem;letter-spacing:.15em;padding:6px 12px;background:var(--surface-raised);border-radius:6px">
           ${STATE.org?.staffInviteCode ? esc(STATE.org.staffInviteCode) : '— none —'}
         </code>
         <button class="btn btn-secondary" onclick="generateStaffInviteCode()">
@@ -735,7 +735,7 @@ function showBrandSettingsModal() {
 
     <div class="form-group">
       <label class="form-label">Student Portal Logins</label>
-      <p style="font-size:.75rem;color:var(--text-muted);margin:-2px 0 8px">
+      <p class="setting-hint">
         See the last time each student signed in to their portal — handy for
         spotting who hasn't set up their account yet.
       </p>
@@ -746,7 +746,7 @@ function showBrandSettingsModal() {
 
     <div class="form-group">
       <label class="form-label">Export Data</label>
-      <p style="font-size:.75rem;color:var(--text-muted);margin:-2px 0 8px">
+      <p class="setting-hint">
         Download the roster, attendance, marks, leaderboard, songs or tasks as a
         spreadsheet (CSV) or printable PDF — pick exactly which columns to include.
       </p>
@@ -757,7 +757,7 @@ function showBrandSettingsModal() {
 
     <div class="form-group">
       <label class="form-label">Season</label>
-      <p style="font-size:.75rem;color:var(--text-muted);margin:-2px 0 8px">
+      <p class="setting-hint">
         ${STATE.activeSeason
           ? `Current season: <strong>${esc(STATE.activeSeason)}</strong>. Starting a new one archives
              this season's rehearsals, attendance and marks — nothing is deleted, and you can
@@ -1060,18 +1060,18 @@ function showNewSeasonModal() {
     </div>
     <label style="display:flex;align-items:flex-start;gap:10px;padding:6px 0;cursor:pointer">
       <input type="checkbox" id="season-clear-songs" checked
-        style="margin-top:3px;width:18px;height:18px;flex-shrink:0">
+        class="check-lg">
       <span style="font-size:.88rem">
         <span style="font-weight:600">Reset song progress</span>
-        <span style="display:block;font-size:.75rem;color:var(--text-muted)">Permanently clears every student's song results (keeps the song list)</span>
+        <span class="check-desc">Permanently clears every student's song results (keeps the song list)</span>
       </span>
     </label>
     <label style="display:flex;align-items:flex-start;gap:10px;padding:6px 0 12px;cursor:pointer">
       <input type="checkbox" id="season-delete-songs"
-        style="margin-top:3px;width:18px;height:18px;flex-shrink:0">
+        class="check-lg">
       <span style="font-size:.88rem">
         <span style="font-weight:600">Also delete the songs themselves</span>
-        <span style="display:block;font-size:.75rem;color:var(--text-muted)">Remove the whole song list, not just the results</span>
+        <span class="check-desc">Remove the whole song list, not just the results</span>
       </span>
     </label>
     <div class="modal-actions">

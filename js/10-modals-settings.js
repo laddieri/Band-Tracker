@@ -492,7 +492,7 @@ function _rehearsalScopeFields(scope = null) {
     <div class="form-group">
       <div id="reh-scope-sec-hdr" class="sec-hdr ${open ? 'sec-hdr-open' : ''}" style="margin-top:0"
            onclick="toggleCollapse('reh-scope-sec')">
-        <span class="form-label" style="margin:0">Who's attending? <span style="font-weight:400;color:var(--text-muted)">· ${esc(summary)}</span></span>
+        <span class="form-label" style="margin:0">Who's attending? <span class="label-hint">· ${esc(summary)}</span></span>
         <span class="sec-chevron">▾</span>
       </div>
       <div id="reh-scope-sec" class="${open ? '' : 'sec-collapsed'}">
@@ -563,10 +563,10 @@ function showRehearsalEditModal(rid) {
     <div class="form-group">
       <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
         <input type="checkbox" id="m-hide-students" ${r.hiddenFromStudents ? 'checked' : ''}
-               style="margin-top:3px;width:18px;height:18px;flex-shrink:0">
+               class="check-lg">
         <span>
           <span style="font-weight:600">Hide from students</span>
-          <span style="display:block;font-size:.75rem;color:var(--text-muted)">Students won't see this event's attendance, marks, or history, and it won't affect their leaderboard — useful for optional events. Directors and staff still see everything.</span>
+          <span class="check-desc">Students won't see this event's attendance, marks, or history, and it won't affect their leaderboard — useful for optional events. Directors and staff still see everything.</span>
         </span>
       </label>
     </div>

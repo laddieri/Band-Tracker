@@ -40,6 +40,7 @@
   --nav-h: 64px;
   --header-h: 56px;
   --r: 14px;
+  --r-md: 12px;
   --r-sm: 8px;
   --shadow: 0 1px 3px rgba(0,0,0,.1), 0 1px 2px rgba(0,0,0,.06);
   --shadow-md: 0 4px 6px rgba(0,0,0,.07), 0 2px 4px rgba(0,0,0,.06);
@@ -2089,7 +2090,7 @@ html, body {
   color: var(--text-muted);
   padding: 4px 0 2px 22px;
 }
-.portal-blank-positive { color: var(--success-muted, var(--success)); opacity: 0.75; }
+.portal-blank-positive { color: var(--success); opacity: 0.75; }
 .portal-badge-present {
   background: #dcfce7;
   color: #15803d;
@@ -2263,7 +2264,7 @@ html, body {
 .student-tips li { margin: 2px 0; }
 .login-diag {
   width: 100%; box-sizing: border-box; margin: -8px 0 16px; padding: 8px 10px;
-  background: var(--warning-bg, #fff4e5); color: var(--text); border: 1px solid var(--warning, #e0a44a);
+  background: var(--amber-bg); color: var(--text); border: 1px solid var(--warning, #e0a44a);
   border-radius: var(--r-sm); font-size: 0.72rem; line-height: 1.5; text-align: left;
 }
 
@@ -3110,7 +3111,7 @@ html, body {
   display: block; width: 100%; text-align: left;
   padding: 8px 10px; margin-top: 4px;
   border: 1px solid var(--border); border-radius: 8px;
-  background: var(--card, #fff); color: inherit;
+  background: var(--card-bg); color: inherit;
   font-family: inherit; font-size: 0.9rem; cursor: pointer;
 }
 .abs-student-result:hover { border-color: var(--primary); background: var(--primary-bg); }
@@ -3193,7 +3194,7 @@ html, body {
 /* ── Attendance screen ───────────────────────────────────────────────────────── */
 
 .att-chip-present  { background: var(--success-bg); color: var(--success); }
-.att-chip-unmarked { background: var(--surface-2,#f3f4f6); color: var(--text-muted); }
+.att-chip-unmarked { background: var(--surface-raised); color: var(--text-muted); }
 
 .att-screen-summary-bar {
   display: flex;
@@ -3666,7 +3667,7 @@ html, body {
 .onboard-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--r-lg);
+  border-radius: var(--r);
   padding: 24px;
   margin-bottom: 16px;
 }
@@ -4054,3 +4055,26 @@ html, body {
 .drill-mark-pos { background:var(--success, #2e9e5b); }
 .drill-mark-neg { background:var(--danger, #d9534f); }
 .drill-mark-ct { background:rgba(255,255,255,.28); border-radius:10px; padding:1px 7px; font-size:0.85rem; }
+
+/* ── Shared text helpers ───────────────────────────────────────────────────────
+   Named versions of inline styles that were repeated across the view files.
+   Kept at the end of the file so, like the inline styles they replace, they
+   win over earlier rules of equal specificity (e.g. .card-flush over .card). */
+.label-hint   { font-weight: 400; color: var(--text-muted); }                      /* "(optional)" after a label */
+.setting-hint { font-size: .75rem; color: var(--text-muted); margin: -2px 0 8px; }  /* note under a settings heading */
+.check-desc   { display: block; font-size: .75rem; color: var(--text-muted); }     /* description under a checkbox label */
+.title-sub    { font-size: 0.78rem; font-weight: 400; color: var(--text-muted); margin-top: 2px; } /* line under a modal title */
+.check-lg     { margin-top: 3px; width: 18px; height: 18px; flex-shrink: 0; }      /* large checkbox beside a two-line label */
+.card-flush   { padding: 0; overflow: hidden; }                                    /* card whose rows run edge to edge */
+
+/* ── Reduced motion ────────────────────────────────────────────────────────────
+   Honour the OS "reduce motion" setting: animations and transitions finish
+   instantly. Delays are kept, so e.g. toasts still fade out on schedule. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

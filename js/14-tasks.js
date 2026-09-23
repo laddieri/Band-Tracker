@@ -337,11 +337,11 @@ function _taskModalHtml(title, t, saveCall, editId) {
              value="${esc(t.title || '')}">
     </div>
     <div class="form-group">
-      <label class="form-label">Description <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+      <label class="form-label">Description <span class="label-hint">(optional)</span></label>
       <textarea class="form-textarea" id="m-task-desc" rows="2" placeholder="What students need to do…" maxlength="300" style="resize:none">${esc(t.description || '')}</textarea>
     </div>
     <div class="form-group">
-      <label class="form-label">Due Date <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+      <label class="form-label">Due Date <span class="label-hint">(optional)</span></label>
       <input class="form-input" id="m-task-due" type="date" value="${esc(t.dueDate || '')}">
     </div>
     <label class="sfb-check-label" style="padding:4px 0 8px">
@@ -411,7 +411,7 @@ function _renderTaskApplicBody() {
         ? `<div class="preset-empty">Add instruments, sections, or grades to students to filter by group.</div>` : ''}
     </div>
 
-    <div class="form-label" style="margin:12px 0 4px">Exceptions <span style="font-weight:400;color:var(--text-muted)">(individual students)</span></div>
+    <div class="form-label" style="margin:12px 0 4px">Exceptions <span class="label-hint">(individual students)</span></div>
     ${chips ? `<div class="song-group-chips" style="margin-bottom:6px">${chips}</div>` : ''}
     <input class="form-input" id="task-ex-search" type="text" placeholder="Search a student to include or exempt…"
            autocomplete="off" oninput="taskEditExSearch(this.value)" value="${esc(st.exSearch)}">
