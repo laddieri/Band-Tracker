@@ -1878,3 +1878,28 @@ describe('3D drill view math', () => {
     assert.strictEqual(L.drill3dUniform({ step: 'moonwalk' }).step, 'roll');
   });
 });
+
+describe('songMemorizationSummary (spot challenge song comparison)', () => {
+  const songs = [
+    { id: 'a', category: 'Halftime', statuses: { 3: { status: 'passed' }, 4: { status: 'failed' } } },
+    { id: 'b', category: 'Halftime', statuses: { 3: { status: 'passed' }, 4: { status: 'passed' } } },
+    { id: 'c', category: 'Stands',   statuses: { 4: { status: 'passed' } } },
+    { id: 'd', category: '',         statuses: { 3: { status: 'passed' } } },
+    { id: 'e', category: 'Retired',  statuses: {} },
+  ];
+  it('counts passed songs overall and per category, in the director\'s order', () => {
+    assert.deepStrictEqual(L.songMemorizationSummary(songs, '3', ['Stands', 'Halftime', 'Pregame']), {
+      passed: 3, total: 5,
+      cats: [
+        { cat: 'Stands', passed: 0, total: 1 },
+        { cat: 'Halftime', passed: 2, total: 2 },
+        { cat: 'Other', passed: 1, total: 2 }, // uncategorized + unknown category
+      ],
+    });
+    assert.strictEqual(L.songMemorizationSummary(songs, 4, ['Halftime']).passed, 2); // numeric num works
+  });
+  it('skips the category breakdown when no categories are set up', () => {
+    assert.deepStrictEqual(L.songMemorizationSummary(songs, '3', []), { passed: 3, total: 5, cats: [] });
+    assert.deepStrictEqual(L.songMemorizationSummary([], '3', ['Halftime']), { passed: 0, total: 0, cats: [] });
+  });
+});

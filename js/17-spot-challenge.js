@@ -280,6 +280,7 @@ function viewSpotChallenge(params) {
     ${nums.length < 2 ? `<p class="setting-hint" style="margin:0 0 10px">Only one student is on this spot now.</p>` : ''}
     <div class="sc-grid">${nums.map(n => _scCardHtml(showId, label, n, doc, lead)).join('')}</div>
     <div class="sc-verdict" role="status">${_scVerdictHtml(doc, nums)}</div>
+    ${_scSongsHtml(nums)}
     <div class="sc-foot">
       <button class="btn btn-secondary btn-sm" onclick="scResetPrompt()">Reset tallies</button>
       ${STATE.isAdmin && doc ? `<button class="btn btn-sm btn-danger" onclick="scDeletePrompt()">Delete sheet</button>` : ''}
@@ -316,6 +317,7 @@ function _scMultiHtml(spots) {
     const doc  = _scDoc(date, showId, label);
     const nums = _scNums(showId, label, date, doc);
     const lead = _scSoleLeader(doc, nums);
+    const songTotals = _scSongTotals(nums);
     const cells = nums.map(num => {
       const name = _scName(num);
       const a = `'${esc(showId)}','${esc(label)}','${esc(num)}'`;
@@ -323,7 +325,10 @@ function _scMultiHtml(spots) {
         <div class="sc-mcell${lead === num ? ' sc-lead' : ''}" data-sc-num="${esc(num)}">
           <button class="sc-mbtn" onclick="scTally(${a},1)" aria-label="Add a mistake for ${esc(name)} on ${esc(label)}">
             <span class="sc-mbtn-name">${esc(name)}</span>
-            <span class="sc-mbtn-count sc-n">${_scCount(doc, num)}</span>
+            <span class="sc-mbtn-line">
+              <span class="sc-mbtn-count sc-n">${_scCount(doc, num)}</span>
+              ${songTotals[num] ? `<span class="sc-mbtn-songs${songTotals.more === num ? ' sc-songs-more' : ''}" title="Songs memorized this season">♪ ${songTotals[num]}</span>` : ''}
+            </span>
           </button>
           <button class="sc-mundo" onclick="scTally(${a},-1)" aria-label="Remove a mistake for ${esc(name)} on ${esc(label)}">Undo</button>
         </div>`;
@@ -341,6 +346,71 @@ function _scMultiHtml(spots) {
       </div>`;
   }).join('');
   return `<div class="sc-multi" id="sc-root">${rows}</div>`;
+}
+
+// ── Song memorization comparison ──────────────────────────────────────────────
+// Directors weigh memorization alongside the mistake tally, so the sheet shows
+// each student's passed songs for the season and per song category. Read from
+// STATE.songs (directors + staff can read songs; students never see this page).
+
+function _scSongsOn() {
+  return featureOn('songs') && (STATE.songs || []).length > 0;
+}
+
+// The one student with strictly the most passed songs in a row (null on a tie
+// or with fewer than two comparable students).
+function _scMostPassed(values) {
+  const vals = values.filter(v => v.passed != null);
+  if (vals.length < 2) return null;
+  const max = Math.max(...vals.map(v => v.passed));
+  const top = vals.filter(v => v.passed === max);
+  return top.length === 1 ? top[0].num : null;
+}
+
+// Season totals for the compact multi-pair buttons: { num: '5/8', more: num }.
+function _scSongTotals(nums) {
+  if (!_scSongsOn()) return {};
+  const out = {};
+  const vals = nums.map(num => {
+    if (memExcluded(STATE.students[num] || {})) return { num, passed: null };
+    const sm = songMemorizationSummary(STATE.songs, num, []);
+    out[num] = `${sm.passed}/${sm.total}`;
+    return { num, passed: sm.passed };
+  });
+  out.more = _scMostPassed(vals);
+  return out;
+}
+
+// The full sheet's table: a season-total row, then one row per song category.
+// The student with more songs passed in a row is highlighted.
+function _scSongsHtml(nums) {
+  if (!_scSongsOn() || !nums.length) return '';
+  const cats = STATE.songCategories || [];
+  const sums = {};
+  nums.forEach(num => {
+    sums[num] = memExcluded(STATE.students[num] || {}) ? null : songMemorizationSummary(STATE.songs, num, cats);
+  });
+  const any = nums.find(n => sums[n]);
+  if (!any) return '';
+  const rowHtml = (label, pick, cls = '') => {
+    const vals = nums.map(num => ({ num, ...(sums[num] ? pick(sums[num]) : { passed: null }) }));
+    const more = _scMostPassed(vals);
+    return `<tr class="${cls}"><th scope="row">${esc(label)}</th>${vals.map(v => v.passed == null
+      ? `<td class="sc-songs-na">${sums[v.num] ? '—' : 'Excluded'}</td>`
+      : `<td class="${more === v.num ? 'sc-songs-more' : ''}">${more === v.num ? '✓ ' : ''}${v.passed}<span class="sc-songs-of">/${v.total}</span></td>`).join('')}</tr>`;
+  };
+  const catRows = sums[any].cats.map(c => rowHtml(c.cat, sm => sm.cats.find(x => x.cat === c.cat) || { passed: 0, total: 0 })).join('');
+  return `
+    <div class="sc-songs">
+      <div class="sc-songs-title">Songs memorized</div>
+      <table class="sc-songs-table">
+        <thead><tr><th></th>${nums.map(n => `<th scope="col">${esc(_scName(n).split(/\s+/)[0])}</th>`).join('')}</tr></thead>
+        <tbody>
+          ${rowHtml('This season', sm => ({ passed: sm.passed, total: sm.total }), 'sc-songs-total')}
+          ${catRows}
+        </tbody>
+      </table>
+    </div>`;
 }
 
 // The one student with the fewest mistakes (null before any tally, on a tie,

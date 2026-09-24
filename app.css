@@ -4192,6 +4192,21 @@ html, body {
   min-height: 30px; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--surface-alt);
   color: var(--text-muted); font: inherit; font-size: .8rem; font-weight: 600; cursor: pointer; touch-action: manipulation;
 }
+/* Song memorization comparison on the tally sheet. */
+.sc-songs { margin: 14px 0 4px; padding: 12px; border-radius: var(--r); background: var(--surface); box-shadow: var(--shadow); }
+.sc-songs-title { font-weight: 700; font-size: .9rem; margin-bottom: 6px; }
+.sc-songs-table { width: 100%; border-collapse: collapse; font-size: .88rem; font-variant-numeric: tabular-nums; }
+.sc-songs-table th, .sc-songs-table td { padding: 6px 4px; border-top: 1px solid var(--border); text-align: center; }
+.sc-songs-table thead th { border-top: none; font-weight: 700; overflow-wrap: anywhere; }
+.sc-songs-table tbody th { text-align: left; font-weight: 500; color: var(--text-muted); }
+.sc-songs-total th, .sc-songs-total td { font-weight: 700; }
+.sc-songs-total th { color: var(--text); }
+.sc-songs-of { color: var(--text-muted); font-weight: 400; }
+.sc-songs-more { color: var(--success); font-weight: 700; }
+.sc-songs-na { color: var(--text-muted); font-size: .8rem; }
+.sc-mbtn-line { display: flex; align-items: baseline; justify-content: center; gap: 10px; }
+.sc-mbtn-songs { font-size: .75rem; font-weight: 600; color: var(--text-muted); }
+.sc-mbtn-songs.sc-songs-more { color: var(--success); }
 .sc-foot { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 
 /* ── 3D drill view (js/18-drill3d.js) ───────────────────────────────────────── */

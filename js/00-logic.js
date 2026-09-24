@@ -969,6 +969,27 @@ function spotChallengeLeaders(counts, nums) {
   return { leaders, min, tie: leaders.length > 1 };
 }
 
+// A student's song memorization, overall and per song category, for comparing
+// the students on a shared spot. Songs aren't season-scoped (the list is reset
+// from the new-season flow), so the current list IS the season. Categories
+// follow the director's order; songs with no (or an unknown) category are
+// grouped as "Other", listed last and only when there are any. A category with
+// no songs is skipped. Returns { passed, total, cats:[{ cat, passed, total }] }.
+function songMemorizationSummary(songs, num, categories) {
+  const key = String(num);
+  const isPassed = song => song.statuses?.[key]?.status === 'passed';
+  const list = songs || [];
+  const known = categories || [];
+  const cats = [];
+  known.forEach(cat => {
+    const inCat = list.filter(s => s.category === cat);
+    if (inCat.length) cats.push({ cat, passed: inCat.filter(isPassed).length, total: inCat.length });
+  });
+  const other = list.filter(s => !s.category || !known.includes(s.category));
+  if (other.length && cats.length) cats.push({ cat: 'Other', passed: other.filter(isPassed).length, total: other.length });
+  return { passed: list.filter(isPassed).length, total: list.length, cats };
+}
+
 // Enforce "one spot per student per show": pull `num` out of every spot except
 // `keepLabel`, so a student never holds two spots in the same show. Shared spots
 // (2+ students at ONE label) are preserved — only the student's OTHER labels are
@@ -2086,7 +2107,7 @@ if (typeof module !== 'undefined' && module.exports) {
     buildSongRosterExportTable, buildTaskRosterExportTable,
     DRILL_LABEL_ALIASES, drillSpotNums, drillSpotStripOthers, drillSpotLabelParts, applyDrillSpotCsv,
     drillMappingDiff, spotHistorySpans,
-    sharedSpotsFromShows, spotChallengeId, spotChallengeLeaders,
+    sharedSpotsFromShows, spotChallengeId, spotChallengeLeaders, songMemorizationSummary,
     drillPositionPairs, drillRelabelMapping,
     suggestSeasonLabel,
     normInstrument, instrOrder, GRADE_LEVELS, filterAndSortStudents, studentSortValue, sortKeys,
