@@ -327,7 +327,7 @@ function _scMultiHtml(spots) {
             <span class="sc-mbtn-name">${esc(name)}</span>
             <span class="sc-mbtn-line">
               <span class="sc-mbtn-count sc-n">${_scCount(doc, num)}</span>
-              ${songTotals[num] ? `<span class="sc-mbtn-songs${songTotals.more === num ? ' sc-songs-more' : ''}" title="Songs memorized this season">♪ ${songTotals[num]}</span>` : ''}
+              ${songTotals[num] ? `<span class="sc-mbtn-songs${songTotals.more === num ? ' sc-songs-more' : ''}" title="${esc(songTotals.title)}">♪ ${songTotals[num]}</span>` : ''}
             </span>
           </button>
           <button class="sc-mundo" onclick="scTally(${a},-1)" aria-label="Remove a mistake for ${esc(name)} on ${esc(label)}">Undo</button>
@@ -345,7 +345,7 @@ function _scMultiHtml(spots) {
                       : `<p class="setting-hint">No one is on this spot now.</p>`}
       </div>`;
   }).join('');
-  return `<div class="sc-multi" id="sc-root">${rows}</div>`;
+  return `<div class="sc-multi" id="sc-root">${_scSongCatPickHtml()}${rows}</div>`;
 }
 
 // ── Song memorization comparison ──────────────────────────────────────────────
@@ -367,15 +367,57 @@ function _scMostPassed(values) {
   return top.length === 1 ? top[0].num : null;
 }
 
-// Season totals for the compact multi-pair buttons: { num: '5/8', more: num }.
+// Which songs the multi-pair buttons count as missing: '' = every song this
+// season, else one song category ('Other' = uncategorized). Remembered on this
+// device so it survives a reload mid-rehearsal.
+let _scSongCat = (() => { try { return localStorage.getItem('scSongCat') || ''; } catch { return ''; } })();
+
+// The categories offered in the dropdown: the director's categories that have
+// songs, plus "Other" when some songs have none (same rules as the full sheet).
+function _scSongCatOptions() {
+  return songMemorizationSummary(STATE.songs, '', STATE.songCategories || []).cats.map(c => c.cat);
+}
+
+function _scActiveSongCat() {
+  return _scSongCatOptions().includes(_scSongCat) ? _scSongCat : '';
+}
+
+// The dropdown above the pairs. Hidden when there are no categories to choose.
+function _scSongCatPickHtml() {
+  if (!_scSongsOn()) return '';
+  const cats = _scSongCatOptions();
+  if (!cats.length) return '';
+  const cur = _scActiveSongCat();
+  return `
+    <label class="sc-songcat-pick">
+      <span class="sc-show-pick-lbl">♪ Missing</span>
+      <span class="sc-show-select-wrap"><select class="form-input sc-songcat-select" aria-label="Song category to count missing songs for" onchange="scPickSongCat(this.value)">
+        <option value="" ${cur === '' ? 'selected' : ''}>All songs this season</option>
+        ${cats.map(c => `<option value="${esc(c)}" ${cur === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+      </select><span class="sc-show-caret" aria-hidden="true">▾</span></span>
+    </label>`;
+}
+
+function scPickSongCat(cat) {
+  _scSongCat = cat || '';
+  try { localStorage.setItem('scSongCat', _scSongCat); } catch {}
+  render();
+}
+
+// Missing-song counts for the compact multi-pair buttons, in the chosen
+// category: { num: '2 missing', more: num, title }. `more` is the student
+// missing the fewest (i.e. with the most passed) — they're highlighted.
 function _scSongTotals(nums) {
   if (!_scSongsOn()) return {};
-  const out = {};
+  const cat = _scActiveSongCat();
+  const out = { title: cat ? `${cat} songs not memorized yet` : 'Songs not memorized yet this season' };
   const vals = nums.map(num => {
     if (memExcluded(STATE.students[num] || {})) return { num, passed: null };
-    const sm = songMemorizationSummary(STATE.songs, num, []);
-    out[num] = `${sm.passed}/${sm.total}`;
-    return { num, passed: sm.passed };
+    const sm = songMemorizationSummary(STATE.songs, num, STATE.songCategories || []);
+    const row = cat ? (sm.cats.find(c => c.cat === cat) || { passed: 0, total: 0 }) : sm;
+    const missing = row.total - row.passed;
+    out[num] = missing ? `${missing} missing` : 'none missing';
+    return { num, passed: row.passed };
   });
   out.more = _scMostPassed(vals);
   return out;

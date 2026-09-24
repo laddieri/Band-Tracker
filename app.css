@@ -4159,7 +4159,7 @@ html, body {
 /* Multi-pair screen: pairs share the visible height so each button is as tall
    as it can be (1 pair per row, students side by side). */
 .sc-multi {
-  display: flex; flex-direction: column; gap: 8px; max-width: 720px; margin: 0 auto;
+  display: flex; flex-direction: column; gap: 6px; max-width: 720px; margin: 0 auto;
   /* The visible content area: viewport minus header, floating nav and
      #main-content's own padding — so the pairs fill it without scrolling. */
   min-height: calc(100dvh - var(--header-h) - var(--nav-h) - 108px);
@@ -4169,7 +4169,7 @@ html, body {
   padding: 6px; border-radius: var(--r); background: var(--surface); box-shadow: var(--shadow);
 }
 .sc-pair-head {
-  display: flex; align-items: center; gap: 8px; padding: 0 4px; min-height: 26px;
+  display: flex; align-items: center; gap: 8px; padding: 0 4px; min-height: 24px;
   background: none; border: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
 }
 .sc-pair-show { font-size: .8rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -4204,6 +4204,8 @@ html, body {
 .sc-songs-of { color: var(--text-muted); font-weight: 400; }
 .sc-songs-more { color: var(--success); font-weight: 700; }
 .sc-songs-na { color: var(--text-muted); font-size: .8rem; }
+.sc-songcat-pick { display: flex; align-items: center; gap: 10px; }
+.sc-songcat-select { font-weight: 600; margin: 0; padding: 7px 36px 7px 12px; font-size: .9rem; cursor: pointer; }
 .sc-mbtn-line { display: flex; align-items: baseline; justify-content: center; gap: 10px; }
 .sc-mbtn-songs { font-size: .75rem; font-weight: 600; color: var(--text-muted); }
 .sc-mbtn-songs.sc-songs-more { color: var(--success); }
