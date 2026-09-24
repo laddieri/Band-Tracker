@@ -220,7 +220,13 @@ re-entry.
   (`SC_MAX_WATCH`) and tap Watch: one pair opens the full tally sheet (a
   "+ Mistake" button per student, tally marks, reset/delete); 2–4 pairs open a
   compact screen with one row of buttons per pair, sized to fill the phone. It's
-  display only — each pair still writes its own doc. One doc per spot per day
+  display only — each pair still writes its own doc. Both screens also compare the
+  students' song memorization (`songMemorizationSummary`): the full sheet shows
+  passed/total for the season and per song category; the multi-pair buttons
+  show how many songs each student is still missing, for the season or a song
+  category picked from a dropdown above the pairs (remembered per device in
+  localStorage `scSongCat`). The student with more passed is highlighted. It's read
+  live from `songs` (directors + staff), so it needs no new data or rules. One doc per spot per day
   (`spotChallengeId` = `{date}_{showId}_{label}`), so re-opening the pair the
   same day resumes the sheet; taps write `counts.{num}` with
   `FieldValue.increment` so two people tallying at once (one per student) don't
