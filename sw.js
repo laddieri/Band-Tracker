@@ -1,4 +1,4 @@
-const CACHE = 'band-tracker-v99';
+const CACHE = 'band-tracker-v100';
 // Deploy stamp (epoch seconds), rewritten by .github/workflows/deploy.yml to
 // match APP_BUILD in js/01-core.js. Its only job is to make every deploy change
 // this file's bytes, which is what makes browsers install the new worker (and

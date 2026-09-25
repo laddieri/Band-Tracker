@@ -2,14 +2,14 @@
 """Generate the Band Tracker app icons (icons/icon-*.png).
 
 Pure-stdlib PNG writer — no Pillow/ImageMagick needed, so the icons are
-reproducible anywhere. Design: white beamed eighth notes on the app's
-primary-blue gradient, sized inside the maskable safe zone so the same
+reproducible anywhere. Design: a white beamed pair of eighth notes on the
+app's primary-blue gradient, sized inside the maskable safe zone so the same
 files work for Android maskable icons, iOS touch icons and favicons.
 
 Usage:  python3 scripts/make-icons.py     (writes into icons/ at repo root)
 """
 
-import os, struct, zlib
+import math, os, struct, zlib
 
 MASTER = 2048           # supersampled master; downsampled for anti-aliasing
 SIZES  = [32, 180, 192, 512]
@@ -19,27 +19,50 @@ BOTTOM = (0x1D, 0x4E, 0xD8)   # --primary-dark
 WHITE  = (0xFF, 0xFF, 0xFF)
 
 # Glyph geometry in unit coordinates (kept within the central ~60% so the
-# icon survives Android's maskable crop).
-HEAD1 = (0.355, 0.660, 0.085, 0.064)   # cx, cy, rx, ry
-HEAD2 = (0.645, 0.625, 0.085, 0.064)
-STEM1 = (0.418, 0.458, 0.310, 0.660)   # x0, x1, y0, y1
-STEM2 = (0.708, 0.748, 0.275, 0.625)
-BEAM_X0, BEAM_X1 = STEM1[0], STEM2[1]
-BEAM_Y0, BEAM_Y1 = 0.310, 0.275        # top edge slants up left→right
-BEAM_T = 0.085
+# icon survives Android's maskable crop). Noteheads are tilted ellipses like
+# engraved notes; each stem sits flush with its head's right edge and runs
+# into the head, and the beam spans exactly the two stems (no overhang).
+
+TILT   = math.radians(22)          # notehead tilt, rising to the right
+HEAD_R = (0.094, 0.066)            # notehead semi-axes (rx, ry)
+HEADS  = [(0.362, 0.690), (0.642, 0.648)]   # notehead centres
+STEM_W = 0.044
+BEAM_T = 0.092                     # beam thickness (vertical)
+BEAM_TOP = (0.285, 0.243)          # beam top edge y at left / right stem
+
+
+def _head_xext():
+    rx, ry = HEAD_R
+    return math.sqrt((rx * math.cos(TILT)) ** 2 + (ry * math.sin(TILT)) ** 2)
+
+
+# Stem right edges tuck just inside each head's rightmost point.
+STEMS = []
+for cx, cy in HEADS:
+    x1 = cx + _head_xext() - 0.004
+    STEMS.append((x1 - STEM_W, x1, cy))   # x0, x1, bottom y
+BEAM_X0, BEAM_X1 = STEMS[0][0], STEMS[1][1]
+
+
+def beam_top(x):
+    t = (x - BEAM_X0) / (BEAM_X1 - BEAM_X0)
+    return BEAM_TOP[0] + t * (BEAM_TOP[1] - BEAM_TOP[0])
 
 
 def in_glyph(x, y):
-    for cx, cy, rx, ry in (HEAD1, HEAD2):
-        dx, dy = (x - cx) / rx, (y - cy) / ry
-        if dx * dx + dy * dy <= 1.0:
+    rx, ry = HEAD_R
+    c, s = math.cos(TILT), math.sin(TILT)
+    for cx, cy in HEADS:
+        dx, dy = x - cx, y - cy
+        u = dx * c - dy * s      # along the tilted major axis
+        v = dx * s + dy * c
+        if (u / rx) ** 2 + (v / ry) ** 2 <= 1.0:
             return True
-    for x0, x1, y0, y1 in (STEM1, STEM2):
-        if x0 <= x <= x1 and y0 <= y <= y1:
+    for x0, x1, y1 in STEMS:
+        if x0 <= x <= x1 and beam_top(x) <= y <= y1:
             return True
     if BEAM_X0 <= x <= BEAM_X1:
-        t = (x - BEAM_X0) / (BEAM_X1 - BEAM_X0)
-        top = BEAM_Y0 + t * (BEAM_Y1 - BEAM_Y0)
+        top = beam_top(x)
         if top <= y <= top + BEAM_T:
             return True
     return False
