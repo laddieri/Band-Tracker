@@ -42,6 +42,8 @@ const claimsStaff = (uid, orgId) => testEnv.authenticatedContext(uid, {
   orgId, role: 'staff',
 }).firestore();
 
+const HEX64 = 'ab'.repeat(32); // stands in for a SHA-256 name key
+
 // Seed a known world with admin privileges (bypasses rules).
 //   org "a"  owned by dirA, with co-director coA, student studA, and a roster doc
 //   org "b"  owned by dirB (separate tenant)
@@ -90,6 +92,8 @@ async function seed() {
     await db.doc('studentCodes/SCODE').set({ orgId: 'a', studentNumber: '42' });
     await db.doc('inviteCodes/ICODE').set({ orgId: 'a' });
     await db.doc('inviteCodes/STAFFCODE').set({ orgId: 'a', role: 'staff' });
+    await db.doc('bandCodes/EAGLES').set({ orgId: 'a' });
+    await db.doc(`studentNameLogins/a_${HEX64}`).set({ orgId: 'a', code: 'SCODE' });
   });
 }
 
@@ -590,6 +594,51 @@ describe('joining an org', () => {
     await assertFails(
       director('coDir').doc('members/someoneElse').set({ orgId: 'a', role: 'director', inviteCode: 'ICODE' })
     );
+  });
+});
+
+describe('student name sign-in (band codes + name lookup)', () => {
+  const staff = () => director('staffA');
+  it('band codes and name entries are fetchable signed-out but not listable', async () => {
+    await assertSucceeds(guest().doc('bandCodes/EAGLES').get());
+    await assertSucceeds(guest().doc(`studentNameLogins/a_${HEX64}`).get());
+    await assertFails(guest().collection('bandCodes').get());
+    await assertFails(guest().collection('studentNameLogins').where('orgId', '==', 'a').get());
+    await assertFails(student('studA', 'SCODE').collection('studentNameLogins').where('orgId', '==', 'a').get());
+    await assertFails(staff().collection('studentNameLogins').where('orgId', '==', 'a').get());
+    await assertFails(director('dirB').collection('studentNameLogins').where('orgId', '==', 'a').get());
+    await assertSucceeds(director('dirA').collection('studentNameLogins').where('orgId', '==', 'a').get());
+  });
+
+  it('only a director of the band manages its band code, and codes cannot be taken over', async () => {
+    await assertSucceeds(director('dirA').doc('bandCodes/HAWKS').set({ orgId: 'a' }));
+    await assertFails(director('dirA').doc('bandCodes/lower').set({ orgId: 'a' }));
+    await assertFails(director('dirA').doc('bandCodes/OWLS').set({ orgId: 'a', extra: 1 }));
+    await assertFails(director('dirB').doc('bandCodes/EAGLES').set({ orgId: 'b' }));
+    await assertFails(director('dirA').doc('bandCodes/EAGLES').set({ orgId: 'a' })); // no updates
+    await assertFails(director('dirB').doc('bandCodes/EAGLES').delete());
+    await assertFails(staff().doc('bandCodes/STAFFY').set({ orgId: 'a' }));
+    await assertFails(student('studA', 'SCODE').doc('bandCodes/KIDS').set({ orgId: 'a' }));
+    await assertFails(guest().doc('bandCodes/GUEST').set({ orgId: 'a' }));
+    await assertSucceeds(director('dirA').doc('bandCodes/EAGLES').delete());
+  });
+
+  it('only a director of the band writes name entries, and only in its own key space', async () => {
+    const other = 'cd'.repeat(32);
+    await assertSucceeds(director('dirA').doc(`studentNameLogins/a_${other}`).set({ orgId: 'a', code: 'SCODE' }));
+    await assertSucceeds(director('dirA').doc(`studentNameLogins/a_${HEX64}`).set({ orgId: 'a', code: 'NEWCODE' }));
+    // Wrong prefix, malformed hash, extra fields, another band's entry.
+    await assertFails(director('dirA').doc(`studentNameLogins/b_${other}`).set({ orgId: 'a', code: 'SCODE' }));
+    await assertFails(director('dirA').doc(`studentNameLogins/b_${other}`).set({ orgId: 'b', code: 'SCODE' }));
+    await assertFails(director('dirA').doc('studentNameLogins/a_sam-smith').set({ orgId: 'a', code: 'SCODE' }));
+    await assertFails(director('dirA').doc(`studentNameLogins/a_${other}`).set({ orgId: 'a', code: 'SCODE', name: 'Sam' }));
+    await assertFails(director('dirB').doc(`studentNameLogins/a_${HEX64}`).set({ orgId: 'b', code: 'X' }));
+    await assertFails(director('dirB').doc(`studentNameLogins/a_${HEX64}`).delete());
+    // Staff, students and signed-out users never write.
+    await assertFails(staff().doc(`studentNameLogins/a_${other}`).set({ orgId: 'a', code: 'SCODE' }));
+    await assertFails(student('studA', 'SCODE').doc(`studentNameLogins/a_${other}`).set({ orgId: 'a', code: 'SCODE' }));
+    await assertFails(guest().doc(`studentNameLogins/a_${HEX64}`).delete());
+    await assertSucceeds(director('dirA').doc(`studentNameLogins/a_${HEX64}`).delete());
   });
 });
 

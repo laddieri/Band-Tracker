@@ -168,8 +168,21 @@ async function startListeners() {
     ...(STATE.isAdmin ? [
       db.collection('orgs').doc(STATE.orgId).onSnapshot(doc => {
         STATE.org = doc.exists ? { id: doc.id, ...doc.data() } : null;
+        scheduleNameLoginSync(); // the band code switches name sign-in on/off
         if (!STATE.loading) renderFromData();
       }, err => _listenerFailed('org', err)),
+
+      // Student memberships — one per claimed student code (a student gets one
+      // when they first sign in with their PIN). Drives the name sign-in lookup:
+      // only claimed codes may be reachable by name. Director-only read.
+      db.collection('members')
+        .where('orgId', '==', STATE.orgId)
+        .where('role', '==', 'student')
+        .onSnapshot(snap => {
+          _nameLoginClaimed = new Set(snap.docs
+            .map(d => String(d.data().joinCode || '').toUpperCase()).filter(Boolean));
+          scheduleNameLoginSync();
+        }, err => _listenerFailed('student logins', err)),
 
       // Spot-assignment history, one doc per show (see _spotHistoryRecord in
       // js/12-drill.js). Director-ONLY — the rules deny staff and students, so
@@ -263,6 +276,7 @@ async function startListeners() {
       _syncStudentSpotsMirror(); // director-only: keep each student's spot mirror current
       _syncTaskMirror();         // director-only: keep each student's task mirror current
       _syncAbsenceMirror();      // director-only: keep each student's notice mirror current
+      scheduleNameLoginSync();   // director-only: keep the name sign-in lookup current
       schedulePublishPublicStats();
     }, err => _listenerFailed('students', err, { critical: true })),
 
@@ -407,6 +421,62 @@ function _publishDirectory() {
   _lastDirectoryJson = json;
   orgCol('settings').doc('directory').set({ names })
     .catch(e => { _lastDirectoryJson = ''; throw e; }); // retry on the next change; the global handler toasts
+}
+
+// Name sign-in lookup (band code + name + PIN instead of code + PIN). A
+// director client maintains the public `studentNameLogins` docs — hashed name
+// key → student code — for students who have CLAIMED their code and whose name
+// is unique in the roster (buildNameLoginIndex in js/00-logic.js). With no band
+// code set, the lookup is emptied, switching name sign-in off. Diff-based and
+// idempotent like the mirrors above: steady state writes nothing. Not an access
+// grant — the PIN is still checked by Firebase Auth — so this runs after the
+// fact rather than gating roster edits (a stale entry pointing at a retired
+// code simply fails the lookup).
+let _nameLoginClaimed = null; // Set of claimed codes (null until the members listener fires)
+let _nameLoginStored  = null; // Map docId → code as currently stored (null = not loaded)
+let _nameLoginTimer   = null;
+let _nameLoginRunning = false, _nameLoginAgain = false;
+function scheduleNameLoginSync() {
+  if (!STATE.isAdmin) return;
+  clearTimeout(_nameLoginTimer);
+  _nameLoginTimer = setTimeout(_syncNameLogins, 1500);
+}
+async function _syncNameLogins() {
+  // Wait for the roster, the org doc and the memberships — syncing against a
+  // half-loaded state would delete every entry.
+  if (!STATE.isAdmin || !STATE.orgId || !STATE.org || !_nameLoginClaimed) return;
+  if (STATE.loading) { scheduleNameLoginSync(); return; }
+  if (_nameLoginRunning) { _nameLoginAgain = true; return; }
+  _nameLoginRunning = true;
+  const orgId = STATE.orgId;
+  try {
+    const index = STATE.org.bandCode ? buildNameLoginIndex(STATE.students, _nameLoginClaimed) : {};
+    const want = new Map();
+    for (const [key, code] of Object.entries(index)) want.set(await nameLoginDocId(orgId, key), code);
+    if (!_nameLoginStored) {
+      const snap = await db.collection('studentNameLogins').where('orgId', '==', orgId).get();
+      _nameLoginStored = new Map(snap.docs.map(d => [d.id, d.data().code]));
+    }
+    if (orgId !== STATE.orgId) return; // signed out / switched band meanwhile
+    const ops = [];
+    want.forEach((code, id) => { if (_nameLoginStored.get(id) !== code) ops.push([id, code]); });
+    _nameLoginStored.forEach((_, id) => { if (!want.has(id)) ops.push([id, null]); });
+    for (let i = 0; i < ops.length; i += 450) {
+      const batch = db.batch();
+      ops.slice(i, i + 450).forEach(([id, code]) => {
+        const ref = db.collection('studentNameLogins').doc(id);
+        if (code) batch.set(ref, { orgId, code }); else batch.delete(ref);
+      });
+      await batch.commit();
+    }
+    _nameLoginStored = want;
+  } catch (e) {
+    _nameLoginStored = null; // re-read what's stored on the next attempt
+    throw e;                 // the global handler toasts
+  } finally {
+    _nameLoginRunning = false;
+    if (_nameLoginAgain) { _nameLoginAgain = false; scheduleNameLoginSync(); }
+  }
 }
 
 // Students can't read the director-only `shows` collection, so a director client
@@ -901,6 +971,9 @@ function _startAuthWatch() {
       STATE.publicStats = null;
       STATE.dirNames   = {};
       _lastDirectoryJson = '';
+      clearTimeout(_nameLoginTimer);
+      _nameLoginClaimed = null;
+      _nameLoginStored  = null;
       STATE.activeSeason = '';
       STATE.seasons      = [];
       _seasonView          = null;

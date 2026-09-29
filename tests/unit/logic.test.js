@@ -1903,3 +1903,32 @@ describe('songMemorizationSummary (spot challenge song comparison)', () => {
     assert.deepStrictEqual(L.songMemorizationSummary([], '3', ['Halftime']), { passed: 0, total: 0, cats: [] });
   });
 });
+
+describe('name sign-in', () => {
+  it('normalizes band codes', () => {
+    assert.strictEqual(L.normalizeBandCode(' eagles-24 '), 'EAGLES24');
+    assert.ok(L.BAND_CODE_RE.test('EAGLES24'));
+    assert.ok(!L.BAND_CODE_RE.test('ABC'));
+  });
+
+  it('keys names ignoring case, accents, punctuation and word order', () => {
+    assert.strictEqual(L.studentNameKey('Smith, José'), 'jose smith');
+    assert.strictEqual(L.studentNameKey('  jose   SMITH '), 'jose smith');
+    assert.strictEqual(L.studentNameKey("O'Brien Kate"), 'brien kate o');
+    assert.strictEqual(L.studentNameKey(''), '');
+    assert.strictEqual(L.studentNameKey(undefined), '');
+  });
+
+  it('indexes only claimed students with a unique name', () => {
+    const roster = {
+      '1': { name: 'Sam Lee',   studentCode: 'aaaa1111' },
+      '2': { name: 'Riley Kim', studentCode: 'BBBB2222' }, // not claimed
+      '3': { name: 'Alex Park', studentCode: 'CCCC3333' },
+      '4': { name: 'park alex', studentCode: 'DDDD4444' }, // same name as #3
+      '5': { name: '',          studentCode: 'EEEE5555' },
+      '6': { name: 'Jo Doe' },                             // no code
+    };
+    const claimed = new Set(['AAAA1111', 'CCCC3333', 'DDDD4444', 'EEEE5555']);
+    assert.deepStrictEqual(L.buildNameLoginIndex(roster, claimed), { 'lee sam': 'AAAA1111' });
+  });
+});

@@ -413,6 +413,46 @@ service cloud.firestore {
       }
     }
 
+    // ── Band codes (student name sign-in) ─────────────────────────────────────
+    // A short, non-secret, director-chosen code → { orgId }. A student signing
+    // in with band code + name + PIN fetches it WITHOUT being signed in (like
+    // studentCodes) to find their band. Not listable. Codes share one namespace
+    // across bands; a code can't be taken over (no update) — only deleted by
+    // the band that owns it.
+
+    match /bandCodes/{code} {
+      allow get:    if true;
+      allow list:   if false;
+      allow create: if isDirectorOf(request.resource.data.orgId)
+                    && request.resource.data.keys().hasOnly(['orgId'])
+                    && code.matches('[A-Z0-9]{4,12}');
+      allow update: if false;
+      allow delete: if isDirectorOf(resource.data.orgId);
+    }
+
+    // ── Student name sign-in lookup ───────────────────────────────────────────
+    // {orgId}_{sha256(orgId|name key)} → { orgId, code }: which student code a
+    // name maps to, maintained by director clients for students who have
+    // already claimed their code (set a PIN) and whose name is unique in the
+    // roster. Fetchable without signing in by someone who knows the band AND
+    // the exact name — no readable names are stored, and it's not listable
+    // except by the band's directors (to diff it). Knowing a code grants
+    // nothing on its own: the PIN is the secret. The id's org prefix means a
+    // director can only write entries in their own band's key space.
+
+    match /studentNameLogins/{id} {
+      allow get:    if true;
+      allow list:   if isDirectorOf(resource.data.orgId);
+      allow create, update: if isDirectorOf(request.resource.data.orgId)
+                    && (resource == null || resource.data.orgId == request.resource.data.orgId)
+                    && request.resource.data.keys().hasOnly(['orgId', 'code'])
+                    && request.resource.data.code is string
+                    && id.split('_').size() == 2
+                    && id.split('_')[0] == request.resource.data.orgId
+                    && id.split('_')[1].matches('[0-9a-f]{64}');
+      allow delete: if isDirectorOf(resource.data.orgId);
+    }
+
     // ── Co-director / staff invite codes ──────────────────────────────────────
     // Readable by any signed-in user so a joining director or staff member can
     // resolve the org before a membership exists. Exposes only an org id (and,

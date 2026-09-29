@@ -833,10 +833,14 @@ function buildStudentCodeSheetHTML(students) {
           <strong>Keep this code to yourself until you've set your PIN</strong> — until then,
           anyone holding it could claim your account.
         </div>
-        <div class="slip-note">
+        ${STATE.org?.bandCode ? `<div class="slip-note">
+          After that you can sign in with band code <strong>${esc(STATE.org.bandCode)}</strong>,
+          your name and your PIN (tap <em>Sign in with your name</em>) — or your code and PIN.
+          Don't share your PIN.
+        </div>` : `<div class="slip-note">
           After that your code is your <strong>username</strong> and your PIN is your
           <strong>password</strong> — you'll need both every time you sign in, so don't lose either.
-        </div>
+        </div>`}
         <div class="slip-section">Keep it one tap away</div>
         <div class="slip-note">
           Add it to your phone's home screen and it opens like an app.
