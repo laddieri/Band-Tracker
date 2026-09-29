@@ -75,6 +75,12 @@ members/{uid}                         # who belongs to which org, and as what
 studentCodes/{CODE}                   # lookup so anonymous students find their org
   └─ (fields) orgId, studentNumber
 
+bandCodes/{CODE}                      # band code for student name sign-in (director-chosen)
+  └─ (fields) orgId
+
+studentNameLogins/{orgId}_{sha256}    # name → code, claimed students with a unique name only
+  └─ (fields) orgId, code             # id hashes orgId|studentNameKey(name) — no readable name
+
 inviteCodes/{CODE}                    # lookup so a co-director or staff member can join an org
   └─ (fields) orgId, role?            # role:'staff' marks a staff code; absent = co-director
 
@@ -370,10 +376,39 @@ anonymous student joins (`studentJoin()` requires the synthetic email — codes
 are not secret, the PIN is), and the client signs any lingering anonymous
 session out at startup. Those students re-enter their code and set a PIN.
 
+**Name sign-in (returning students).** Once a student has claimed their code,
+they may sign in with the band's code + their name + PIN instead. The name only
+stands in for the code as the username; the PIN is still what Firebase checks,
+and the sign-in itself is the same `signInWithEmailAndPassword(<code>@…, PIN)`.
+
+- A director turns it on by choosing a **band code** in Band Settings
+  (`saveBandCode()`): `bandCodes/{CODE}` = `{ orgId }`, plus `orgs/{orgId}.bandCode`
+  for display. Band codes share one namespace; rules allow create (by a
+  director of that org) and delete, never update, so one can't be taken over.
+  Changing it retires the old one first (`_retireCode('bandCodes', …)`).
+- Director clients keep `studentNameLogins` in sync (`_syncNameLogins()` in
+  `js/02-data.js`, from `buildNameLoginIndex()` in `js/00-logic.js`): one entry
+  per student who has a **student membership** for their current code (i.e. has
+  set a PIN) and whose `studentNameKey(name)` — lower-cased, accents and
+  punctuation dropped, word order ignored — is **unique in the roster**. Shared
+  names get no entry, so those students keep using their code. With no band
+  code, the lookup is emptied. The sync is diff-based and runs after the fact
+  (it's not an access grant, so it doesn't gate roster edits).
+- The wizard (`studentSubmitName()`): `bandCodes/{BAND}` → orgId →
+  `studentNameLogins/{nameLoginDocId(orgId, key)}` → code → `studentCodes/{code}`
+  must still exist in that org → PIN screen. On this path the PIN screen shows
+  the typed name (not the code) and never offers "set your PIN", so an
+  unclaimed account can't be claimed by name.
+- Exposure: someone who knows the band code can check whether an exact name is
+  a claimed student there and learn that student's code — which, like any
+  code, is useless without the PIN. Entries hold no readable names and aren't
+  listable except by the band's directors (for the diff).
+
 After that, the student's reads are scoped to `orgs/{orgId}/…` like everyone
-else. `studentCodes` is the only collection readable before a membership
-exists, and it exposes nothing sensitive (just an org id + a number) — and it's
-get-only (not listable), so codes can't be enumerated.
+else. `studentCodes`, `bandCodes` and `studentNameLogins` are the only
+collections readable before a membership exists; they expose nothing sensitive
+(org ids, a student number, a code, a hash) — and they're get-only (not
+listable), so they can't be enumerated.
 
 **Codes are a single global namespace** (the doc id), shared across every org,
 so they must be globally unique. They're 8 chars from a 32-symbol unambiguous

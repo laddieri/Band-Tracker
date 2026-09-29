@@ -501,6 +501,45 @@ function buildStudentCodesCsv(students, { includeInstrument = true } = {}) {
   return [header.join(','), ...rows].join('\n');
 }
 
+// ── Name sign-in (band code + name instead of the student code) ──────────────
+// Once a student has claimed their code (set a PIN), they may sign in with
+// their band's code + their name + PIN. The PIN is still the secret; the name
+// only stands in for the (non-secret) student code as the username.
+
+// Band codes: 4–12 letters/digits, upper-cased (spaces/dashes dropped).
+const BAND_CODE_RE = /^[A-Z0-9]{4,12}$/;
+function normalizeBandCode(s) {
+  return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+// Name → lookup key. Case, accents, punctuation and word order don't matter,
+// so "Smith, José" and "jose smith" match. '' when there's nothing to key on.
+function studentNameKey(name) {
+  return String(name || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+    .split(' ').filter(Boolean).sort().join(' ');
+}
+
+// name key → student code, for students who have claimed their code (a
+// student membership exists for it — `claimedCodes`, upper-cased) and whose
+// name key is unique across the WHOLE roster. A name shared by two students
+// is left out entirely, so a PIN is never tried against the wrong account;
+// those students keep signing in with their code.
+function buildNameLoginIndex(students, claimedCodes) {
+  const byKey = {};
+  Object.values(students || {}).forEach(s => {
+    const key = studentNameKey(s?.name);
+    if (key) (byKey[key] = byKey[key] || []).push(s);
+  });
+  const out = {};
+  Object.entries(byKey).forEach(([key, list]) => {
+    if (list.length !== 1) return;
+    const code = String(list[0].studentCode || '').toUpperCase();
+    if (code && claimedCodes.has(code)) out[key] = code;
+  });
+  return out;
+}
+
 // ── Customizable data export (tables → CSV / printable PDF) ───────────────────
 // A "table" is { columns:[{key,label}], rows:[{<key>:value}] }. Two renderers
 // turn one into a CSV string (tableToCsv) or a self-contained printable HTML
@@ -2100,6 +2139,7 @@ if (typeof module !== 'undefined' && module.exports) {
     checkAutoMarkCondition, computeAutoMarkEvents,
     parseCSVLine, parseCSV, COL_ALIASES, normalizeGrade, detectCols,
     csvCell, buildStudentCodesCsv,
+    BAND_CODE_RE, normalizeBandCode, studentNameKey, buildNameLoginIndex,
     tableToCsv, tableToPrintHtml, _escHtml, pickColumns,
     buildRosterExportTable, buildMarksExportTable, MARKS_DETAIL_COLS, MARKS_SUMMARY_COLS,
     buildAttendanceExportTable,

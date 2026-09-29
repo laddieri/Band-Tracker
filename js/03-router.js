@@ -7,8 +7,11 @@ let _view   = 'rehearsals';
 let _params = {};
 let _authMode = 'signin'; // 'signin' | 'signup' — which director auth screen to show
 let _pendingVerification = false; // true after signup until email is verified
-let _studentStep = null;  // null | 'code' | 'choose' | 'setpin' | 'pin' — student sign-in wizard
-let _studentCode = '';    // the code entered in the student wizard
+let _studentStep = null;  // null | 'code' | 'name' | 'setpin' | 'pin' — student sign-in wizard
+let _studentCode = '';    // the code entered in the student wizard (or found by name)
+let _studentViaName = false; // true when the code was looked up from band code + name
+let _studentName = '';    // the name typed on the name sign-in screen (display only)
+let _studentBandCode = ''; // the band code typed on the name sign-in screen
 
 // Stamp the initial history entry so popstate always has a valid state.
 history.replaceState({ view: _view, params: _params }, '');

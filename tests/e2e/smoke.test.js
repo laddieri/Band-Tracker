@@ -6,7 +6,9 @@
 //      land in Firestore with the shape the rules and listeners expect;
 //   2. a student claims their code, sets a PIN, and their portal shows that
 //      attendance and mark — and their browser can't read another student's
-//      entry (the rules, not the UI, are the privacy boundary).
+//      entry (the rules, not the UI, are the privacy boundary);
+//   3. a director turns on name sign-in (band code), and the claimed student
+//      signs in with band code + name + PIN — an unclaimed one can't.
 // It also fails on any uncaught page error, the "Can't reach the server"
 // screen, or the "Live updates stopped" notice.
 //
@@ -271,6 +273,75 @@ describe('smoke: director records, student sees it', () => {
       await assertHealthy(page, errors);
     } finally {
       await context.close();
+    }
+  });
+
+  it('director turns name sign-in on and off; the claimed student signs in by name', async () => {
+    const entries = async () => {
+      let docs;
+      await testEnv.withSecurityRulesDisabled(async ctx => {
+        docs = (await ctx.firestore().collection('studentNameLogins').get()).docs.map(d => d.data());
+      });
+      return docs;
+    };
+    const directorSettings = async () => {
+      const app = await newAppPage();
+      await app.page.goto(baseUrl);
+      await app.page.fill('#auth-email', DIRECTOR.email);
+      await app.page.fill('#auth-password', DIRECTOR.password);
+      await app.page.click('text=Director Sign In');
+      await app.page.locator('.nav-tab[data-view="attendance-tab"]').waitFor();
+      await app.page.evaluate(() => showBrandSettingsModal());
+      return app;
+    };
+
+    // On: only the claimed student gets a name entry (the classmate never set a PIN).
+    const on = await directorSettings();
+    try {
+      await on.page.fill('#band-code-input', 'smoke-band');
+      await on.page.click('[onclick="saveBandCode()"]');
+      await waitForDoc('bandCodes/SMOKEBAND', d => d.orgId === ORG, 'band code');
+      const deadline = Date.now() + TIMEOUT;
+      while (!(await entries()).length && Date.now() < deadline) await new Promise(r => setTimeout(r, 250));
+      assert.deepEqual(await entries(), [{ orgId: ORG, code: STUDENT.code }]);
+      await assertHealthy(on.page, on.errors);
+    } finally {
+      await on.context.close();
+    }
+
+    const { context, page, errors } = await newAppPage();
+    try {
+      await page.goto(baseUrl);
+      await page.click('text=Students — tap here');
+      await page.click('text=Sign in with your name');
+      await page.fill('#wiz-band', 'smokeband');
+      // The unclaimed classmate isn't reachable by name.
+      await page.fill('#wiz-name', OTHER.name);
+      await page.click('button:has-text("Next")');
+      await page.locator('#student-wiz-error', { hasText: 'couldn’t find that name' }).waitFor();
+      // Case and word order don't matter.
+      await page.fill('#wiz-name', 'smoke SAM');
+      await page.click('button:has-text("Next")');
+      await page.locator('.login-sub', { hasText: 'Signing in as' }).waitFor();
+      assert.equal(await page.locator(`text=${STUDENT.code}`).count(), 0, 'the looked-up code stays hidden');
+      await page.fill('#wiz-pin', STUDENT.pin);
+      await page.click('button:has-text("Sign In")');
+      await page.locator('.portal-name', { hasText: STUDENT.name }).waitFor();
+      await assertHealthy(page, errors);
+    } finally {
+      await context.close();
+    }
+
+    // Off: the band code is retired and the lookup emptied.
+    const off = await directorSettings();
+    try {
+      await off.page.click('[onclick="clearBandCode()"]');
+      await waitForDoc(`orgs/${ORG}`, d => !('bandCode' in d), 'band code removed from org');
+      assert.equal(await adminGet('bandCodes/SMOKEBAND'), null, 'band code retired');
+      assert.deepEqual(await entries(), [], 'name lookup emptied');
+      await assertHealthy(off.page, off.errors);
+    } finally {
+      await off.context.close();
     }
   });
 });

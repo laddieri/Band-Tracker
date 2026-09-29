@@ -141,6 +141,15 @@ const STUDENT_EMAIL_DOMAIN = 'students.bandtracker.app';
 function studentEmailFor(code) {
   return `${String(code).trim().toLowerCase()}@${STUDENT_EMAIL_DOMAIN}`;
 }
+// Doc id in the public `studentNameLogins` lookup for a name key (see
+// studentNameKey in js/00-logic.js): the org id, then a SHA-256 of org + key,
+// so the collection never holds a readable name. Not listable by students —
+// fetchable only by someone who already knows the band and the exact name.
+async function nameLoginDocId(orgId, nameKey) {
+  const bytes = new TextEncoder().encode(`${orgId}|${nameKey}`);
+  const hash  = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+  return `${orgId}_${Array.from(hash, b => b.toString(16).padStart(2, '0')).join('')}`;
+}
 // The student code for the current user, derived from their synthetic email.
 // (Legacy anonymous student sessions are signed out at auth time — see
 // onAuthStateChanged — so the email is the only source of a code here.)

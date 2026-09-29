@@ -6,6 +6,7 @@
 function viewLogin() {
   if (_authMode === 'signup')    return viewSignup();
   if (_studentStep === 'code')   return viewStudentCode();
+  if (_studentStep === 'name')   return viewStudentName();
   if (_studentStep === 'pin')    return viewStudentPin();
   if (_studentStep === 'setpin') return viewStudentSetPin();
   return `
@@ -101,11 +102,21 @@ function setAuthMode(mode) {
 // ── Student sign-in wizard ────────────────────────────────────────────────────
 // Step 1 enter code · step 2 enter PIN (returning) or set a PIN with tips (first
 // time). Kept separate from the director form so it can be friendly and guided.
+// Returning students may instead enter their band code + name (step 1b) — the
+// name only stands in for the code as the username; the PIN is still checked.
 
 function studentStart() {
   _studentStep = 'code';
+  _studentViaName = false;
   _studentCode = localStorage.getItem('bandStudentCode') || '';
   render();
+}
+// Back to the code screen from the name path — without prefilling the code the
+// name lookup found (the field shows only a code this device entered itself).
+function studentUseCode() {
+  _studentViaName = false;
+  _studentCode = localStorage.getItem('bandStudentCode') || '';
+  studentGo('code');
 }
 function studentExit() { _studentStep = null; render(); }
 function studentGo(step) { _studentStep = step; render(); }
@@ -133,6 +144,7 @@ function viewStudentCode() {
              onkeydown="if(event.key==='Enter')studentSubmitCode()">
     </div>
     <button class="btn btn-primary btn-full btn-lg" onclick="studentSubmitCode()">Next</button>
+    <button class="btn btn-secondary btn-full" style="margin-top:8px" onclick="studentGo('name')">Already set a PIN? Sign in with your name</button>
     <button class="btn-link login-back" onclick="studentExit()">← Back</button>
   `);
 }
@@ -146,13 +158,81 @@ async function studentSubmitCode() {
   catch { studentWizError('Unable to connect. Please try again.'); return; }
   if (!snap.exists) { studentWizError("That code isn't recognized — double-check it with your director."); return; }
   _studentCode = code;
+  _studentViaName = false;
   localStorage.setItem('bandStudentCode', code);
   // Auto-route: a previously-claimed code goes to "enter your PIN"; a fresh one
   // goes to "set your PIN". The screens still cross-link in case the flag is stale.
   studentGo(snap.data().claimed ? 'pin' : 'setpin');
 }
 
+function viewStudentName() {
+  const band = _studentBandCode || localStorage.getItem('bandLoginBand') || '';
+  return _studentWizShell('Sign in with your name',
+    'Works once you’ve set up your PIN with your student code. Ask your director for the band code.', `
+    <div class="form-group">
+      <label class="form-label" for="wiz-band">Band code</label>
+      <input class="form-input" id="wiz-band" type="text" ${band ? '' : 'autofocus'} placeholder="Band code"
+             value="${esc(band)}" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="16"
+             style="text-transform:uppercase;letter-spacing:.14em;text-align:center"
+             onkeydown="if(event.key==='Enter')document.getElementById('wiz-name').focus()">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="wiz-name">Your first and last name</label>
+      <input class="form-input" id="wiz-name" type="text" ${band ? 'autofocus' : ''} placeholder="First Last"
+             value="${esc(_studentName)}" autocomplete="name" autocapitalize="words" spellcheck="false"
+             onkeydown="if(event.key==='Enter')studentSubmitName()">
+    </div>
+    <button class="btn btn-primary btn-full btn-lg" onclick="studentSubmitName()">Next</button>
+    <button class="btn-link login-back" onclick="studentUseCode()">← Use my student code</button>
+  `);
+}
+
+async function studentSubmitName() {
+  const band = normalizeBandCode(document.getElementById('wiz-band')?.value);
+  const name = (document.getElementById('wiz-name')?.value || '').trim();
+  _studentBandCode = band;
+  _studentName     = name;
+  if (!band) { studentWizError('Please enter your band code.'); return; }
+  const key = studentNameKey(name);
+  if (!key)  { studentWizError('Please enter your name.'); return; }
+  studentWizError('');
+  let orgId, code;
+  try {
+    const bandSnap = await db.collection('bandCodes').doc(band).get();
+    if (!bandSnap.exists) { studentWizError("That band code isn't recognized — double-check it with your director."); return; }
+    orgId = bandSnap.data().orgId;
+    const idx = await db.collection('studentNameLogins').doc(await nameLoginDocId(orgId, key)).get();
+    code = idx.exists ? idx.data().code : '';
+    // The code must still exist and belong to this band (a stale entry for a
+    // retired code, or anything odd, just falls through to "not found").
+    const codeSnap = code ? await db.collection('studentCodes').doc(code).get() : null;
+    if (!codeSnap?.exists || codeSnap.data().orgId !== orgId) code = '';
+  } catch { studentWizError('Unable to connect. Please try again.'); return; }
+  if (!code) {
+    studentWizError('We couldn’t find that name. Check the spelling (use the name your director has), '
+      + 'or sign in with your student code. Name sign-in only works after you’ve set your PIN, '
+      + 'and not if a classmate has the same name.');
+    return;
+  }
+  try { localStorage.setItem('bandLoginBand', band); } catch {}
+  _studentCode    = code;
+  _studentViaName = true;
+  studentGo('pin');
+}
+
 function viewStudentPin() {
+  // On the name path the code stays out of sight: the PIN screen names the
+  // student instead, and never offers set-up (name sign-in is claimed-only).
+  if (_studentViaName) return _studentWizShell('Enter your PIN', `Signing in as <strong>${esc(_studentName)}</strong>.`, `
+    <div class="form-group">
+      <input class="form-input" id="wiz-pin" type="password" autofocus inputmode="numeric" maxlength="6"
+             placeholder="6-digit PIN" autocomplete="off"
+             style="letter-spacing:.34em;font-size:1.25rem;text-align:center"
+             onkeydown="if(event.key==='Enter')studentSignIn()">
+    </div>
+    <button class="btn btn-primary btn-full btn-lg" onclick="studentSignIn()">Sign In</button>
+    <button class="btn-link login-back" onclick="studentGo('name')">← Not you? Go back</button>
+  `);
   return _studentWizShell('Enter your PIN', `Signing in with code <strong>${esc(_studentCode)}</strong>.`, `
     <div class="form-group">
       <input class="form-input" id="wiz-pin" type="password" autofocus inputmode="numeric" maxlength="6"
@@ -174,7 +254,8 @@ async function studentSignIn() {
     await auth.signInWithEmailAndPassword(studentEmailFor(_studentCode), pin);
     _studentStep = null; // success — onAuthStateChanged takes over
   } catch (e) {
-    if (e.code === 'auth/wrong-password')
+    if (e.code === 'auth/wrong-password' || (_studentViaName
+        && ['auth/user-not-found', 'auth/invalid-credential', 'auth/invalid-login-credentials'].includes(e.code)))
       studentWizError('Incorrect PIN. Try again, or ask your director to reset it.');
     else if (e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential' || e.code === 'auth/invalid-login-credentials')
       studentWizError('Incorrect PIN — or if this is your first time, tap “First time? Set up your PIN”.');
@@ -734,6 +815,25 @@ function showBrandSettingsModal() {
     </div>
 
     <div class="form-group">
+      <label class="form-label" for="band-code-input">Student name sign-in</label>
+      <p class="setting-hint">
+        Set a band code (e.g. EAGLES) and students who have already set their PIN
+        can sign in with the band code + their name instead of their student code.
+        Students who share a name with a classmate keep using their code. With no
+        band code, students always sign in with their code.
+      </p>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input class="form-input" id="band-code-input" type="text" maxlength="16"
+          value="${esc(STATE.org?.bandCode || '')}" placeholder="e.g. EAGLES"
+          autocomplete="off" autocapitalize="characters" spellcheck="false"
+          style="max-width:180px;text-transform:uppercase;letter-spacing:.12em"
+          onkeydown="if(event.key==='Enter')saveBandCode()">
+        <button class="btn btn-secondary" onclick="saveBandCode()">${STATE.org?.bandCode ? 'Change' : 'Turn on'}</button>
+        ${STATE.org?.bandCode ? `<button class="btn btn-secondary" onclick="clearBandCode()">Turn off</button>` : ''}
+      </div>
+    </div>
+
+    <div class="form-group">
       <label class="form-label">Student Portal Logins</label>
       <p class="setting-hint">
         See the last time each student signed in to their portal — handy for
@@ -889,6 +989,61 @@ async function generateStaffInviteCode() {
   } catch (e) {
     console.error('generateStaffInviteCode failed:', e);
     showToast('Could not generate staff invite code.');
+  }
+}
+
+// Band code for student name sign-in: a short, non-secret, director-chosen code
+// in the public `bandCodes` lookup ({orgId}). Band codes share one namespace
+// across bands, so a code another band owns is refused. Changing it retires the
+// old code FIRST (see _retireCode); the name lookup itself is kept in sync by
+// _syncNameLogins() in js/02-data.js, which empties it when the code is removed.
+async function saveBandCode() {
+  if (!STATE.isAdmin || !STATE.orgId) return;
+  const code = normalizeBandCode(document.getElementById('band-code-input')?.value);
+  const old  = STATE.org?.bandCode || '';
+  if (!code) { if (old) clearBandCode(); return; }
+  if (!BAND_CODE_RE.test(code)) { showToast('A band code is 4–12 letters or numbers.'); return; }
+  if (code === old) return;
+  try {
+    const ref  = db.collection('bandCodes').doc(code);
+    const snap = await ref.get();
+    if (snap.exists && snap.data().orgId !== STATE.orgId) {
+      showToast('That band code is already taken — try another.');
+      return;
+    }
+    if (old) await _retireCode('bandCodes', old);
+    if (!snap.exists) await ref.set({ orgId: STATE.orgId });
+    await db.collection('orgs').doc(STATE.orgId).set({ bandCode: code }, { merge: true });
+    if (STATE.org) STATE.org.bandCode = code; // optimistic; org listener will confirm
+    showToast(`Name sign-in is on — band code ${code}.`);
+    showBrandSettingsModal();
+  } catch (e) {
+    console.error('saveBandCode failed:', e);
+    showToast('Could not save the band code.');
+  }
+}
+
+async function clearBandCode() {
+  if (!STATE.isAdmin || !STATE.orgId) return;
+  try {
+    await _retireCode('bandCodes', STATE.org?.bandCode);
+    // Empty the name lookup here rather than leaving it to the sync, which
+    // skips the collection entirely while name sign-in is off.
+    const snap = await db.collection('studentNameLogins').where('orgId', '==', STATE.orgId).get();
+    for (let i = 0; i < snap.docs.length; i += 450) {
+      const batch = db.batch();
+      snap.docs.slice(i, i + 450).forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+    _nameLoginStored = new Map();
+    await db.collection('orgs').doc(STATE.orgId)
+      .update({ bandCode: firebase.firestore.FieldValue.delete() });
+    if (STATE.org) delete STATE.org.bandCode; // optimistic; org listener will confirm
+    showToast('Name sign-in is off — students sign in with their code.');
+    showBrandSettingsModal();
+  } catch (e) {
+    console.error('clearBandCode failed:', e);
+    showToast('Could not turn off name sign-in.');
   }
 }
 
