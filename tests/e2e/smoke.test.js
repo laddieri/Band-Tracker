@@ -276,33 +276,37 @@ describe('smoke: director records, student sees it', () => {
     }
   });
 
-  it('director turns on name sign-in; the claimed student signs in by name', async () => {
-    const dir = await newAppPage();
-    try {
-      await dir.page.goto(baseUrl);
-      await dir.page.fill('#auth-email', DIRECTOR.email);
-      await dir.page.fill('#auth-password', DIRECTOR.password);
-      await dir.page.click('text=Director Sign In');
-      await dir.page.locator('.nav-tab[data-view="attendance-tab"]').waitFor();
-      await dir.page.evaluate(() => showBrandSettingsModal());
-      await dir.page.fill('#band-code-input', 'smoke-band');
-      await dir.page.click('[onclick="saveBandCode()"]');
-      await waitForDoc('bandCodes/SMOKEBAND', d => d.orgId === ORG, 'band code');
+  it('director turns name sign-in on and off; the claimed student signs in by name', async () => {
+    const entries = async () => {
+      let docs;
+      await testEnv.withSecurityRulesDisabled(async ctx => {
+        docs = (await ctx.firestore().collection('studentNameLogins').get()).docs.map(d => d.data());
+      });
+      return docs;
+    };
+    const directorSettings = async () => {
+      const app = await newAppPage();
+      await app.page.goto(baseUrl);
+      await app.page.fill('#auth-email', DIRECTOR.email);
+      await app.page.fill('#auth-password', DIRECTOR.password);
+      await app.page.click('text=Director Sign In');
+      await app.page.locator('.nav-tab[data-view="attendance-tab"]').waitFor();
+      await app.page.evaluate(() => showBrandSettingsModal());
+      return app;
+    };
 
-      // Only the claimed student gets a name entry (the classmate never set a PIN).
-      const entries = async () => {
-        let docs;
-        await testEnv.withSecurityRulesDisabled(async ctx => {
-          docs = (await ctx.firestore().collection('studentNameLogins').get()).docs.map(d => d.data());
-        });
-        return docs;
-      };
+    // On: only the claimed student gets a name entry (the classmate never set a PIN).
+    const on = await directorSettings();
+    try {
+      await on.page.fill('#band-code-input', 'smoke-band');
+      await on.page.click('[onclick="saveBandCode()"]');
+      await waitForDoc('bandCodes/SMOKEBAND', d => d.orgId === ORG, 'band code');
       const deadline = Date.now() + TIMEOUT;
       while (!(await entries()).length && Date.now() < deadline) await new Promise(r => setTimeout(r, 250));
       assert.deepEqual(await entries(), [{ orgId: ORG, code: STUDENT.code }]);
-      await assertHealthy(dir.page, dir.errors);
+      await assertHealthy(on.page, on.errors);
     } finally {
-      await dir.context.close();
+      await on.context.close();
     }
 
     const { context, page, errors } = await newAppPage();
@@ -326,6 +330,18 @@ describe('smoke: director records, student sees it', () => {
       await assertHealthy(page, errors);
     } finally {
       await context.close();
+    }
+
+    // Off: the band code is retired and the lookup emptied.
+    const off = await directorSettings();
+    try {
+      await off.page.click('[onclick="clearBandCode()"]');
+      await waitForDoc(`orgs/${ORG}`, d => !('bandCode' in d), 'band code removed from org');
+      assert.equal(await adminGet('bandCodes/SMOKEBAND'), null, 'band code retired');
+      assert.deepEqual(await entries(), [], 'name lookup emptied');
+      await assertHealthy(off.page, off.errors);
+    } finally {
+      await off.context.close();
     }
   });
 });

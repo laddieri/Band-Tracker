@@ -446,6 +446,11 @@ async function _syncNameLogins() {
   // half-loaded state would delete every entry.
   if (!STATE.isAdmin || !STATE.orgId || !STATE.org || !_nameLoginClaimed) return;
   if (STATE.loading) { scheduleNameLoginSync(); return; }
+  // Name sign-in off and nothing this session knows to clear: don't touch the
+  // collection at all. (Turning it off clears the lookup itself — see
+  // clearBandCode() — and this keeps a band that never uses the feature from
+  // reading it, e.g. in the window after an app deploy before its rules land.)
+  if (!STATE.org.bandCode && !_nameLoginStored) return;
   if (_nameLoginRunning) { _nameLoginAgain = true; return; }
   _nameLoginRunning = true;
   const orgId = STATE.orgId;

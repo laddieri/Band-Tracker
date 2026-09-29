@@ -1027,6 +1027,15 @@ async function clearBandCode() {
   if (!STATE.isAdmin || !STATE.orgId) return;
   try {
     await _retireCode('bandCodes', STATE.org?.bandCode);
+    // Empty the name lookup here rather than leaving it to the sync, which
+    // skips the collection entirely while name sign-in is off.
+    const snap = await db.collection('studentNameLogins').where('orgId', '==', STATE.orgId).get();
+    for (let i = 0; i < snap.docs.length; i += 450) {
+      const batch = db.batch();
+      snap.docs.slice(i, i + 450).forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+    _nameLoginStored = new Map();
     await db.collection('orgs').doc(STATE.orgId)
       .update({ bandCode: firebase.firestore.FieldValue.delete() });
     if (STATE.org) delete STATE.org.bandCode; // optimistic; org listener will confirm
